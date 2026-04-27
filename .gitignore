@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+poetry.lock
+
+# Node
+node_modules/
+pnpm-lock.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+*.env.local
+
+# Claude
+.claude/settings.local.json
+
+# Docker
+db_data/
+redis_data/
+kafka_data/
+server_uploads/
+server_data/
+knowledge_data/

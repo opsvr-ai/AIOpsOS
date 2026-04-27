@@ -1,0 +1,41 @@
+# AIOpsOS Server — Python FastAPI backend
+# Build: docker build -f deploy/Dockerfile.server -t aiopsos-server .
+FROM docker.1ms.run/python:3.11-slim
+
+# Use Aliyun mirrors for apt
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && sed -i 's|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Use Aliyun pip mirror
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
+
+# Install Poetry via pip
+RUN pip install poetry==1.8.3
+
+WORKDIR /app
+
+# Copy dependency files first for layer caching
+COPY server/pyproject.toml server/poetry.lock ./
+
+# Install dependencies (no virtualenv in container)
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main --no-interaction --no-ansi --no-root
+
+# Copy application code
+COPY server/ .
+
+# Create data directories
+RUN mkdir -p data/knowledge/wiki data/knowledge/raw data/knowledge/meta data/skills uploads
+
+EXPOSE 8000
+
+# Run migrations then start server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]

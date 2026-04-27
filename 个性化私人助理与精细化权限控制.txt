@@ -1,0 +1,135 @@
+## 个性化私人助理与精细化权限控制
+
+在控制中心已有的 RBAC 基础上，我们将“子智能体、Skill、MCP 服务”的使用权进一步细化，并引入**私人助理**概念，让每个用户可基于自己的角色权限，定制专属的智能体工作台。
+
+---
+
+### 一、私人助理定义
+
+**私人助理**是每个用户可自定义的**个人智能体配置方案**，包含：
+- 默认启用的子智能体列表（在权限范围内）
+- 常用 Skills / MCP 工具收藏
+- 偏好场景快捷入口
+- 个性化系统提示词（可选）
+- 通知偏好
+
+用户登录后，主智能体在执行任务时可感知这些偏好，优先调用用户指定的子智能体和工具。
+
+---
+
+### 二、权限模型扩展：能力级权限
+
+在原 RBAC 基础上，将“子智能体、Skill、MCP 服务”作为可授权的资源。
+
+| 资源 | 操作 | 说明 |
+|------|------|------|
+| `sub_agents` | `use` | 允许使用特定子智能体 |
+| `skills` | `use` | 允许调用特定 Skill |
+| `mcp_services` | `use` | 允许通过特定 MCP 服务调用工具 |
+
+**数据库扩展**：
+
+```sql
+-- 在 role_permissions 中，resource 可精准到具体子智能体、Skill、MCP 服务
+-- 例如：resource = "sub_agent:alert_analysis_agent", action = "use"
+
+-- 新增私人助理配置表
+CREATE TABLE personal_assistant_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(128) UNIQUE NOT NULL,
+    enabled_sub_agents UUID[] DEFAULT '{}',     -- 启用的子智能体ID数组
+    favorite_tools UUID[] DEFAULT '{}',          -- 收藏的工具ID数组
+    preferred_scenarios UUID[] DEFAULT '{}',     -- 偏好场景
+    custom_prompt TEXT,                          -- 个性化系统提示词
+    notification_prefs JSONB DEFAULT '{}',       -- 通知偏好
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+### 三、界面设计
+
+#### 1. “我的助理”入口
+
+**位置**：顶部导航栏右侧，用户头像旁边，一个助理图标（🤖），点击进入个人助理配置面板。
+
+**面板布局**（抽屉式）：
+- **左侧**：可用的子智能体/工具列表（基于权限过滤）
+- **右侧**：已启用的子智能体/工具列表（用户当前配置）
+- **底部**：偏好设置（场景快捷方式、提示词、通知）
+
+#### 2. 配置交互
+
+- **子智能体启用**：从左侧“可用”列表拖拽到右侧“已启用”，或直接勾选。仅显示当前用户角色有权使用的子智能体。
+- **工具收藏**：类似操作，将常用的 Skill/MCP 工具标记为收藏，方便在对话中快速推荐给主智能体。
+- **场景快捷设置**：从场景列表中选择最多 5 个显示在对话顶部的快捷标签。
+- **个性化提示词**：一个文本区，允许编写额外的系统指令，如“当分析告警时，优先关注网络层面的指标”。
+- **通知偏好**：勾选默认消息渠道、是否接收定时任务结果通知等。
+
+#### 3. 权限不足时的提示
+
+当用户尝试启用无权限的子智能体或工具时，该项灰显并带有 🔒 图标，悬停显示“需联系管理员授权”。
+
+---
+
+### 四、后端权限校验流程
+
+主智能体在初始化或规划阶段，会获取当前用户的私人助理配置及其角色权限：
+
+```python
+def get_user_capabilities(user_id: str) -> dict:
+    """返回用户可用的所有能力"""
+    roles = user_role_repo.get_roles(user_id)
+    allowed_sub_agents = set()
+    allowed_tools = set()
+    for role in roles:
+        perms = role_permission_repo.get_by_role(role.id)
+        for p in perms:
+            if p.resource.startswith("sub_agent:"):
+                allowed_sub_agents.add(p.resource.split(":")[1])
+            elif p.resource.startswith("skill:") or p.resource.startswith("mcp:"):
+                allowed_tools.add(p.resource.split(":")[1])
+    
+    # 获取用户私人助理配置
+    config = personal_config_repo.get(user_id)
+    # 进一步过滤：只保留权限范围内的启用项
+    enabled_agents = [a for a in config.enabled_sub_agents if a in allowed_sub_agents]
+    return {"agents": enabled_agents, "tools": allowed_tools.intersection(config.favorite_tools)}
+```
+
+在 `init_node` 中，根据这些能力动态构建 `available_agents` 和 `available_tools`，确保智能体只能调用被授权的资源。
+
+---
+
+### 五、API 权限防护
+
+所有工具调用和子智能体调用的 API 端点，均需校验调用者是否有对应 `use` 权限。使用中间件或装饰器统一检查：
+
+```python
+@require_permission("skill:restart_service")
+def execute_skill(skill_id, params):
+    ...
+```
+
+若无权限，返回 403 并在前端提示“您未被授权使用该工具”。
+
+---
+
+### 六、管理员视角
+
+在**角色编辑页面**增加“能力授权”标签页：
+- 以树状结构展示所有子智能体、按类型分组的 Skill 和 MCP 服务。
+- 勾选即为该角色授予对应项的 `use` 权限。
+- 支持“全选/取消全选”及搜索过滤。
+
+---
+
+### 七、与对话界面的联动
+
+- 用户的私人助理配置影响对话中的“快捷场景标签”和“历史收藏工具”。
+- 当主智能体规划时，优先考虑用户启用的子智能体和收藏的工具。
+- 对话页面顶部的“当前场景”和“助理偏好”可快速切换，无需进入面板。
+
+通过这套机制，每个用户在统一的平台下拥有个性化的工作体验，同时权限严格受控，符合企业级安全要求。

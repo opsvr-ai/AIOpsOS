@@ -1,0 +1,293 @@
+## AIOpsOS 完整项目目录规划
+
+以下为 **AIOpsOS** 全栈统一代码仓库的完整目录结构，涵盖服务端（管控与执行平面）、前端、客户端 Agent、知识库、部署配置、文档及 CI/CD 流水线。目录遵循模块化、管控分离、插件化原则，便于独立开发、测试与部署。
+
+```
+aiopsos/
+│
+├── server/                          # 后端服务 (Python 3.11, FastAPI)
+│   ├── pyproject.toml               # Poetry 项目配置与依赖
+│   ├── poetry.lock
+│   ├── Dockerfile
+│   ├── Dockerfile.sandbox           # Skill 沙箱执行器专用镜像
+│   ├── alembic.ini                  # 数据库迁移工具
+│   ├── migrations/                  # Alembic 迁移脚本
+│   │   ├── env.py
+│   │   └── versions/
+│   │       └── 001_initial_schema.py
+│   └── src/
+│       ├── __init__.py
+│       ├── main.py                  # 单体模式应用工厂
+│       ├── main_control.py          # 管控平面入口 (仅加载管控路由)
+│       ├── main_execution.py        # 数据平面入口 (仅加载执行与对话路由)
+│       ├── config.py                # 全局配置管理 (Pydantic Settings)
+│       ├── api/
+│       │   ├── __init__.py
+│       │   ├── deps.py              # 通用依赖注入 (get_db, get_current_user)
+│       │   ├── control/             # 管控 API 路由
+│       │   │   ├── __init__.py
+│       │   │   ├── router.py
+│       │   │   ├── users.py
+│       │   │   ├── roles.py
+│       │   │   ├── scenarios.py
+│       │   │   ├── tools.py
+│       │   │   ├── agents.py
+│       │   │   ├── channels.py
+│       │   │   ├── schedules.py
+│       │   │   ├── triggers.py
+│       │   │   ├── knowledge_manage.py
+│       │   │   ├── agent_profiles.py  # 客户端 Profile 管理
+│       │   │   └── system.py
+│       │   └── execution/           # 执行 API 与对话路由
+│       │       ├── __init__.py
+│       │       ├── router.py
+│       │       ├── chat.py
+│       │       ├── sessions.py
+│       │       ├── alerts.py
+│       │       ├── knowledge_search.py
+│       │       ├── notifications.py
+│       │       └── callbacks.py     # 外部渠道回调统一入口
+│       ├── agent/                   # 多智能体核心引擎
+│       │   ├── __init__.py
+│       │   ├── graph.py             # LangGraph 主图定义与编译
+│       │   ├── state.py             # MultiAgentState 定义
+│       │   ├── nodes/               # 图节点实现
+│       │   │   ├── __init__.py
+│       │   │   ├── init.py
+│       │   │   ├── plan.py
+│       │   │   ├── route.py
+│       │   │   ├── exec_task.py
+│       │   │   ├── synthesize.py
+│       │   │   ├── human_interrupt.py
+│       │   │   ├── reflect.py       # 反思节点
+│       │   │   └── evolve.py        # 进化节点
+│       │   └── sub_agents/          # 子智能体工厂
+│       │       ├── __init__.py
+│       │       ├── base.py
+│       │       ├── alert_analysis.py
+│       │       └── root_cause.py
+│       ├── core/                    # 基础服务与通用能力
+│       │   ├── __init__.py
+│       │   ├── security.py          # JWT / RBAC / 密码哈希
+│       │   ├── tool_manager.py      # 工具注册中心 (Skill + MCP 动态管理)
+│       │   ├── mcp_connector.py     # MCP 客户端连接池与健康检查
+│       │   ├── memory_core.py       # 长期记忆管理 (向量存储与检索)
+│       │   ├── skill_executor.py    # Skill 执行调度 (HTTP/沙箱分发)
+│       │   ├── sandbox.py           # Docker 沙箱接口
+│       │   ├── scheduler.py         # RedBeat 动态调度管理器
+│       │   └── event_consumer.py    # Kafka 消费者封装与事件标准化
+│       ├── models/                  # SQLAlchemy ORM 模型
+│       │   ├── __init__.py
+│       │   ├── base.py
+│       │   ├── user.py
+│       │   ├── role.py
+│       │   ├── agent.py
+│       │   ├── tool.py
+│       │   ├── scenario.py
+│       │   ├── schedule.py
+│       │   ├── trigger.py
+│       │   ├── alert.py
+│       │   ├── knowledge.py
+│       │   ├── channel.py
+│       │   ├── session.py
+│       │   └── memory.py
+│       ├── schemas/                 # Pydantic 请求/响应 Schema
+│       │   ├── __init__.py
+│       │   ├── user.py
+│       │   ├── agent.py
+│       │   ├── tool.py
+│       │   ├── scenario.py
+│       │   ├── schedule.py
+│       │   ├── alert.py
+│       │   └── chat.py
+│       ├── services/                # 业务逻辑层
+│       │   ├── __init__.py
+│       │   ├── user_service.py
+│       │   ├── scenario_service.py
+│       │   ├── tool_service.py
+│       │   ├── alert_service.py
+│       │   └── knowledge_service.py
+│       ├── integrations/            # 外部系统适配与数据接入
+│       │   ├── __init__.py
+│       │   ├── kafka_producer.py
+│       │   ├── data_adapters/
+│       │   │   ├── base.py
+│       │   │   ├── prometheus.py
+│       │   │   ├── zabbix.py
+│       │   │   └── cmdb.py
+│       │   └── notification/        # 消息渠道插件体系
+│       │       ├── base.py
+│       │       ├── manager.py
+│       │       ├── builtin/
+│       │       │   ├── dingtalk.py
+│       │       │   ├── wecom.py
+│       │       │   ├── wechat.py
+│       │       │   └── webhook.py
+│       │       └── user_plugins/    # 用户上传插件存放 (持久化卷)
+│       └── workers/                 # Celery 异步任务与定时调度
+│           ├── celery_app.py
+│           └── tasks/
+│               ├── __init__.py
+│               └── schedules.py
+│
+├── web/                             # 前端 (React 18 + TypeScript + Vite)
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── index.html
+│   ├── Dockerfile
+│   ├── nginx.conf                   # 生产 Nginx 配置 (含管控/执行 API 分流)
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   └── logo.svg
+│   └── src/
+│       ├── main.tsx
+│       ├── App.tsx
+│       ├── router.tsx               # 路由配置 (含权限守卫与懒加载)
+│       ├── theme.ts                 # Ant Design Token 深度定制
+│       ├── i18n.ts                  # i18next 初始化
+│       ├── vite-env.d.ts
+│       ├── stores/                  # Zustand 全局状态
+│       │   ├── authStore.ts
+│       │   ├── chatStore.ts
+│       │   ├── themeStore.ts
+│       │   └── notificationStore.ts
+│       ├── hooks/                   # 自定义 Hooks
+│       │   ├── useWebSocket.ts
+│       │   ├── usePermission.ts
+│       │   ├── useChat.ts
+│       │   └── useKnowledge.ts
+│       ├── services/                # API 调用封装
+│       │   ├── api.ts               # axios 实例 (拦截器、刷新Token)
+│       │   ├── auth.ts
+│       │   ├── session.ts
+│       │   ├── scenario.ts
+│       │   ├── tool.ts
+│       │   ├── alert.ts
+│       │   └── knowledge.ts
+│       ├── components/              # 通用组件
+│       │   ├── ui/                  # 基础 UI 封装 (Button, Card, Modal)
+│       │   ├── layout/              # 布局组件
+│       │   │   ├── MainLayout.tsx
+│       │   │   ├── Sidebar.tsx
+│       │   │   ├── Header.tsx
+│       │   │   └── SettingsDrawer.tsx
+│       │   ├── chat/                # 对话核心组件
+│       │   │   ├── ChatContainer.tsx
+│       │   │   ├── ChatMessageList.tsx
+│       │   │   ├── IntentCard.tsx
+│       │   │   ├── PlanCard.tsx
+│       │   │   ├── ExecutionCard.tsx
+│       │   │   ├── KnowledgeRefCard.tsx
+│       │   │   ├── SecurityConfirmCard.tsx
+│       │   │   ├── InlineParameterForm.tsx
+│       │   │   └── ChatInput.tsx     # 输入框 (含命令面板、附件上传)
+│       │   └── shared/              # 共享业务组件
+│       │       ├── ScenarioSelector.tsx
+│       │       ├── ToolSelector.tsx
+│       │       └── CronBuilder.tsx
+│       ├── features/                # 功能页面 (按路由模块拆分)
+│       │   ├── dashboard/           # 总览仪表板
+│       │   ├── chat/                # 对话页面
+│       │   ├── scenarios/           # 场景管理
+│       │   ├── automation/          # 自动化 (定时任务+触发规则)
+│       │   ├── alerts/              # 告警中心
+│       │   ├── knowledge/           # 知识库 (raw/wiki/lint)
+│       │   ├── tools/               # 工具注册与测试
+│       │   ├── agents/              # 智能体定义与子智能体
+│       │   ├── channels/            # 消息渠道管理
+│       │   ├── users/               # 用户与权限 (RBAC)
+│       │   ├── system/              # 系统设置 (品牌、LDAP、备份)
+│       │   └── history/             # 会话/执行历史与审计
+│       ├── assets/                  # 静态资源
+│       │   ├── images/
+│       │   └── icons/
+│       └── utils/                   # 工具函数
+│           ├── format.ts
+│           └── validators.ts
+│
+├── client/                          # AIOpsOS 客户端 Agent (Go/Rust 或 Python)
+│   ├── Cargo.toml / go.mod          # 根据选型决定
+│   ├── Dockerfile
+│   ├── install.sh                   # 一键安装脚本
+│   ├── config/
+│   │   └── agent.yaml.example       # 仅含基础通信配置的模板
+│   └── src/
+│       ├── main.rs / main.go
+│       ├── transport/               # WebSocket/gRPC 安全通信
+│       │   ├── mod.rs
+│       │   └── mtls.rs
+│       ├── runtime/
+│       │   ├── config_cache.rs      # 加密缓存与热加载
+│       │   ├── skill_executor.rs    # 沙箱执行器 (Docker/Wasm)
+│       │   ├── rule_engine.rs       # 本地自治规则引擎
+│       │   ├── collector.rs         # 系统指标/日志采集
+│       │   └── self_updater.rs      # 自更新逻辑
+│       └── device/                  # 多设备类型适配
+│           ├── mod.rs
+│           ├── linux_server.rs
+│           ├── windows_server.rs
+│           ├── virtual_platform.rs  # vCenter/Proxmox
+│           ├── storage_system.rs    # NetApp/Ceph
+│           └── network_device.rs    # NETCONF/SSH
+│
+├── knowledge-base/                  # LLM-Wiki 知识库持久化目录
+│   ├── raw/                         # 原始文档 (不可变)
+│   │   ├── alerts/                  # 从告警自动生成的原始资料
+│   │   └── uploads/                 # 用户手动上传文档
+│   ├── wiki/                        # AI 编译的 Markdown 知识页面
+│   │   ├── index.md
+│   │   ├── log.md                   # 编译变更日志
+│   │   ├── entities/
+│   │   ├── alerts/
+│   │   ├── runbooks/
+│   │   └── summaries/
+│   └── schema/                      # 人工定义的规范与约束
+│       ├── wiki-conventions.md
+│       └── ops-standards.md
+│
+├── deploy/                          # 部署与运维配置
+│   ├── docker-compose.yml           # 生产分离模式 (管控/执行/客户端均独立)
+│   ├── docker-compose.allinone.yml  # 单体快速体验模式
+│   ├── docker-compose.dev.yml       # 开发环境 (带热重载)
+│   ├── .env.example                 # 环境变量模板
+│   ├── init-db.sql                  # 数据库初始化 (pgvector 扩展)
+│   └── ansible/                     # 批量安装客户端 Playbook
+│       └── deploy_agents.yml
+│
+├── docs/                            # 平台文档中心 (Markdown + Mermaid)
+│   ├── index.md                     # 文档入口
+│   ├── user-guide/                  # 用户手册
+│   │   ├── getting-started.md
+│   │   ├── scenarios.md
+│   │   ├── knowledge.md
+│   │   └── alerts.md
+│   ├── admin-guide/                 # 管理员手册
+│   │   ├── deployment.md
+│   │   ├── control-plane.md
+│   │   └── security.md
+│   ├── api/                         # API 文档补充 (Swagger 导出)
+│   │   └── openapi.json
+│   └── architecture.md              # 架构设计文档
+│
+├── .github/                         # CI/CD 流水线
+│   └── workflows/
+│       ├── test-server.yml
+│       ├── test-web.yml
+│       ├── test-agent.yml
+│       └── docker-build.yml
+│
+├── .gitignore
+├── README.md
+└── LICENSE
+```
+
+### 关键设计意图
+- **管控分离落地**：`server/src/main_control.py` 与 `main_execution.py` 可独立启动，共享核心库，apis 按平面拆分。
+- **客户端轻量独立**：使用独立目录 `client/`，采用 Rust/Go 保证性能与资源占用，通过统一 Profile 与服务端协同。
+- **知识库实体化**：`knowledge-base/` 作为独立挂载卷持久化，结构与 LLM-Wiki 三层一致，由服务端编译引擎读写。
+- **插件生态**：通知渠道、数据适配器、用户 Skill/MCP 均预留插件目录，支持上传与热加载。
+- **完整部署方案**：提供多种 Docker Compose 变体及 Ansible 批量部署客户端，覆盖从开发到生产的全生命周期。
+
+此目录结构可直接作为 AIOpsOS 的代码仓库脚手架，快速初始化并开始并行开发。

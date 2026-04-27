@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  db:
+    image: docker.1ms.run/pgvector/pgvector:pg15
+    container_name: aiopsos-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aiopsos}
+      POSTGRES_USER: ${POSTGRES_USER:-aiopsos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiopsos123}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: docker.1ms.run/redis:7-alpine
+    container_name: aiopsos-redis
+    ports:
+      - "6379:6379"
+
+  kafka:
+    image: docker.1ms.run/confluentinc/cp-kafka:7.5.0
+    container_name: aiopsos-kafka
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_LISTENERS: 'PLAINTEXT://:9092,CONTROLLER://:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    ports:
+      - "9092:9092"
+
+volumes:
+  db_data:

@@ -1,0 +1,19 @@
+{
+  "nav": {
+    "ops": "运维中心",
+    "ai": "AI中心",
+    "control": "控制中心",
+    "dashboard": "总览",
+    "chat": "对话",
+    "alerts": "告警中心",
+    "scenarios": "场景运维",
+    "automation": "自动化",
+    "history": "历史记录",
+    "agents": "智能体",
+    "tools": "工具注册",
+    "knowledge": "知识库",
+    "channels": "消息渠道",
+    "users": "身份与权限",
+    "system": "系统管理"
+  }
+}

@@ -1,0 +1,227 @@
+## 管控分离架构：AIOpsOS 企业级部署增强
+
+在原有设计基础上，引入 **管控分离** 架构，将平台拆分为 **管控平面 (Control Plane)** 与 **数据平面 (Data Plane)**，以实现更高级别的安全隔离、独立扩展和职责清晰。同时保留“单体合一”模式，供快速启动选择。
+
+---
+
+### 一、设计目标
+
+- **安全隔离**：管理配置类操作与运维执行类操作分离，管控接口可限制仅内网访问。
+- **独立扩展**：数据平面（对话/执行）可随告警量水平扩展，管控平面保持单实例稳定。
+- **职责清晰**：管控端负责 CRUD 配置，执行端负责实时交互和数据处理。
+- **渐进式部署**：支持单体模式（快速体验）与分离模式（生产就绪）一键切换。
+
+---
+
+### 二、平面划分
+
+#### 1. 管控平面 (Control Plane)
+
+| 模块 | 功能 |
+|------|------|
+| 用户与权限 | 用户管理、角色、LDAP集成、API密钥 |
+| 系统管理 | 品牌设置、系统配置、备份、License |
+| 消息渠道 | 渠道注册、配置、启停 |
+| 智能体定义 | 主/子智能体 CRUD、提示词管理 |
+| 工具注册 | Skill/MCP 服务注册、审批 |
+| 知识库管理 | 原始文档上传、编译规则配置、Wiki 页面编辑（CRUD 部分） |
+| 场景模板 | 场景、预置工具/子智能体关联 |
+| 定时任务/触发器 | 任务定义、触发规则配置 |
+
+#### 2. 数据平面 (Data Plane)
+
+| 模块 | 功能 |
+|------|------|
+| 对话服务 | 会话管理、意图识别、规划执行、流式交互 |
+| 场景执行 | 告警分析、根因定界、日常巡检等场景的实际运行 |
+| 工具调用 | Skill/MCP 的运行时调用（含沙箱执行） |
+| 告警处理 | 事件接入、降噪、告警生成与自动分析 |
+| 自动触发 | 接收事件并匹配触发规则，启动执行 |
+| 定时任务执行 | Celery Worker 触发场景执行 |
+| 消息通知 | 执行结果通过渠道发送（调用渠道插件） |
+| 知识使用 | 知识检索（编译器查询 wiki） |
+
+**注意**：知识库的“编译生成”动作可归属数据平面（由确认告警触发），但 wiki 文件系统的维护和 lint 可归管控平面。
+
+---
+
+### 三、服务拆分方案
+
+可选方案：**同一代码基，多服务入口**，通过环境变量或启动命令切换。
+
+#### 后端项目结构扩展
+
+```
+server/
+├── src/
+│   ├── main.py            # 统一应用工厂
+│   ├── main_control.py    # 管控服务入口
+│   ├── main_execution.py  # 执行服务入口
+│   ├── api/
+│   │   ├── control/       # 管控 API 路由
+│   │   └── execution/     # 执行 API 路由
+│   ├── agent/             # 仅执行服务需要
+│   ├── core/              # 共享基础库
+│   └── ...
+```
+
+- `main.py`：单体模式启动，合并所有路由。
+- `main_control.py`：仅加载管控路由，禁用 agent/执行相关依赖。
+- `main_execution.py`：仅加载执行路由，禁用管控路由（或保留轻量管控如获取当前用户权限?）。
+- 共享数据库模型、工具类。
+
+#### 路由分配
+
+| 原 API 路径 | 归属 |
+|------------|------|
+| `/api/v1/users/*` | 管控 |
+| `/api/v1/roles/*` | 管控 |
+| `/api/v1/scenarios/*` | 管控 (CRUD) |
+| `/api/v1/tools/*` | 管控 (注册/审批) |
+| `/api/v1/agents/*` | 管控 |
+| `/api/v1/channels/*` | 管控 |
+| `/api/v1/schedules/*` | 管控 |
+| `/api/v1/triggers/*` | 管控 |
+| `/api/v1/knowledge/*` (管理类) | 管控 |
+| `/api/v1/system/*` | 管控 |
+| `/api/v1/chat/*` | 执行 |
+| `/api/v1/sessions/*` | 执行 |
+| `/api/v1/execute/*` | 执行 |
+| `/api/v1/alerts/*` | 执行 |
+| `/api/v1/knowledge/search` | 执行 |
+| `/api/v1/notifications/*` | 执行 |
+| 内部工具调用回调 | 执行 |
+| WebSocket `/ws/chat/*` | 执行 |
+
+**权限验证**：执行服务需要能读取用户/角色权限来判断是否允许调用某工具。可采取共享 Redis/JWT 公钥验证，或通过内部 gRPC 调用管控获取权限。轻量方案：JWT 中包含用户角色和权限列表，执行服务直接解析即可，无需回调管控。
+
+---
+
+### 四、部署更新 (Docker Compose 分离模式)
+
+增加 `control` 与 `execution` 两个服务，替换原来的 `api`。同时保留 `allinone` 配置用于单体启动。
+
+```yaml
+# deploy/docker-compose.yml (生产分离模式)
+services:
+  # 基础设施同上 ...
+  
+  control:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: aiopsos-control
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      SERVICE_TYPE: control
+    ports:
+      - "8001:8000"   # 管控端口
+    depends_on: [db, redis]
+    volumes:
+      - knowledge_data:/app/knowledge-base
+    command: uvicorn src.main_control:app --host 0.0.0.0 --port 8000
+
+  execution:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: aiopsos-execution
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      SECRET_KEY: ${SECRET_KEY}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      SERVICE_TYPE: execution
+    ports:
+      - "8002:8000"   # 执行端口
+    depends_on: [db, redis, kafka]
+    volumes:
+      - knowledge_data:/app/knowledge-base
+    command: uvicorn src.main_execution:app --host 0.0.0.0 --port 8000
+
+  worker:    # 任务 worker 仍独立，属于数据平面
+    ...
+
+  kafka-consumer:
+    ...
+
+  frontend:
+    ...
+    environment:
+      VITE_CONTROL_API_URL: http://control:8000
+      VITE_EXECUTION_API_URL: http://execution:8000
+    # 或通过 Nginx 统一分发
+```
+
+**前端适配**：  
+- 在开发环境中，前端可配置`VITE_API_BASE_URL`指向不同网关。  
+- 生产部署中，Nginx 根据路径分流：`/api/control/*`转给`control`服务，`/api/execution/*`或`/api/chat`转给`execution`。这样前端仍只需访问单一域名。
+
+#### Nginx 配置示例 (分流)
+
+```nginx
+location /api/control/ {
+    proxy_pass http://control:8000/api/v1/;
+}
+location /api/execution/ {
+    proxy_pass http://execution:8000/api/v1/;
+}
+location /ws/ {
+    proxy_pass http://execution:8000;
+    # WebSocket upgrade headers...
+}
+```
+
+如果为了简化前端调用，可保持所有 API 路径前缀不变，通过 Nginx 按路径前缀规则映射到对应后端：
+
+```
+/api/v1/users       → control
+/api/v1/chat        → execution
+/api/v1/alerts      → execution
+/api/v1/scenarios   → control
+... 等
+```
+
+---
+
+### 五、单体兼容模式
+
+提供 `docker-compose.allinone.yml`，将所有服务合并为一个 `aiopsos` 服务，使用 `main.py` 启动，一键部署：
+
+```yaml
+services:
+  aiopsos:
+    build: ./server
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
+    # ...
+  worker:
+    ...
+  frontend:
+    ...
+```
+
+用户可根据规模选择模式。
+
+---
+
+### 六、安全强化
+
+- **网络隔离**：管控服务不绑定对外公网IP，仅内网可达；前端和 Nginx 网关代理请求。
+- **JWT 增强**：JWT 内嵌用户权限列表，执行服务直接校验，无需每次查库。
+- **审计**：管控操作日志记录到独立审计表，执行操作日志记录到消息表，互不影响。
+- **API 密钥**：对外提供的 API（如事件回调）归属执行服务，使用独立密钥验证。
+
+---
+
+### 七、优势总结
+
+- **高可用**：执行平面可多实例部署，应对告警高峰；管控平面单实例即可。
+- **责任分明**：运维人员仅需访问执行端口，管理员使用管控端口。
+- **持续集成**：两部分可独立发布，降低风险。
+- **资源优化**：管控服务可降低资源配置，无需预加载 LLM 或工具连接池。
+
+管控分离将 AIOpsOS 推向了企业级、高可靠的运维 AI 操作系统标准，同时不牺牲用户体验。

@@ -1,0 +1,168 @@
+## 前端技术选型与架构设计
+
+### 一、整体选型：React 18 + TypeScript + Vite
+
+| 类别 | 选型 | 理由 |
+|------|------|------|
+| **语言** | TypeScript 5.x | 类型安全，大型项目可维护性强 |
+| **构建工具** | Vite 5 | 极速 HMR，支持 ESM，对 React 项目优化好 |
+| **包管理** | pnpm | 磁盘空间节省，依存严格 |
+| **Lint/Format** | ESLint + Prettier | 代码规范统一 |
+
+### 二、UI 组件库与样式方案
+
+| 类别 | 选型 | 理由 |
+|------|------|------|
+| **UI 组件库** | Ant Design 5.x (深色主题定制) | 企业级、丰富的表单/表格/抽屉/消息组件，支持 ConfigProvider 全局主题切换 |
+| **图标** | @ant-design/icons | 统一风格，内置丰富图标 |
+| **自定义图标** | @ant-design/icons-svg + 自定义 SVG 组件 | 可扩展运维专属图标（服务器、网络、容器等） |
+| **CSS 方案** | CSS Modules + Ant Design Token 变量 | 样式隔离，支持覆盖主题变量 |
+| **动画** | framer-motion | 卡片展开/折叠、状态光晕动画，性能好 |
+| **滚动区域** | react-custom-scrollbars 或 overlay scrollbars | 美化滚动条，保持深色主题一致 |
+
+**主题定制**：
+- 使用 Ant Design `ConfigProvider` 的 `theme.token` 覆盖色彩、边框半径、字号等。
+- 暗色模式关键 token 示例：
+  - `colorBgBase: #0A0E1A`
+  - `colorBgContainer: rgba(13,27,52,0.8)`
+  - `colorText: #CFD7E6`
+  - `colorPrimary: #1890FF`
+
+### 三、状态管理
+
+| 类别 | 选型 | 理由 |
+|------|------|------|
+| **全局状态** | Zustand | 轻量、TypeScript 友好，比 Redux 简洁 |
+| **服务端状态** | TanStack Query (React Query) v5 | 自动缓存、轮询、重试、与 WebSocket 结合 |
+| **表单状态** | React Hook Form + zod 校验 | 高性能、少重渲染，zod 可复用类型定义 |
+| **URL/路由状态** | React Router v6 + useSearchParams | 嵌套布局路由，查询参数保持视图状态 |
+
+### 四、路由与布局
+
+- **React Router v6**：使用 `createBrowserRouter`，支持嵌套路由和懒加载。
+- 布局组件：主布局包含 Sidebar + Header + Content，嵌套子路由渲染具体页面。
+- 权限守卫：在路由层级检查 RBAC，重定向到无权限页。
+
+**路由结构设计**：
+```
+/                    → MainLayout
+/ops                 → 运维中心默认 → 总览
+/ops/chat            → 对话页
+/ops/scenarios       → 场景运维
+/ops/automation      → 自动化（定时任务+触发规则）
+/ops/data-access     → 数据接入
+/ops/history         → 历史记录
+/ai                  → AI中心默认
+/ai/agents           → 智能体
+/ai/tools            → 工具注册
+/ai/knowledge        → 知识库
+/ai/models           → 模型配置
+/ai/memory           → 记忆进化
+/control             → 控制中心默认
+/control/channels    → 消息渠道
+/control/users       → 身份与权限
+/control/system      → 系统管理
+```
+
+### 五、核心功能依赖
+
+#### 1. 对话页面（核心交互）
+- **实时通信**：WebSocket 客户端使用原生 `WebSocket` API 封装，结合 React Query 的 `queryClient` 推送数据。
+- **流式渲染**：智能体消息的文本增量使用 React 状态逐字符渲染，配合 `framer-motion` 打字机效果。
+- **卡片组件**：`IntentCard`, `PlanCard`, `ExecutionCard`, `KnowledgeRefCard` 均为独立组件，接收对应步骤数据。
+- **Markdown 渲染**：`react-markdown` + `remark-gfm`（支持表格、任务列表等），代码块高亮用 `react-syntax-highlighter`。
+- **JSON 视图**：`react-json-view-lite`（轻量），用于工具调用输入/输出展示。
+- **折叠面板**：Ant Design `Collapse` 或自定义 `Collapsible` 组件（使用 framer-motion 动画）。
+
+#### 2. 场景、工具、触发器编辑
+- **代码/Monaco 编辑器**：使用 `@monaco-editor/react`，用于 Python 函数、JSON Schema、表达式编辑。
+- **JSON Schema 表单**：`react-jsonschema-form` + Ant Design 主题适配，用于根据场景参数 schema 动态生成表单。
+- **拖拽排序**：`@dnd-kit/core` + `@dnd-kit/sortable`，用于工具优先级调整。
+
+#### 3. 图表与可视化
+- **时序图、状态图**：`echarts-for-react` (基于 Apache ECharts)，用于仪表盘和数据监控。
+- **智能体关系图**：`@antv/g6`（高性能节点图），可选用于展示智能体拓扑。
+- **流程图/计划图**：`reactflow`，可展示计划的有向无环图，但初期用文本足够。
+
+#### 4. 主题切换
+- 使用 Ant Design `ConfigProvider` 的 `theme` 属性，并利用 `antd-style` 的 `ThemeProvider` 动态切换深浅色。
+- 状态存储在 `zustand` 与 `localStorage`，支持系统自动检测。
+
+### 六、性能优化
+
+| 策略 | 实现 |
+|------|------|
+| **代码拆分** | 路由级别 `React.lazy` + `Suspense` |
+| **虚拟列表** | 对话消息列表使用 `react-virtuoso` 处理长历史 |
+| **图片/图标优化** | SVG 图标使用 Tree Shaking 按需加载 |
+| **缓存与防抖** | TanStack Query 缓存 API 数据，表单输入 debounce |
+| **Web Worker** | 复杂的 JSON Schema 校验或数据格式化放到 Worker 线程 |
+
+### 七、国际化
+
+| 类别 | 选型 | 理由 |
+|------|------|------|
+| **i18n 方案** | react-i18next + i18next | 成熟，支持异步加载语言包 |
+| **语言包** | 初期 `zh-CN`，英文预留，所有文本使用 `t('key')` 包裹 | 便于国际化 |
+
+### 八、测试
+
+| 类别 | 选型 | 理由 |
+|------|------|------|
+| **单元测试** | Vitest + React Testing Library | 速度快，与 Vite 无缝集成 |
+| **E2E 测试** | Playwright | 支持 Chromium 多标签，可测 WebSocket 交互 |
+| **视觉回归** | Chromatic (基于 Storybook) | 适合 UI 组件稳定性，按需引入 |
+
+### 九、项目目录结构
+
+```
+src/
+├── assets/              # 静态资源 (图片、字体)
+├── components/          # 通用组件
+│   ├── ui/              # 二次封装的基础组件 (Button, Card等)
+│   ├── layout/          # 布局组件 (Sidebar, Header, Content)
+│   ├── chat/            # 对话相关组件 (IntentCard, PlanCard...)
+│   ├── tools/           # 工具相关组件
+│   └── ...
+├── features/            # 功能模块 (页面)
+│   ├── ops/
+│   │   ├── dashboard/
+│   │   ├── chat/
+│   │   ├── scenarios/
+│   │   ├── automation/
+│   │   ├── data-access/
+│   │   └── history/
+│   ├── ai/
+│   │   ├── agents/
+│   │   ├── tools/
+│   │   ├── knowledge/
+│   │   ├── models/
+│   │   └── memory/
+│   └── control/
+│       ├── channels/
+│       ├── users/
+│       └── system/
+├── hooks/               # 自定义 hooks
+├── services/            # API 调用封装 (REST + WebSocket)
+├── stores/              # Zustand stores
+├── types/               # TypeScript 类型定义
+├── utils/               # 工具函数
+├── i18n/                # 国际化
+├── router/              # 路由配置
+├── App.tsx
+└── main.tsx
+```
+
+### 十、开发环境与部署
+
+- **开发**：Vite 代理解决跨域，使用 `mock-service-worker` (MSW) 模拟后端 API，便于前后端分离开发。
+- **构建**：`vite build` 输出静态文件，部署到 Nginx 或 CDN。使用 Docker 多阶段构建也可。
+- **CI/CD**：GitHub Actions 进行 lint、test、build，自动部署到测试环境。
+
+**技术栈的核心优势**：
+- 快速迭代：Vite + React + TypeScript 开发体验极佳。
+- 组件复用：Ant Design 大量开箱即用的复杂组件（Drawer、Modal、Form、Table）。
+- 实时交互：WebSocket + Zustand + framer-motion 实现流式、多步骤、动画卡片。
+- 性能与可维护性：代码拆分、虚拟列表、严格类型约束。
+
+以上技术选型完全支撑我们设计的极简科技风 UI，并且满足运维平台对高度交互、实时性和可扩展性的需求。接下来可以进入搭建脚手架、封装基础组件的实际编码阶段。

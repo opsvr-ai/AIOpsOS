@@ -1,0 +1,362 @@
+# AIOpsOS 项目开发文档
+
+本文档为 AIOpsOS（AI运维智能操作系统）的完整开发指南，涵盖项目背景、技术架构、全部功能模块的细节设计、开发阶段划分、每个阶段的详细任务、接口定义及功能验证步骤。开发团队可依据此文档进行任务拆解、编码实现与质量验证。
+
+---
+
+## 目录
+1. 项目概述
+2. 技术栈
+3. 项目目录结构
+4. 核心模块详细设计
+   - 4.1 管控平面
+   - 4.2 数据平面（多智能体服务）
+   - 4.3 告警中心
+   - 4.4 知识库（LLM-Wiki）
+   - 4.5 客户端 Agent
+   - 4.6 消息渠道插件
+   - 4.7 前端交互设计
+5. 数据库设计
+6. API 接口设计
+7. 开发阶段与任务拆分
+8. 功能验证步骤
+9. 部署方案
+
+---
+
+## 1. 项目概述
+
+**AIOpsOS** 是一个面向运维领域的多智能体平台，实现故障根因定界、应急协同、日常巡检、告警分析处理等场景的自动化与智能化。系统采用管控分离架构，分为**管控平面 (Control Plane)** 和**数据平面 (Data Plane)**，并配套轻量级**客户端 Agent**，形成“云-边-端”一体的智能运维操作系统。
+
+核心特性：
+- 主智能体负责任务规划、调度子智能体、Skill 和 MCP 工具
+- 场景预制，Skills、MCP 服务、子智能体可动态注册
+- 告警事件接入、自动分析、人工确认后沉淀知识
+- LLM-Wiki 知识库，编译式知识管理
+- 插件化消息渠道（钉钉、企微、邮件、Webhook）
+- 定时任务与自动触发规则引擎
+- 客户端 Agent 实现安全自动化执行
+- 多租户 RBAC 权限与个性化私人助理
+
+---
+
+## 2. 技术栈
+
+### 后端
+- **语言**：Python 3.11
+- **框架**：FastAPI
+- **异步**：asyncio，uvicorn
+- **ORM**：SQLAlchemy 2.0 (async)，Alembic 迁移
+- **数据库**：PostgreSQL 15 + pgvector
+- **缓存/消息队列**：Redis，Kafka
+- **任务调度**：Celery + RedBeat
+- **智能体框架**：LangGraph，LangChain
+- **MCP 集成**：官方 Python SDK
+- **沙箱**：Docker SDK / gVisor
+- **认证**：JWT，OAuth2/LDAP
+
+### 前端
+- **框架**：React 18 + TypeScript
+- **构建工具**：Vite 5
+- **UI 库**：Ant Design 5.x（深色主题）
+- **状态管理**：Zustand + TanStack Query
+- **实时通信**：WebSocket
+- **代码编辑器**：Monaco Editor
+- **图表**：Apache ECharts
+- **Markdown**：react-markdown + remark-gfm
+
+### 客户端 Agent
+- **语言**：Rust (首选) 或 Go
+- **通信**：WebSocket/gRPC (mTLS)
+- **沙箱**：Docker / Wasm
+- **采集**：系统指标、日志
+- **自治**：内嵌规则引擎（Rhai 或自定义 DSL）
+
+### DevOps
+- **容器化**：Docker，Docker Compose，Kubernetes (生产可选)
+- **CI/CD**：GitHub Actions
+- **代码规范**：ESLint, Prettier, Black, Ruff
+
+---
+
+## 3. 项目目录结构
+
+（此处直接引用前面已规划的详细目录结构，不再重复占用篇幅。实际操作中开发团队应严格按照该目录组织代码。）
+
+---
+
+## 4. 核心模块详细设计
+
+### 4.1 管控平面 (Control Plane)
+
+负责所有配置类操作，包括用户权限、智能体定义、工具注册、场景模板、定时调度、触发规则、知识库管理、客户端 Profile 等。
+
+**主要服务**
+- `api/control/` 下的各路由模块
+- 数据库模型、业务逻辑层
+- 工具管理器、MCP 连接管理器（共享核心库）
+- RedBeat 调度管理器
+
+**关键功能细节**
+- **用户与权限**：支持本地用户、LDAP 集成，基于角色的细粒度权限控制（RBAC），权限粒度为资源+操作。用户可自定义私人助理（启用的子智能体、收藏工具、偏好场景）。
+- **智能体管理**：主智能体和子智能体的 CRUD，包含系统提示词、绑定模型、绑定工具集。子智能体类型可配置（ReAct、Plan-Execute）。
+- **工具注册**：统一 Skill/MCP 工具注册。Skill 支持 Python 函数（待沙箱）或 HTTP 端点；MCP 服务支持 stdio/SSE 传输，自动发现工具并缓存。
+- **场景模板**：预置工具与子智能体关联，支持参数 Schema 定义。
+- **定时任务**：基于 RedBeat，动态添加/修改 Cron 任务，关联场景和参数。
+- **触发规则**：可视化条件构建器（简单模式/表达式模式），关联场景，支持频率控制和生效时间窗口。
+- **知识库管理**：提供原始文档上传、编译触发、Wiki 页面浏览/编辑、Lint 报告。
+- **客户端 Profile**：管理 Agent 的配置、技能白名单、模型连接参数、采集策略、自治规则等。
+
+### 4.2 数据平面 (Data Plane)
+
+负责实时交互与执行，包括对话、场景执行、告警分析、事件处理、工具实际调用等。
+
+**主要服务**
+- `api/execution/` 下的路由
+- 多智能体引擎（agent/）
+- 工具执行（Skill Executor, MCP Connector）
+- Kafka 事件消费
+- Celery Worker 执行定时/触发任务
+
+**关键功能细节**
+- **主智能体工作流**：基于 LangGraph 状态图，实现 `init -> plan -> (route) -> exec_task -> synthesize -> reflect -> evolve -> final_answer`。支持并行工具调用，人工中断恢复，反思与进化。
+- **子智能体**：告警分析、根因定界等，采用 ReAct 模式封装为 Runnable，由主智能体调用。
+- **工具执行**：Skill 调用经沙箱（Docker 容器），MCP 调用通过长连接客户端发送。所有调用经过缓存、去重和限流。
+- **会话与流式交互**：通过 WebSocket 向前端推送实时状态、任务计划、执行过程卡片、安全确认、参数收集表单。支持附件上传和拖拽。
+- **告警处理**：消费 Kafka 事件，去重、分组、匹配场景/触发规则，自动执行分析或待人工处理。
+- **知识检索**：在智能体规划时可自动调用知识库搜索，引用 wiki 内容。
+
+### 4.3 告警中心
+
+整合事件接入、告警生命周期管理、自动/手动分析及知识沉淀。
+
+**核心状态流转**：
+```
+pending → analyzing (自动/手动) → awaiting_review → confirmed / dismissed → closed
+```
+- `pending`：新告警
+- `analyzing`：智能体分析中
+- `awaiting_review`：分析完成，待人工确认
+- `confirmed`：确认，可沉淀知识
+- `dismissed`：误报或忽略
+- `closed`：结束
+
+**前端界面**：列表卡片展示状态、严重级别；支持内联展开详情、批量操作、与对话联动。
+
+### 4.4 知识库 (LLM-Wiki)
+
+采用 LLM-Wiki 三层架构：raw/（原始资料不可变）、wiki/（LLM 编译的 Markdown 页面）、schema/（规范与约束）。
+
+**工作机制**：
+- **入库**：告警确认或手动上传触发编译，从 raw/ 生成结构化 wiki 页面。
+- **交叉引用**：自动建立页面链接。
+- **查询**：智能体通过全文检索定位 wiki 页面。
+- **更新**：定期 lint 体检并自动修正，或通过新知识更新旧页面。
+
+**前端**：文件列表、目录树、Markdown 查看/编辑、编译日志、lint 报告。
+
+### 4.5 客户端 Agent
+
+安装在服务器/虚拟化平台等，通过 mTLS 与服务端通信，接收指令、执行 Skills、采集数据、本地自治。
+
+**功能模块**：
+- **注册与心跳**：上报能力列表，定期心跳。
+- **配置与模型参数缓存**：服务端下发 Profile，本地加密缓存，热更新。
+- **Skills 执行**：沙箱内执行下发的 Python/Shell 脚本，返回结果。
+- **数据采集**：指标、日志采集，本地降噪后上报。
+- **自治规则**：断网时按本地规则引擎执行健康检查与恢复。
+- **自更新**：接收升级指令，安全更新自身。
+- **安全**：mTLS 双向认证，证书轮换，操作审计。
+
+### 4.6 消息渠道插件
+
+插件化通知框架，支持钉钉、企业微信、邮件、Webhook，以及用户自定义插件。
+
+**接口**：`NotificationChannel` 抽象基类，定义 `send_notification`, `parse_callback`, `verify_callback_signature` 等方法。
+
+**内置实现**：dingtalk, wecom, wechat, generic_webhook。
+
+**回调统一入口**：`/api/callback/{channel_type}`，由插件解析并恢复中断。
+
+### 4.7 前端交互设计
+
+极简科技风深色主题，左侧图标导航，对话页为核心。
+
+**关键组件**：
+- **意图卡片**：场景标签 + 实体提取
+- **任务规划卡片**：子任务列表，状态图标（等待/执行/完成/失败），点击展开参数详情
+- **执行卡片**：工具/Skill/MCP 调用详情，输入输出，耗时，缓存状态
+- **知识引用卡片**：检索片段，相似度
+- **安全确认卡片**：高风险操作阻断，确认/拒绝
+- **参数收集表单**：根据 JSON Schema 动态生成
+- **对话输入框**：支持 `/` 命令面板、附件拖拽、场景快捷标签
+
+**布局**：运维中心、AI中心、控制中心三大导航，首屏智能总览。
+
+---
+
+## 5. 数据库设计
+
+（核心表结构已在前面章节详细给出 DDL。以下列出关键表及其用途，完整 SQL 在迁移文件中维护。）
+
+- `users`, `roles`, `permissions`, `role_permissions`, `user_roles` — 权限体系
+- `agents` — 智能体定义（主/子）
+- `tools` —  工具注册（Skill/MCP 统一存储）
+- `mcp_servers` — MCP 服务器连接信息
+- `scenarios`, `scenario_tools`, `scenario_agents` — 场景与预置关联
+- `schedules`, `schedule_executions` — 定时任务与历史
+- `scene_triggers` — 触发规则
+- `alerts` — 告警实体与生命周期
+- `sessions`, `messages` — 对话会话与历史
+- `memories` — 长期记忆向量存储
+- `notification_channels` , `user_channels` — 渠道与用户绑定
+- `agent_profiles` — 客户端配置档案
+- `knowledge_documents`, `knowledge_chunks` — 知识库文档（可选，LLM-Wiki 可基于文件系统）
+
+所有迁移文件使用 Alembic 管理。
+
+---
+
+## 6. API 接口设计
+
+API 采用 RESTful 风格，版本前缀 `/api/v1`。文档使用 OpenAPI 3.0 自动生成（FastAPI 内置）。
+
+**接口分类**：
+
+| 分组 | 示例端点 | 归属平面 |
+|------|----------|----------|
+| 用户与认证 | POST `/auth/login`, GET `/users/me` | Control |
+| 角色与权限 | CRUD `/roles`, POST `/roles/{id}/permissions` | Control |
+| 智能体 | CRUD `/agents` | Control |
+| 工具 | CRUD `/tools`, POST `/tools/{id}/test` | Control |
+| MCP 服务 | CRUD `/mcp-servers`, POST `/mcp-servers/{id}/connect` | Control |
+| 场景 | CRUD `/scenarios` | Control |
+| 定时任务 | CRUD `/schedules`, POST `/schedules/{id}/trigger` | Control |
+| 触发规则 | CRUD `/triggers`, POST `/triggers/{id}/test` | Control |
+| 知识管理 | POST `/knowledge/raw`, POST `/knowledge/compile` | Control |
+| 消息渠道 | CRUD `/channels`, POST `/channels/{id}/test` | Control |
+| 系统设置 | GET/PUT `/system/branding`, GET/PUT `/system/ldap` | Control |
+| 客户端 Profile | CRUD `/agent-profiles` | Control |
+| 对话与执行 | POST `/chat`, GET `/sessions`, WS `/ws/chat/{session_id}` | Execution |
+| 告警 | GET `/alerts`, POST `/alerts/{id}/analyze`, POST `/alerts/{id}/confirm` | Execution |
+| 知识检索 | GET `/knowledge/search` | Execution |
+| 通知回调 | POST `/callbacks/{channel_type}` | Execution |
+| 内部工具调用 | POST `/internal/call-tool` | Execution |
+
+**权限控制**：所有执行类接口需验证 JWT，并根据用户角色和私人助理配置限制可用的技能/子智能体。管控类接口根据权限矩阵拦截。
+
+---
+
+## 7. 开发阶段与任务拆分
+
+开发分为四个阶段（MVP → 扩展 → 成熟 → 企业化），每个阶段约 4-6 周。以下详述 MVP 阶段任务拆解，后续阶段可参考。
+
+### 阶段 0：项目初始化与环境 (第 1 周)
+1. 初始化后端项目（Poetry，安装 FastAPI、SQLAlchemy、Alembic、Celery 等）
+2. 初始化前端项目（Vite + React + TypeScript + Ant Design）
+3. 编写 Docker Compose 开发环境（PostgreSQL、Redis、Kafka）
+4. 完成数据库迁移脚本（核心表：users, roles, permissions, agents, tools, scenarios, sessions）
+5. 配置 CI 流水线（lint，测试）
+6. 编写基础认证（JWT 生成与验证）
+7. 搭建项目目录结构
+
+### 阶段 1：核心智能体调用链路 (第 2-3 周)
+1. 实现 ToolManager：从 DB 加载工具，封装 LangChain Tool（先 Mock Skill 和 MCP）
+2. 实现主智能体 LangGraph 图（init, plan, exec_task, synthesize, final_answer）
+3. 实现简单场景加载（通过scenario_tools 注入工具）
+4. 开发对话 API（同步版本，不流式）和基本存储
+5. 开发前端对话页面基础版（消息发送、文本回复、显示简单卡片）
+6. 实现手动触发“告警分析”场景（通过硬编码指令）
+7. 集成一个模拟 Prometheus MCP 工具，验证工具调用
+
+### 阶段 2：告警与自动化基础 (第 4 周)
+1. 开发 Kafka 消费者，接入模拟告警，生成 OpsEvent
+2. 实现告警中心基本列表展示和状态流转
+3. 实现简单去重与分组
+4. 实现定时任务调度（Celery Beat + RedBeat），创建/编辑 API
+5. 简单前端管理页面（告警列表、定时任务列表）
+
+### 阶段 3：人工介入与通知 (第 5 周)
+1. 实现 human_interrupt_node 与 InterruptManager
+2. 前端安全确认卡片与参数收集表单
+3. 内置钉钉渠道插件，实现回调恢复
+4. WebSocket 实时推送会话状态
+
+### 阶段 4：知识库与 LLM-Wiki MVP (第 6 周)
+1. 实现 LLM-Wiki 基本编译：从 raw/ 生成 wiki 页面
+2. 告警确认后触发编译，生成知识条目
+3. 前端知识库页面（文件上传、wiki 查看）
+
+### 阶段 5：客户端 Agent MVP (第 7 周，可并行)
+1. 开发客户端基础框架（Rust）：WebSocket 连接，配置缓存，心跳
+2. 实现 Skill 下发与执行（Docker 沙箱）
+3. 服务端 Agent Profile 管理 API 与前端页面
+
+### 阶段 6：集成测试与文档 (第 8 周)
+1. 端到端自动化测试（告警 → 分析 → 确认 → 入库 → 知识检索）
+2. 编写 OpenAPI 文档导出与校验
+3. 用户手册初稿
+
+---
+
+## 8. 功能验证步骤
+
+### 告警分析场景验证
+1. 手动或通过 Kafka 生产一条测试告警，内容包含主机、指标、阈值。
+2. 在告警中心列表应出现该告警，状态为 `pending`。
+3. 点击“自动分析”（或等待自动触发），状态变为 `analyzing`。
+4. 对话界面自动打开新会话，显示意图识别卡片（场景：告警分析），规划卡片（子任务：查询 CMDB、查 Prometheus、查日志、调用子智能体）。
+5. 各卡片依次更新状态，可点击查看工具调用的详细参数和返回。
+6. 分析完成后告警状态变为 `awaiting_review`，对话输出根因结论和建议。
+7. 用户可在告警卡片点击“确认”，弹出知识入库预览，修改后确认，知识库生成新 wiki 页面。
+8. 在知识库 wiki 索引中可见新页面，点击可查看内容，包含反向链接和源引用。
+
+### 定时巡检验证
+1. 创建一个定时任务，Cron 表达式设置为每分钟一次，关联“日常巡检”场景。
+2. 等待一分钟后，Celery Worker 执行，自动创建会话并运行巡检。
+3. 巡检结果可通过消息渠道（如钉钉测试群）收到通知。
+4. 执行记录出现在定时任务的历史列表，可查看巡检摘要。
+
+### 人工介入验证
+1. 在对话中触发需要重启服务的操作。
+2. 安全确认卡片弹出，显示风险说明和代码。
+3. 点击“拒绝”，任务取消，对话提示操作已拒绝。
+4. 再次触发，点击“确认”，操作继续执行，返回执行结果。
+
+### 客户端 Agent 验证
+1. 在测试服务器安装 Agent，配置基础连接，启动。
+2. 服务端 Agent 管理页面显示该 Agent 在线，可查看详情。
+3. 在服务端下发一个“检查磁盘空间”的 Skill 到此 Agent。
+4. 在对话中输入“检查 X.X.X.X 的磁盘”，主智能体规划后调用该 Skill 并下发到 Agent 执行。
+5. 返回磁盘使用情况，结果在对话卡片显示。
+6. 修改 Agent Profile，调整采集间隔，客户端日志输出采集频率变化。
+
+### 权限验证
+1. 创建一个仅具备 `alerts.view` 权限的只读角色，并分配用户。
+2. 该用户登录后，告警中心的“分析”按钮灰显，提示无权操作。
+3. 使用管理员账号在“我的助理”中为用户指定可用的子智能体列表，并在对话中验证只能看到并调用指定子智能体。
+
+---
+
+## 9. 部署方案
+
+**开发环境**：
+```bash
+docker-compose -f deploy/docker-compose.dev.yml up
+```
+包含数据库、Redis、Kafka、后端（热重载）、前端（dev server）。
+
+**生产环境（分离模式）**：
+```bash
+docker-compose -f deploy/docker-compose.yml up -d
+```
+启动独立的 control、execution、worker、beat、kafka-consumer、frontend 容器，前端 Nginx 根据路径分流管控与执行 API。
+
+**客户端批量部署**：
+使用 Ansible Playbook `deploy/ansible/deploy_agents.yml` 在目标主机安装 Agent。
+
+**环境变量清单**（.env 示例）已在前述部署配置中给出。
+
+---
+
+本开发文档从宏观架构到微观实现细节均做了详细定义，开发团队可依据各阶段任务拆分进行冲刺开发，并利用验证步骤进行质量把控和演示。AI、自动化、安全、可追溯已深度融入每个模块，确保平台达到 1-5-10 运维标准。
