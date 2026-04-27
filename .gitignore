@@ -10,6 +10,7 @@ dist/
 ./server/data/knowledge
 *.txt
 ./tmp
+./web/node_modules
 poetry.lock
 
 # Node
