@@ -9,6 +9,7 @@ dist/
 ./*.json
 ./server/data/knowledge
 *.txt
+./tmp
 poetry.lock
 
 # Node
