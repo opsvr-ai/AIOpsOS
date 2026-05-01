@@ -206,7 +206,9 @@ export default function InteractiveFormCard({
             {submitted ? (
               <div style={{ fontSize: 13, color: token.colorText, padding: '4px 0' }}>
                 <CheckOutlined style={{ color: token.colorSuccess, marginRight: 6 }} />
-                {Array.isArray(values[f.key]) ? (values[f.key] as string[]).join(', ') || 'None' : String(values[f.key] || 'None')}
+                {Array.isArray(values[f.key])
+                  ? (values[f.key] as string[]).join(', ') || 'None'
+                  : String(values[f.key] || 'None')}
               </div>
             ) : (
               <Checkbox.Group
@@ -222,13 +224,16 @@ export default function InteractiveFormCard({
                       padding: '8px 14px',
                       borderRadius: 10,
                       border: `1px solid ${
-                        (Array.isArray(values[f.key]) && (values[f.key] as string[]).includes(opt.value))
+                        Array.isArray(values[f.key]) &&
+                        (values[f.key] as string[]).includes(opt.value)
                           ? token.colorPrimary
                           : token.colorBorderSecondary
                       }`,
-                      background: (Array.isArray(values[f.key]) && (values[f.key] as string[]).includes(opt.value))
-                        ? token.colorPrimaryBg
-                        : token.colorBgContainer,
+                      background:
+                        Array.isArray(values[f.key]) &&
+                        (values[f.key] as string[]).includes(opt.value)
+                          ? token.colorPrimaryBg
+                          : token.colorBgContainer,
                       margin: 0,
                       transition: 'border-color 0.2s, background 0.2s',
                     }}

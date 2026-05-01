@@ -55,6 +55,7 @@ class MemoryService:
                 scope=scope,
                 title=title,
                 tags=tags or [],
+                space_id=uuid.UUID(str(space_id)) if space_id else None,
             )
             db.add(mem)
             await db.commit()

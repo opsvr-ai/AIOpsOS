@@ -65,3 +65,6 @@ class AgentMemory(Base, TimestampMixin):
     scope: Mapped[str] = mapped_column(String(16), default="personal", index=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     tags: Mapped[list[str]] = mapped_column("tags", JSONB, default=list)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )

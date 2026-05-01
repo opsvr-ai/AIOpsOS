@@ -22,53 +22,44 @@ from src.services.memory_service import memory_service
 
 logger = logging.getLogger(__name__)
 
-MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """你是时间的雕琢师，将运维对话的长河凝练为智慧的结晶。
-如同经验丰富的酿酒师，你懂得哪些果实值得珍藏发酵，哪些泡沫应当任其消散——
-每一次对话都是一场丰收，每一段记忆都是一滴陈年的佳酿，等待在未来的某个关键时刻被开启。
-
-核心职责：从对话历史中自动提炼有效运维信息，区分沉淀为【个人记忆】与【组织记忆】。
+MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """你是运维知识的记录者，从对话中提炼有价值的操作经验和决策信息，区分沉淀为【个人记忆】与【组织记忆】。
 
 ## 记忆区分标准
 
 ### 个人记忆
-- 内容**适度详细**，聚焦个人操作细节、踩坑点、实操步骤
-- 保留关键操作指令、配置要点、问题诱因等个性化实操信息
+- 记录用户的操作行为、决策偏好、配置习惯
+- 保留关键指令、参数选择、工作流步骤等个性化信息
 - 适合个人长期复盘查阅
 - 每条记忆必须包含 title（标题）和 content（内容）
 
 ### 组织记忆
-- 内容**高度概要、精简通用**，弱化个人细碎操作
-- 聚焦通用故障现象、标准化解决思路、公共环境问题、团队共性风险
+- 提炼通用的工作流程、工具使用模式、问题解决思路
 - **严格去除**：用户名、IP地址、密码、Token、API Key、个人邮箱、手机号、身份证号等敏感信息
-- 适配团队全员参考学习
+- 适配团队全员参考
 - 每条记忆必须包含 title（标题）和 content（内容）
+
+## 值得沉淀的内容
+- 创建/配置的任务、工作流及其参数（如定时任务的名称、频率、目标）
+- 工具使用方式和效果
+- 故障排查过程与解决方案
+- 配置优化和调整记录
+- 用户表达的需求和偏好
+- 有效的操作命令和参数组合
+- 踩坑教训和注意事项
+
+## 可以忽略的内容
+- 纯粹的问候和客套话
+- 助手自我介绍和功能列表
+- 无操作含义的测试内容
 
 ## 输出格式
 - 严格返回 JSON，格式为 {"personal": [...], "team": [...]}
-- personal 数组中每个元素：{"title": "简洁标题", "content": "详细内容（保留操作细节）"}
-- team 数组中每个元素：{"title": "简洁标题", "content": "概要内容（已脱敏）"}
-- 无有价值经验时返回 {"personal": [], "team": []}
-
-## 沉淀价值判断（严格过滤）
-**必须具备沉淀价值**才提取：故障处理、配置优化、环境问题、工具使用技巧、异常排查流程、自动化方案、具体的排查命令和参数、踩坑教训
-
-**必须丢弃（返回空数组）**的内容：
-- 日常闲聊、问候、寒暄
-- 纯测试信息、无意义的重复内容
-- 助手自我介绍、功能问询（"你能做什么"）
-- 没有具体操作细节的泛泛而谈
-- 单纯的信息查询（查日志但没有处理结果）
-- 内容少于 30 字的碎片信息
-
-## 约束
-- 仅提炼经验结论与解决方案，不复述完整聊天上下文
-- 客观记录问题与处理方式，无主观情绪化描述
-- 语言简洁干练，贴合运维场景
-- 个人记忆保留操作细节，组织记忆务必去除敏感信息
-- **宁缺毋滥**：不确定是否有价值的，直接丢弃
+- 每个元素：{"title": "简洁标题（≤30字）", "content": "清晰的具体内容"}
+- 如果确实没有值得记录的内容，返回 {"personal": [], "team": []}
+- **尽量提取**：只要包含具体的操作、配置、决策或工具使用，就值得记录
 """
 
-MIN_CONTENT_LENGTH = 30
+MIN_CONTENT_LENGTH = 15
 
 
 class MemoryConsolidationAgent:
@@ -113,10 +104,13 @@ class MemoryConsolidationAgent:
         data = await self._extract_memories(messages)
         personal_items = self._basic_filter(data.get("personal", []))
         team_items = self._basic_filter(data.get("team", []))
-        if personal_items or team_items:
-            personal_items, team_items = await self._filter_valuable(
-                personal_items, team_items, messages,
-            )
+        logger.info(
+            "Session %s extraction: LLM returned %d personal / %d team candidates; "
+            "after basic filter: %d personal / %d team",
+            session_id,
+            len(data.get("personal", [])), len(data.get("team", [])),
+            len(personal_items), len(team_items),
+        )
         personal_count = await self._store_memories(
             personal_items, session_id, user_id, scope="personal", space_id=space_id,
         )
@@ -124,15 +118,15 @@ class MemoryConsolidationAgent:
             team_items, session_id, user_id, scope="team", space_id=space_id,
         )
 
+        await self._mark_consolidated(session_id)
         if personal_count > 0 or team_count > 0:
-            await self._mark_consolidated(session_id)
             logger.info(
                 "Session %s consolidated: %d personal, %d team memories",
                 session_id, personal_count, team_count,
             )
         else:
             logger.info(
-                "Session %s: no valuable memories extracted (not yet consolidated — will retry)",
+                "Session %s: no memories extracted, marked consolidated (will retry after wake)",
                 session_id,
             )
 
@@ -171,9 +165,13 @@ class MemoryConsolidationAgent:
             raw = resp.content.strip()
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[1].rsplit("\n```", 1)[0]
-            return _json.loads(raw)
+            data = _json.loads(raw)
+            logger.info("LLM extraction result: personal=%d team=%d",
+                       len(data.get("personal", [])), len(data.get("team", [])))
+            return data
         except Exception:
-            logger.exception("Failed to parse LLM consolidation result")
+            logger.exception("Failed to parse LLM consolidation result: %s",
+                           resp.content[:300] if hasattr(resp, 'content') else 'N/A')
             return {"personal": [], "team": []}
 
     @staticmethod

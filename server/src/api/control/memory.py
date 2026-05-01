@@ -107,6 +107,7 @@ async def list_tags(
 @router.get("/memories/graph")
 async def get_memory_graph(
     scope: str = Query("all", description="personal, team, or all"),
+    space_id: str | None = Depends(get_optional_space_id),
     tag: str = Query("", description="Focus on a specific tag"),
     memory_id: str = Query("", description="Focus on a specific memory (2-hop subgraph)"),
     limit: int = Query(100, ge=1, le=500),
@@ -127,6 +128,8 @@ async def get_memory_graph(
                 (AgentMemory.scope == "team")
                 | ((AgentMemory.scope == "personal") & (AgentMemory.user_id == user.id)),
             )
+        if space_id:
+            query = query.where(AgentMemory.space_id == space_id)
         query = query.order_by(AgentMemory.created_at.desc()).limit(limit)
         result = await db.execute(query)
         memories = list(result.scalars().all())

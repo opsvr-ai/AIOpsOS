@@ -156,6 +156,7 @@ class DatabaseMemoryProvider(MemoryProvider):
     def __init__(self) -> None:
         self._session_id: str = ""
         self._user_id: str = ""
+        self._space_id: str = ""
         self._pending_tasks: list[_asyncio.Task] = []
 
     @property
@@ -168,12 +169,17 @@ class DatabaseMemoryProvider(MemoryProvider):
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         self._session_id = session_id
         self._user_id = str(kwargs.get("user_id", ""))
+        self._space_id = str(kwargs.get("space_id", ""))
 
     async def system_prompt_block(self) -> str:
-        """Return recent personal + team memories with XML context fencing."""
+        """Return recent personal + team memories with XML context fencing.
+
+        Note: does NOT filter by space_id — personal memories belong to the user
+        regardless of which space they're currently chatting in.
+        """
         try:
-            personal = await self._fetch_memories(scope="personal", limit=5)
-            team = await self._fetch_memories(scope="team", limit=5)
+            personal = await self._fetch_memories(scope="personal", limit=5, filter_space=False)
+            team = await self._fetch_memories(scope="team", limit=5, filter_space=False)
         except Exception:
             logger.debug("system_prompt_block fetch failed", exc_info=True)
             return ""
@@ -196,21 +202,44 @@ class DatabaseMemoryProvider(MemoryProvider):
         return "\n".join(parts)
 
     async def prefetch(self, query: str, *, session_id: str = "") -> str:
-        """Search personal + team memories relevant to query."""
-        if not query:
-            return ""
+        """Search personal + team memories relevant to query.
 
-        try:
-            results = await self._fetch_memories(query=query, scope="all", limit=8)
-        except Exception:
-            logger.debug("prefetch query failed", exc_info=True)
-            return ""
+        Returns both keyword-matched results AND recent memories as fallback,
+        so the agent gets relevant context even for semantically different queries.
+        """
+        import asyncio as _asyncio
 
-        if not results:
+        async def _search():
+            if not query:
+                return []
+            try:
+                return await self._fetch_memories(query=query, scope="all", limit=8)
+            except Exception:
+                logger.debug("prefetch keyword search failed", exc_info=True)
+                return []
+
+        async def _recent():
+            try:
+                return await self._fetch_memories(query="", scope="all", limit=5, filter_space=False)
+            except Exception:
+                return []
+
+        keyword_results, recent_results = await _asyncio.gather(_search(), _recent())
+
+        # Merge: keyword results first, then recent (deduplicate by id)
+        seen: set[str] = set()
+        merged: list[dict] = []
+        for m in keyword_results + recent_results:
+            mid = m.get("id", "")
+            if mid and mid not in seen:
+                seen.add(mid)
+                merged.append(m)
+
+        if not merged:
             return ""
 
         lines = ["<memory-context>", "## 相关记忆\n"]
-        for m in results:
+        for m in merged:
             title = m.get("title", "") or m.get("content", "")[:60]
             scope_label = "个人" if m.get("scope") == "personal" else "团队"
             lines.append(f"- [{scope_label}] {title}")
@@ -239,20 +268,20 @@ class DatabaseMemoryProvider(MemoryProvider):
                 return
 
             prompt = (
-                "如同淘金者从泥沙中筛选金粒，从以下运维对话中提取有价值的经验，"
+                "从以下运维对话中提取有价值的操作经验和决策信息，"
                 "区分个人记忆和团队记忆：\n\n"
                 f"用户：{user_content[:500]}\n"
                 f"助手：{assistant_content[:800]}\n\n"
                 "返回JSON，包含personal和team两个数组。\n"
-                "- personal: 个人操作细节（指令、配置、排查步骤），每条有title和content\n"
-                "- team: 团队通用知识（故障现象、解决方案、风险），去除用户名/IP/密码等敏感信息\n"
+                "- personal: 用户的操作行为、决策偏好、配置习惯，每条有title和content\n"
+                "- team: 通用工作流程、工具使用模式、问题解决思路（去除敏感信息），每条有title和content\n"
                 '格式: {"personal": [{"title": "...", "content": "..."}], "team": [...]}\n'
-                "如果无有价值内容，返回空数组。只返回JSON。"
+                "如果确实没有值得记录的内容，返回空数组。尽量提取有价值的信息。只返回JSON。"
             )
 
             try:
                 resp = await llm.ainvoke([
-                    SystemMessage(content="你是运维经验的淘金者，在对话的沙砾中筛选智慧的颗粒。只返回JSON。"),
+                    SystemMessage(content="你是运维知识的记录者，从对话中提取有价值的信息。只返回JSON。"),
                     HumanMessage(content=prompt),
                 ])
 
@@ -268,6 +297,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                         content=item.get("content", ""),
                         title=item.get("title", f"[Session] Memory"),
                         scope="personal", tags=["per-turn"],
+                        space_id=self._space_id,
                     )
 
                 for item in data.get("team", []):
@@ -276,6 +306,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                         content=item.get("content", ""),
                         title=item.get("title", ""),
                         scope="team", tags=["ops-knowledge", "per-turn"],
+                        space_id=self._space_id,
                     )
             except Exception:
                 logger.warning("Per-turn LLM extraction failed", exc_info=True)
@@ -298,7 +329,9 @@ class DatabaseMemoryProvider(MemoryProvider):
 
             try:
                 llm = await get_default_model()
-                await memory_service.summarize_session(sid, uid, llm)
+                result = await memory_service.summarize_session(sid, uid, llm)
+                logger.info("Session-end summarization for %s: personal=%d team=%d",
+                            sid, result.get("personal", 0), result.get("team", 0))
             except Exception:
                 logger.warning("Session-end summarization failed", exc_info=True)
 
@@ -327,6 +360,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                 scope="personal",
                 tags=["mirrored", target],
                 memory_type="fact",
+                space_id=self._space_id,
             )
 
         task = _asyncio.create_task(_mirror())
@@ -340,7 +374,8 @@ class DatabaseMemoryProvider(MemoryProvider):
         self._pending_tasks.clear()
 
     async def _fetch_memories(
-        self, query: str = "", scope: str = "all", limit: int = 5
+        self, query: str = "", scope: str = "all", limit: int = 5,
+        filter_space: bool = True,
     ) -> list[dict]:
         """Async helper to fetch memories from the database."""
         from src.services.memory_service import memory_service
@@ -349,8 +384,8 @@ class DatabaseMemoryProvider(MemoryProvider):
             query=query,
             user_id=self._user_id,
             scope=scope,
-            session_id=self._session_id,
             top_k=limit,
+            space_id=self._space_id if filter_space else None,
         )
 
 

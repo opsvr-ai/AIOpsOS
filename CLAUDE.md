@@ -40,6 +40,10 @@ web/src/
 └── styles/         Global CSS, font imports
 ```
 
+## tmp/ Directory
+
+- `tmp/` contains reference implementations for development guidance only — not part of the project. Never scan, search, or include it in project documentation.
+
 ## Key Patterns
 
 - **Model Factory**: Always use `src.core.model_factory.get_default_model()` or `get_model_for_agent()` — never hardcode `ChatOpenAI(model="deepseek-v4-flash")`
@@ -47,6 +51,16 @@ web/src/
 - **Idempotent inserts**: Use `pg_insert(table).values(...).on_conflict_do_nothing()` — never bare inserts with try/except
 - **Lazy model init**: Agents needing LLM in `__init__` should accept optional `model` param and lazy-init via `async _get_llm()` method
 - **Lifespan**: DB init in `_init_database()`, background services in `_start_background_services()` — independent error handling, don't let one failure cascade
+
+## Gotchas
+
+- **Agent tools creating DB records**: Use `get_current_space()` from `src.agent.context` to inherit the active `space_id` — otherwise records get `space_id=NULL` and won't appear when the frontend sends `X-Space-Id` header.
+- **FastAPI route ordering**: Literal paths must be defined before parameterized paths (e.g. `/sessions/recommendations` before `/sessions/{session_id}`).
+- **Backend server restart**: The running server process caches bytecode. After editing server code, kill and restart `run_server.py` for changes to take effect.
+- **Ant Design Segmented**: `Segmented` option labels must be plain strings — `Tooltip`/`QuestionCircleOutlined` wrappers break rendering. Use the `title` attribute for descriptions.
+- **Multiple Vite instances**: Only one Vite dev server should run at a time. Duplicate instances cause "Failed to fetch dynamically imported module" errors.
+- **Memory retrieval needs `system_prompt_block()` called**: `MemoryManager.system_prompt_block()` fetches recent memories for agent context but is NOT called automatically — both `/chat` and `/chat/stream` endpoints must call it and inject the result into agent messages.
+- **`_fetch_memories` defaults to session-scoped**: `DatabaseMemoryProvider._fetch_memories()` previously passed `session_id=self._session_id`, limiting retrieval to the current session only. Cross-session retrieval (system_prompt_block, prefetch) must omit the session_id filter.
 
 ## Common Commands
 

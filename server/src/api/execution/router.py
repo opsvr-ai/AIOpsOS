@@ -216,6 +216,18 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
     user_ctx = _get_user_context()
     if user_ctx:
         messages.append(user_ctx)
+    # Inject recent memory context into agent messages
+    mm = MemoryManager()
+    mm.initialize(str(session.id), user_id=str(user.id), platform="web",
+                  space_id=str(space_id) if space_id else "")
+    memory_block = await mm.system_prompt_block()
+    if memory_block:
+        from langchain_core.messages import SystemMessage
+        messages.append(SystemMessage(content=memory_block))
+    recall_context = await mm.prefetch(body.message)
+    if recall_context:
+        from langchain_core.messages import SystemMessage
+        messages.append(SystemMessage(content=recall_context))
     resolved_message = await _resolve_file_refs(body.message, str(session.id))
     messages.append(HumanMessage(content=resolved_message))
     result = await agent.ainvoke({"messages": messages})
@@ -228,8 +240,6 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
 
     # Sync per-turn memories (LLM-based, dual personal+team scope)
     try:
-        mm = MemoryManager()
-        mm.initialize(str(session.id), user_id=str(user.id))
         await mm.sync_turn(body.message, reply)
     except Exception:
         logger.exception("sync_turn failed in /chat")
@@ -646,6 +656,7 @@ async def chat_stream(
 
     user_msg = Message(session_id=session.id, role="user", content=body.message)
     db.add(user_msg)
+    session.turn_count = (session.turn_count or 0) + 1
     await db.commit()
 
     # Propagate user context for memory tools
@@ -672,7 +683,7 @@ async def chat_stream(
 
     # Initialize memory providers for this session
     mm = MemoryManager()
-    mm.initialize(str(session.id), user_id=str(user.id), platform="web")
+    mm.initialize(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
 
     # Load session message history for conversational context
     history_messages: list = []
@@ -720,9 +731,10 @@ async def chat_stream(
         yield _sse_event("status", {"message": "正在规划任务...", "session_id": session_id})
 
         try:
-            # Parallelize: memory prefetch + tool reload + agent init
-            recall_context, _, _agent = await asyncio.gather(
+            # Parallelize: memory prefetch + system prompt block + tool reload + agent init
+            recall_context, memory_block, _, _agent = await asyncio.gather(
                 mm.prefetch(body.message),
+                mm.system_prompt_block(),
                 _reload_tools_if_stale(),
                 get_deep_agent(),
             )
@@ -730,6 +742,10 @@ async def chat_stream(
             user_ctx = _get_user_context()
             if user_ctx:
                 agent_messages.insert(0, user_ctx)
+            if memory_block:
+                from langchain_core.messages import SystemMessage
+                agent_messages.insert(1 if user_ctx else 0,
+                                     SystemMessage(content=memory_block))
             if recall_context:
                 from langchain_core.messages import SystemMessage
                 agent_messages.append(SystemMessage(content=recall_context))
