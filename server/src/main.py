@@ -14,6 +14,8 @@ from src.api.execution.webhooks import router as webhook_router
 from src.api.execution.notifications import router as notification_router
 from src.api.execution.callbacks import router as callback_router
 from src.api.execution.tasks import router as tasks_router
+from src.api.execution.log_search import log_search_router
+from src.api.execution.itsm_search import itsm_search_router
 from src.config import settings
 from src.core.logging import setup_logging
 from src.models.base import engine, Base
@@ -317,6 +319,8 @@ app.include_router(webhook_router)
 app.include_router(callback_router)
 app.include_router(notification_router)
 app.include_router(tasks_router)
+app.include_router(log_search_router)
+app.include_router(itsm_search_router)
 
 
 @app.get("/health")
