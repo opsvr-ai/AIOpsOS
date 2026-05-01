@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func
+from uuid import UUID
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
 from src.models.datasource import DataSource
@@ -133,6 +135,71 @@ async def test_datasource(datasource_id: str, db: DbSession, _=Depends(get_curre
             success=True,
             message=f"Kafka: {ds.config.get('topic', 'ops-events')} @ {ds.config.get('bootstrap_servers', 'localhost:9092')}",
         )
+    elif ds.source_type == "log":
+        config = ds.config or {}
+        kafka_topic = config.get("kafka_topic")
+        kafka_servers = config.get("kafka_bootstrap_servers")
+        if kafka_topic and kafka_servers:
+            return DataSourceTestResult(
+                success=True,
+                message=f"Log source configured (Kafka topic={kafka_topic}, servers={kafka_servers})",
+            )
+        return DataSourceTestResult(
+            success=True,
+            message="Log source ready (filebeat/vector/webhook mode)",
+        )
+    elif ds.source_type == "itsm":
+        config = ds.config or {}
+        base_url = config.get("api_base_url", "").rstrip("/")
+        if not base_url:
+            return DataSourceTestResult(
+                success=False,
+                message="api_base_url not configured for ITSM datasource",
+            )
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{base_url}/api/health")
+                if resp.status_code < 500:
+                    return DataSourceTestResult(
+                        success=True,
+                        message=f"ITSM API reachable (status={resp.status_code})",
+                    )
+                return DataSourceTestResult(
+                    success=False,
+                    message=f"ITSM API returned status {resp.status_code}",
+                )
+        except Exception as e:
+            return DataSourceTestResult(
+                success=False,
+                message=f"ITSM connection failed: {str(e)[:500]}",
+            )
+    elif ds.source_type == "cmdb":
+        config = ds.config or {}
+        base_url = config.get("api_base_url", "").rstrip("/")
+        if not base_url:
+            return DataSourceTestResult(
+                success=False,
+                message="api_base_url not configured for CMDB datasource",
+            )
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{base_url}/api/health")
+                if resp.status_code < 500:
+                    return DataSourceTestResult(
+                        success=True,
+                        message=f"CMDB API reachable (status={resp.status_code})",
+                    )
+                return DataSourceTestResult(
+                    success=False,
+                    message=f"CMDB API returned status {resp.status_code}",
+                )
+        except Exception as e:
+            return DataSourceTestResult(
+                success=False,
+                message=f"CMDB connection failed: {str(e)[:500]}",
+            )
     return DataSourceTestResult(success=False, message=f"Unknown type: {ds.source_type}")
 
 
@@ -150,3 +217,27 @@ async def list_ingestion_logs(
         .limit(page_size)
     )
     return result.scalars().all()
+
+
+class SyncTriggerRequest(BaseModel):
+    mode: str = "incremental"  # discover / incremental / full
+
+
+@router.post("/datasources/{datasource_id}/sync")
+async def trigger_cmdb_sync(
+    datasource_id: UUID,
+    body: SyncTriggerRequest,
+    db: DbSession,
+    _=Depends(require_perm("datasources", "write")),
+):
+    result = await db.execute(select(DataSource).where(DataSource.id == datasource_id))
+    ds = result.scalar_one_or_none()
+    if ds is None:
+        raise HTTPException(status_code=404, detail="DataSource not found")
+    if ds.source_type != "cmdb":
+        raise HTTPException(status_code=400, detail="Sync only supported for cmdb-type DataSources")
+
+    from src.agent.sub_agents.cmdb_ingestion_agent import CmdbIngestionAgent
+    agent = CmdbIngestionAgent()
+    sync_result = await agent.run_sync(str(datasource_id), mode=body.mode)
+    return sync_result
