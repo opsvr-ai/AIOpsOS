@@ -9,6 +9,7 @@ from src.models.datasource import DataSource
 from src.models.feedback import Feedback
 from src.models.ingestion_log import IngestionLog
 from src.models.knowledge import AgentMemory, KnowledgeChunk, KnowledgeDocument
+from src.models.log import LogEvent
 from src.models.notification import Notification
 from src.models.schedule import Schedule, ScheduleExecution, SceneTrigger
 from src.models.session import Memory, Message, Session, SessionFile
@@ -30,6 +31,7 @@ __all__ = [
     "IngestionLog",
     "KnowledgeChunk",
     "KnowledgeDocument",
+    "LogEvent",
     "MCPServer",
     "ModelProvider",
     "Memory",
