@@ -119,6 +119,14 @@ export const appRoutes = [
         ),
       },
       {
+        path: 'ops/events',
+        element: (
+          <Lazy>
+            <EventsPage />
+          </Lazy>
+        ),
+      },
+      {
         path: 'ops/datacenter',
         element: (
           <Lazy>
@@ -259,14 +267,6 @@ export const appRoutes = [
             element: (
               <Lazy>
                 <FeedbackPage />
-              </Lazy>
-            ),
-          },
-          {
-            path: 'events',
-            element: (
-              <Lazy>
-                <EventsPage />
               </Lazy>
             ),
           },

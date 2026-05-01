@@ -1,214 +1,324 @@
-import { useEffect, useState } from 'react';
-import { Card, Table, Select, Typography, Tag, App, Spin, Empty, theme } from 'antd';
-import { DatabaseOutlined } from '@ant-design/icons';
+import { useEffect, useState, useCallback } from 'react';
+import {
+  Button,
+  Select,
+  Input,
+  Space,
+  Typography,
+  Row,
+  Col,
+  Spin,
+  Empty,
+  App,
+  Pagination,
+} from 'antd';
+import { PlusOutlined, ReloadOutlined, SearchOutlined, ApiOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import DataSourceCard from '@/features/datacenter/DataSourceCard';
+import DataSourceFormModal from '@/features/datacenter/DataSourceFormModal';
+import DataSourceDetailDrawer from '@/features/datacenter/DataSourceDetailDrawer';
 
-interface DatasourceRef {
+const { Title } = Typography;
+const PAGE_SIZE = 12;
+
+interface DataSourceItem {
   id: string;
   name: string;
+  description: string | null;
   source_type: string;
-  table_mapping: Record<string, unknown>;
+  is_enabled: boolean;
+  config: Record<string, unknown>;
+  normalization_rules: Record<string, unknown>;
   last_ingested_at: string | null;
   total_ingested: number;
+  status: string;
+  error_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
-interface ColumnMeta {
-  name: string;
-  type: string;
-  source_path?: string;
-}
-
-interface EventTableData {
+interface IngestionLog {
+  id: string;
   datasource_id: string;
-  datasource_name: string;
-  table_name: string;
-  columns: ColumnMeta[];
-  rows: Record<string, unknown>[];
-  total: number;
-  page: number;
-  page_size: number;
+  status: string;
+  events_received: number;
+  alerts_created: number;
+  alerts_deduped: number;
+  errors_count: number;
+  errors_detail: unknown;
+  duration_ms: number | null;
+  request_url: string | null;
+  response_status: number | null;
+  created_at: string | null;
 }
-
-const TYPE_TAG_COLOR: Record<string, string> = {
-  string: 'blue',
-  text: 'blue',
-  integer: 'green',
-  float: 'green',
-  datetime: 'orange',
-  json: 'purple',
-};
 
 export default function EventsPage() {
   const { message: msg } = App.useApp();
-  const { token } = theme.useToken();
 
-  const [datasources, setDatasources] = useState<DatasourceRef[]>([]);
-  const [datasourcesLoading, setDatasourcesLoading] = useState(true);
-  const [selectedDs, setSelectedDs] = useState<string | null>(null);
-  const [eventData, setEventData] = useState<EventTableData | null>(null);
-  const [eventsLoading, setEventsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [datasources, setDatasources] = useState<DataSourceItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
 
-  useEffect(() => {
-    loadDatasources();
+  const [filterType, setFilterType] = useState<string | undefined>();
+  const [filterStatus, setFilterStatus] = useState<string | undefined>();
+  const [search, setSearch] = useState('');
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<DataSourceItem | null>(null);
+
+  const [selected, setSelected] = useState<DataSourceItem | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const [logs, setLogs] = useState<IngestionLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsTotal, setLogsTotal] = useState(0);
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsPageSize, setLogsPageSize] = useState(10);
+
+  const fetchDatasources = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, unknown> = { page, page_size: PAGE_SIZE };
+      if (filterType) params.source_type = filterType;
+      if (filterStatus) params.status = filterStatus;
+      if (search) params.search = search;
+      const res = await api.get('/datasources', { params });
+      setDatasources(res.data ?? []);
+      setTotal(
+        (res.data?.length ?? 0) < PAGE_SIZE
+          ? (page - 1) * PAGE_SIZE + (res.data?.length ?? 0)
+          : (page + 1) * PAGE_SIZE,
+      );
+    } catch {
+      msg.error('加载事件源失败');
+    }
+    setLoading(false);
+  }, [page, filterType, filterStatus, search, msg]);
+
+  const fetchLogs = useCallback(async (dsId: string, p: number, ps: number) => {
+    setLogsLoading(true);
+    try {
+      const res = await api.get(`/datasources/${dsId}/logs`, {
+        params: { page: p, page_size: ps },
+      });
+      setLogs(res.data ?? []);
+      setLogsTotal(
+        (res.data?.length ?? 0) < ps ? (p - 1) * ps + (res.data?.length ?? 0) : (p + 1) * ps,
+      );
+    } catch {
+      /* ignore */
+    }
+    setLogsLoading(false);
   }, []);
 
   useEffect(() => {
-    if (selectedDs) {
-      loadEvents();
-    }
-  }, [selectedDs, page, pageSize]);
+    fetchDatasources();
+  }, [fetchDatasources]);
 
-  const loadDatasources = async () => {
-    setDatasourcesLoading(true);
+  const handleCreate = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
+  const handleEdit = (ds: DataSourceItem) => {
+    setEditing(ds);
+    setModalOpen(true);
+  };
+
+  const handleSubmit = async (values: Record<string, unknown>) => {
     try {
-      const res = await api.get('/events/datasources');
-      const dsList: DatasourceRef[] = res.data ?? [];
-      setDatasources(dsList);
-      if (dsList.length > 0 && !selectedDs) {
-        setSelectedDs(dsList[0].id);
+      if (editing) {
+        await api.patch(`/datasources/${editing.id}`, values);
+        msg.success('更新成功');
+      } else {
+        await api.post('/datasources', values);
+        msg.success('创建成功');
+      }
+      setModalOpen(false);
+      fetchDatasources();
+    } catch {
+      msg.error(editing ? '更新失败' : '创建失败');
+    }
+  };
+
+  const handleToggle = async (id: string, enabled: boolean) => {
+    try {
+      await api.patch(`/datasources/${id}`, { is_enabled: enabled });
+      setDatasources((prev) => prev.map((d) => (d.id === id ? { ...d, is_enabled: enabled } : d)));
+    } catch {
+      msg.error('操作失败');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/datasources/${id}`);
+      msg.success('已删除');
+      fetchDatasources();
+    } catch {
+      msg.error('删除失败');
+    }
+  };
+
+  const handleTest = async (id: string) => {
+    try {
+      const res = await api.post(`/datasources/${id}/test`);
+      if (res.data?.success) {
+        msg.success(res.data.message || '测试成功');
+      } else {
+        msg.warning(res.data?.message || '测试失败');
       }
     } catch {
-      msg.error('加载数据源列表失败');
-    } finally {
-      setDatasourcesLoading(false);
+      msg.error('测试请求失败');
     }
   };
 
-  const loadEvents = async () => {
-    if (!selectedDs) return;
-    setEventsLoading(true);
-    try {
-      const res = await api.get(`/events/${selectedDs}`, {
-        params: { page, page_size: pageSize },
-      });
-      setEventData(res.data);
-    } catch {
-      msg.error('加载事件数据失败');
-      setEventData(null);
-    } finally {
-      setEventsLoading(false);
-    }
+  const handleCardClick = (ds: DataSourceItem) => {
+    setSelected(ds);
+    setDrawerOpen(true);
+    setLogsPage(1);
+    fetchLogs(ds.id, 1, logsPageSize);
   };
 
-  const buildColumns = () => {
-    if (!eventData) return [];
-    return eventData.columns
-      .filter((c) => c.name !== 'raw_event' && c.name !== 'id')
-      .map((col) => ({
-        title: (
-          <span>
-            {col.name}
-            <Tag
-              color={TYPE_TAG_COLOR[col.type] || 'default'}
-              style={{ marginLeft: 6, fontSize: 10, lineHeight: '16px' }}
-            >
-              {col.type}
-            </Tag>
-          </span>
-        ),
-        dataIndex: col.name,
-        key: col.name,
-        ellipsis: true,
-        width: col.type === 'datetime' ? 180 : 150,
-        render: (val: unknown) => {
-          if (val === null || val === undefined)
-            return <Typography.Text type="secondary">—</Typography.Text>;
-          if (col.type === 'json' && typeof val === 'object') {
-            return (
-              <Typography.Paragraph
-                ellipsis={{ rows: 2, expandable: true }}
-                style={{ margin: 0, fontSize: 12, maxWidth: 300 }}
-              >
-                <pre style={{ margin: 0, fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                  {JSON.stringify(val, null, 2)}
-                </pre>
-              </Typography.Paragraph>
-            );
-          }
-          return String(val);
-        },
-      }));
+  const handleLogsPageChange = (p: number, ps: number) => {
+    setLogsPage(p);
+    setLogsPageSize(ps);
+    if (selected) fetchLogs(selected.id, p, ps);
   };
 
-  const dsOptions = datasources.map((ds) => ({
-    value: ds.id,
-    label: `${ds.name} (${ds.total_ingested} 条)`,
-  }));
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   return (
     <div>
-      <Typography.Title level={4} style={{ margin: '0 0 20px', fontWeight: 600 }}>
-        事件数据
-      </Typography.Title>
-
-      {datasourcesLoading ? (
-        <div style={{ textAlign: 'center', padding: 80 }}>
-          <Spin size="large" />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+          flexWrap: 'wrap',
+          gap: 8,
+        }}
+      >
+        <div>
+          <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
+            <ApiOutlined style={{ marginRight: 8 }} />
+            事件接入
+          </Title>
         </div>
-      ) : datasources.length === 0 ? (
-        <Card style={{ borderRadius: 12, textAlign: 'center', padding: 60 }}>
-          <Empty description="暂无配置表映射的数据源">
-            <Typography.Text type="secondary">
-              在数据源配置中添加 table_mapping 即可将事件写入自定义表结构
-            </Typography.Text>
-          </Empty>
-        </Card>
-      ) : (
-        <>
-          <Card
-            size="small"
-            style={{
-              marginBottom: 16,
-              borderRadius: 12,
-              background: token.colorBgElevated ?? token.colorBgContainer,
+        <Space wrap>
+          <Input.Search
+            placeholder="搜索事件源..."
+            allowClear
+            style={{ width: 200 }}
+            onSearch={handleSearch}
+            prefix={<SearchOutlined />}
+          />
+          <Select
+            allowClear
+            placeholder="类型"
+            style={{ width: 110 }}
+            value={filterType}
+            onChange={(v) => {
+              setFilterType(v);
+              setPage(1);
             }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <DatabaseOutlined style={{ color: token.colorPrimary, fontSize: 16 }} />
-              <Typography.Text strong>数据源</Typography.Text>
-              <Select
-                value={selectedDs}
-                onChange={(val) => {
-                  setSelectedDs(val);
-                  setPage(1);
-                }}
-                options={dsOptions}
-                style={{ minWidth: 280 }}
-              />
-              {eventData && (
-                <Typography.Text type="secondary" style={{ marginLeft: 'auto', fontSize: 13 }}>
-                  共 {eventData.total} 条记录
-                </Typography.Text>
-              )}
-            </div>
-          </Card>
+            options={[
+              { label: 'Webhook', value: 'webhook' },
+              { label: 'API', value: 'api' },
+              { label: 'Kafka', value: 'kafka' },
+            ]}
+          />
+          <Select
+            allowClear
+            placeholder="状态"
+            style={{ width: 100 }}
+            value={filterStatus}
+            onChange={(v) => {
+              setFilterStatus(v);
+              setPage(1);
+            }}
+            options={[
+              { label: '正常', value: 'active' },
+              { label: '异常', value: 'error' },
+              { label: '暂停', value: 'paused' },
+            ]}
+          />
+          <Button icon={<ReloadOutlined />} onClick={fetchDatasources} loading={loading}>
+            刷新
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+            创建事件源
+          </Button>
+        </Space>
+      </div>
 
-          <Card style={{ borderRadius: 12 }}>
-            <Table
-              loading={eventsLoading}
-              dataSource={eventData?.rows ?? []}
-              columns={buildColumns()}
-              rowKey="id"
-              size="small"
-              scroll={{ x: 'max-content' }}
-              pagination={{
-                current: page,
-                pageSize,
-                total: eventData?.total ?? 0,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条`,
-                onChange: (p, ps) => {
-                  setPage(p);
-                  if (ps !== pageSize) setPageSize(ps);
-                },
-              }}
-              locale={{ emptyText: <Empty description="暂无数据" /> }}
-            />
-          </Card>
-        </>
-      )}
+      <Spin spinning={loading}>
+        {datasources.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12 }}>
+            <Empty description="暂无事件源">
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+                创建第一个事件源
+              </Button>
+            </Empty>
+          </div>
+        ) : (
+          <>
+            <Row gutter={[12, 12]}>
+              {datasources.map((ds) => (
+                <Col key={ds.id} xs={24} sm={12} md={8} lg={6}>
+                  <DataSourceCard
+                    ds={ds}
+                    onToggle={handleToggle}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onClick={handleCardClick}
+                    selected={selected?.id === ds.id}
+                  />
+                </Col>
+              ))}
+            </Row>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
+              <Pagination
+                current={page}
+                total={total}
+                pageSize={PAGE_SIZE}
+                onChange={(p) => setPage(p)}
+                showSizeChanger={false}
+              />
+            </div>
+          </>
+        )}
+      </Spin>
+
+      <DataSourceFormModal
+        open={modalOpen}
+        editing={editing}
+        onCancel={() => setModalOpen(false)}
+        onSubmit={handleSubmit}
+      />
+
+      <DataSourceDetailDrawer
+        ds={selected}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onToggle={handleToggle}
+        onTest={handleTest}
+        onEdit={(ds) => {
+          setDrawerOpen(false);
+          handleEdit(ds);
+        }}
+        logs={logs}
+        logsLoading={logsLoading}
+        logsTotal={logsTotal}
+        logsPage={logsPage}
+        logsPageSize={logsPageSize}
+        onLogsPageChange={handleLogsPageChange}
+      />
     </div>
   );
 }
