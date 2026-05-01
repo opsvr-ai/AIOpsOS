@@ -8,7 +8,7 @@ from src.models.cron_job import CronJob
 from src.models.datasource import DataSource
 from src.models.feedback import Feedback
 from src.models.ingestion_log import IngestionLog
-from src.models.cmdb import CmdbEdge, CmdbNode
+from src.models.cmdb import CmdbEdge, CmdbMappingRule, CmdbNode, CmdbReviewItem, CmdbSyncLog
 from src.models.itsm import ItsmTicket
 from src.models.knowledge import AgentMemory, KnowledgeChunk, KnowledgeDocument
 from src.models.log import LogEvent
@@ -28,7 +28,10 @@ __all__ = [
     "Alert",
     "Base",
     "CmdbEdge",
+    "CmdbMappingRule",
     "CmdbNode",
+    "CmdbReviewItem",
+    "CmdbSyncLog",
     "CronJob",
     "DataSource",
     "Feedback",
