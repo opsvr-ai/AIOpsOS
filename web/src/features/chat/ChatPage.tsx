@@ -1,320 +1,62 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
-import { useChatStore, type ExecutionStep, type FormDefinition } from '@/stores/chatStore';
+import { useSpaceStore } from '@/stores/spaceStore';
+import { useChatStore } from '@/stores/chatStore';
+import { useChatStream } from './hooks/useChatStream';
 import Bubble from './components/Bubble';
 import EmptyState from './components/EmptyState';
 import InputBar from './components/InputBar';
 import ChatSidebar from './ChatSidebar';
-
-function uuid() {
-  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Detect and parse a form JSON block from message content. */
-function parseFormFromContent(content: string): FormDefinition | null {
-  const match = content.match(/```json\s*\n([\s\S]*?)\n\s*```/);
-  if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[1]);
-    if (
-      parsed &&
-      parsed.type === 'form' &&
-      parsed.form_id &&
-      (Array.isArray(parsed.fields) || Array.isArray(parsed.pages))
-    ) {
-      return parsed as FormDefinition;
-    }
-  } catch {
-    /* not valid JSON */
-  }
-  return null;
-}
+import ModelSwitcher from './components/ModelSwitcher';
+import ContextPanel from './components/ContextPanel';
+import TaskPanel from './components/TaskPanel';
+import { Button } from 'antd';
+import { FolderOpenOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
 export default function ChatPage() {
-  const { sessionId, messages, isRunning } = useChatStore();
-  const [input, setInput] = useState('');
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const { sessionId, messages } = useChatStore();
   const authToken = useAuthStore((s) => s.token);
-  const abortRef = useRef<AbortController | null>(null);
+  const currentSpace = useSpaceStore((s) => s.currentSpace);
 
-  // Track the latest user message index for avatar states
-  const lastUserIdx = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return i;
-    }
-    return -1;
-  }, [messages]);
-
-  // Determine agent avatar state based on current activity
-  const agentState = useMemo((): 'idle' | 'thinking' | 'planning' | 'executing' => {
-    if (!isRunning) return 'idle';
-    const hasRunning = messages.some((m) => m.executionSteps?.some((s) => s.status === 'running'));
-    if (hasRunning) return 'executing';
-    const hasPlan = messages.some((m) => m.type === 'plan');
-    if (hasPlan) return 'planning';
-    return 'thinking';
-  }, [messages, isRunning]);
-
-  // Determine each user message's avatar state
-  const getUserState = useCallback(
-    (idx: number): 'sleeping' | 'waiting' | 'reading' => {
-      if (idx < lastUserIdx) return 'sleeping';
-      if (idx === lastUserIdx && isRunning) return 'waiting';
-      if (idx === lastUserIdx && !isRunning && messages.length > 0) return 'reading';
-      return 'sleeping';
-    },
-    [lastUserIdx, isRunning, messages.length],
-  );
-
-  const sendMessage = useCallback(
-    async (text?: string) => {
-      const msgText = (text ?? input).trim();
-      if (!msgText || isRunning) return;
-      setInput('');
-      abortRef.current?.abort();
-      abortRef.current = new AbortController();
-
-      const store = useChatStore.getState();
-      store.addMessage({
-        id: uuid(),
-        role: 'user',
-        content: msgText,
-        type: 'text',
-        timestamp: Date.now(),
-      });
-      store.setIsRunning(true);
-
-      const sid = store.sessionId || uuid();
-      if (!store.sessionId) store.setSessionId(sid);
-
-      const msgId = uuid();
-      let accumulated = '';
-      let msgAdded = false;
-
-      try {
-        const resp = await fetch('/api/v1/chat/stream', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify({ message: msgText, session_id: sid }),
-          signal: abortRef.current.signal,
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text().catch(() => '');
-          throw new Error(errText || `HTTP ${resp.status}`);
-        }
-
-        const reader = resp.body?.getReader();
-        if (!reader) throw new Error('No response body');
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let currentEvent = '';
-        const stepIndex = new Map<string, number>();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = '';
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-
-                if (currentEvent === 'intent') {
-                  store.addMessage({
-                    id: uuid(),
-                    role: 'system',
-                    content: data.intent || '',
-                    type: 'intent',
-                    timestamp: Date.now(),
-                  });
-                } else if (currentEvent === 'token' && data.content) {
-                  accumulated += data.content;
-                  if (!msgAdded) {
-                    store.addMessage({
-                      id: msgId,
-                      role: 'assistant',
-                      content: accumulated,
-                      type: 'final',
-                      timestamp: Date.now(),
-                      streaming: true,
-                      streamedContent: accumulated,
-                    });
-                    msgAdded = true;
-                  } else {
-                    store.updateMessage(msgId, {
-                      content: accumulated,
-                      streamedContent: accumulated,
-                    });
-                  }
-                } else if (currentEvent === 'tool_start' || currentEvent === 'retrieve_start') {
-                  // Pre-create the assistant message so execution steps have a home
-                  if (!msgAdded) {
-                    store.addMessage({
-                      id: msgId,
-                      role: 'assistant',
-                      content: '',
-                      type: 'final',
-                      timestamp: Date.now(),
-                      streaming: true,
-                      streamedContent: '',
-                    });
-                    msgAdded = true;
-                  }
-                }
-
-                if (currentEvent === 'retrieve_start') {
-                  const stepId = `ret-${data.name || 'retrieve'}-${Date.now()}`;
-                  const step: ExecutionStep = {
-                    id: stepId,
-                    type: 'tool',
-                    name: `${data.type === 'knowledge' ? '知识检索' : '记忆检索'}: ${data.name || ''}`,
-                    input: data.query || '',
-                    output: '',
-                    status: 'running',
-                    timestamp: Date.now(),
-                  };
-                  store.addExecutionStep(msgId, step);
-                } else if (currentEvent === 'retrieve_end') {
-                  const curMsgs = useChatStore.getState().messages;
-                  const execSteps = curMsgs.find((m) => m.id === msgId)?.executionSteps || [];
-                  const runningStep = execSteps.find(
-                    (s) => s.name.includes(data.name || '') && s.status === 'running',
-                  );
-                  if (runningStep) {
-                    store.updateExecutionStep(msgId, runningStep.id, {
-                      output: `找到 ${data.result_count || 0} 条相关内容`,
-                      status: 'done',
-                    });
-                  }
-                } else if (currentEvent === 'tool_start') {
-                  const cnt = (stepIndex.get(data.name) || 0) + 1;
-                  stepIndex.set(data.name, cnt);
-                  const stepId = `${msgId}-${data.name}-${cnt}`;
-                  const rawType = (data.tool_type as string) || 'tool';
-                  const stepType: ExecutionStep['type'] =
-                    rawType === 'sub_agent'
-                      ? 'sub_agent'
-                      : rawType === 'skill'
-                        ? 'skill'
-                        : rawType === 'mcp'
-                          ? 'mcp'
-                          : rawType === 'builtin'
-                            ? 'builtin'
-                            : 'tool';
-                  const step: ExecutionStep = {
-                    id: stepId,
-                    type: stepType,
-                    name: data.name || '',
-                    input: data.input || '',
-                    output: '',
-                    status: 'running',
-                    timestamp: Date.now(),
-                    stepNumber: data.step ? Number(data.step) : undefined,
-                  };
-                  store.addExecutionStep(msgId, step);
-                } else if (currentEvent === 'tool_end') {
-                  const cnt = stepIndex.get(data.name) || 1;
-                  const stepId = `${msgId}-${data.name}-${cnt}`;
-                  const isError = data.output && String(data.output).startsWith('Error');
-                  store.updateExecutionStep(msgId, stepId, {
-                    output: data.output || '',
-                    status: isError ? 'error' : 'done',
-                  });
-                }
-              } catch {
-                /* skip malformed JSON */
-              }
-              currentEvent = '';
-            } else if (line === '') {
-              currentEvent = '';
-            } else {
-              buffer += line + '\n';
-            }
-          }
-        }
-
-        if (accumulated) {
-          const formDef = parseFormFromContent(accumulated);
-          store.updateMessage(msgId, {
-            content: accumulated,
-            streamedContent: accumulated,
-            streaming: false,
-            ...(formDef ? { type: 'interactive_form' as const, formData: formDef } : {}),
-          });
-        } else if (!msgAdded) {
-          store.addMessage({
-            id: msgId,
-            role: 'assistant',
-            content: 'Agent produced no output.',
-            type: 'final',
-            timestamp: Date.now(),
-          });
-        }
-      } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        store.addMessage({
-          id: uuid(),
-          role: 'system',
-          content: `请求失败: ${err instanceof Error ? err.message : '未知错误'}`,
-          type: 'text',
-          timestamp: Date.now(),
-        });
-      } finally {
-        store.setIsRunning(false);
-        store.refreshSessions();
-      }
-    },
-    [input, sessionId, isRunning, authToken],
-  );
-
-  const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
-
-  const handleEdit = useCallback((oldContent: string) => {
-    setInput(oldContent);
-    // Focus handled by InputBar ref
-  }, []);
-
-  const handleRegenerate = useCallback(() => {
-    const store = useChatStore.getState();
-    const lastUser = [...store.messages].reverse().find((m) => m.role === 'user');
-    if (lastUser) {
-      sendMessage(lastUser.content);
-    }
-  }, [sendMessage]);
-
-  const handleFormSubmit = useCallback(
-    (formId: string, values: Record<string, unknown>) => {
-      // Mark the form message as submitted
-      const store = useChatStore.getState();
-      const msgs = store.messages;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].type === 'interactive_form' && msgs[i].formData?.form_id === formId) {
-          useChatStore.setState({
-            messages: msgs.map((m, idx) => (idx === i ? { ...m, formSubmitted: true } : m)),
-          });
-          break;
-        }
-      }
-      const payload = `[FORM_SUBMISSION: ${formId}]\n${JSON.stringify(values, null, 2)}`;
-      sendMessage(payload);
-    },
-    [sendMessage],
-  );
-
+  const [modelProviderId, setModelProviderId] = useState<string | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const atBottomRef = useRef(true);
+
+  const {
+    input,
+    setInput,
+    isRunning,
+    sendMessage,
+    stop,
+    setModelProvider,
+    handleEdit,
+    handleRegenerate,
+    handleInterruptRespond,
+    handleFormSubmit,
+    lastUserIdx,
+    agentState,
+    getUserState,
+  } = useChatStream({ authToken: authToken || '', spaceId: currentSpace?.id });
+
+  // Sync model provider ref in hook with local state
+  useEffect(() => {
+    setModelProvider(modelProviderId);
+  }, [modelProviderId, setModelProvider]);
+
+  // Auto-scroll to last message when entering a conversation
+  useEffect(() => {
+    if (messages.length > 0) {
+      atBottomRef.current = true;
+      const timer = setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'auto' });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     if (messages.length > 0 && atBottomRef.current) {
@@ -325,39 +67,128 @@ export default function ChatPage() {
   return (
     <div style={{ height: '100%', display: 'flex', overflow: 'hidden' }}>
       <ChatSidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {messages.length === 0 ? (
-            <EmptyState onSuggestionClick={(label) => setInput(label)} />
-          ) : (
-            <Virtuoso
-              ref={virtuosoRef}
-              totalCount={messages.length}
-              atBottomStateChange={(atBottom) => {
-                atBottomRef.current = atBottom;
-              }}
-              itemContent={(index) => (
-                <Bubble
-                  msg={messages[index]}
-                  isLatestUser={index === lastUserIdx}
-                  agentState={agentState}
-                  userState={getUserState(index)}
-                  onEdit={() => handleEdit(messages[index].content)}
-                  onRegenerate={handleRegenerate}
-                  onFormSubmit={handleFormSubmit}
-                />
-              )}
-              style={{ height: '100%', paddingBottom: 8 }}
-            />
-          )}
+      <ContextPanel
+        open={contextOpen}
+        onClose={() => setContextOpen(false)}
+        sessionId={sessionId}
+      />
+      <TaskPanel
+        open={taskPanelOpen}
+        onClose={() => setTaskPanelOpen(false)}
+        sessionId={sessionId}
+      />
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          position: 'relative',
+        }}
+      >
+        {/* Chat header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 16px',
+            borderBottom: messages.length > 0 ? '1px solid var(--color-border, #f0f0f0)' : 'none',
+            flexShrink: 0,
+          }}
+        >
+          <Button
+            type="text"
+            size="small"
+            icon={<FolderOpenOutlined />}
+            onClick={() => setContextOpen(true)}
+          >
+            上下文
+          </Button>
+          <Button
+            type="text"
+            size="small"
+            icon={<UnorderedListOutlined />}
+            onClick={() => setTaskPanelOpen(true)}
+          >
+            任务
+          </Button>
+          <ModelSwitcher value={modelProviderId} onChange={setModelProviderId} />
         </div>
-        <InputBar
-          input={input}
-          setInput={setInput}
-          loading={isRunning}
-          onSend={() => sendMessage()}
-          onStop={handleStop}
-        />
+
+        <AnimatePresence mode="wait">
+          {messages.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingBottom: '8vh',
+                minWidth: 0,
+              }}
+            >
+              <EmptyState onSuggestionClick={(label) => setInput(label)} />
+              <div style={{ maxWidth: 900, width: '100%', padding: '0 16px', marginTop: 24 }}>
+                <InputBar
+                  input={input}
+                  setInput={setInput}
+                  loading={isRunning}
+                  onSend={() => sendMessage()}
+                  onStop={stop}
+                />
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { duration: 0.25, ease: 'easeOut' } }}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                minWidth: 0,
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                <Virtuoso
+                  ref={virtuosoRef}
+                  totalCount={messages.length}
+                  atBottomStateChange={(atBottom) => {
+                    atBottomRef.current = atBottom;
+                  }}
+                  itemContent={(index) => (
+                    <Bubble
+                      msg={messages[index]}
+                      isLatestUser={index === lastUserIdx}
+                      agentState={agentState}
+                      userState={getUserState(index)}
+                      onEdit={() => handleEdit(messages[index].content)}
+                      onRegenerate={handleRegenerate}
+                      onFormSubmit={handleFormSubmit}
+                      onInterruptRespond={handleInterruptRespond}
+                    />
+                  )}
+                  style={{ height: '100%', paddingBottom: 8 }}
+                />
+              </div>
+              <InputBar
+                input={input}
+                setInput={setInput}
+                loading={isRunning}
+                onSend={() => sendMessage()}
+                onStop={stop}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

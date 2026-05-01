@@ -40,13 +40,14 @@ class MemoryService:
         scope: str = "personal",
         title: str | None = None,
         tags: list[str] | None = None,
+        space_id: str | None = None,
     ) -> str:
         """Store a memory entry with scope separation. Returns the new memory id."""
         async with async_session_factory() as db:
             mem = AgentMemory(
                 id=uuid.uuid4(),
-                session_id=uuid.UUID(session_id),
-                user_id=uuid.UUID(user_id),
+                session_id=uuid.UUID(str(session_id)),
+                user_id=uuid.UUID(str(user_id)),
                 memory_type=memory_type,
                 content=content,
                 embedding=None,
@@ -67,6 +68,7 @@ class MemoryService:
         user_id: str,
         scope: str = "all",
         session_id: str = "",
+        space_id: str | None = None,
         top_k: int = 10,
         offset: int = 0,
         tags: list[str] | None = None,
@@ -94,6 +96,10 @@ class MemoryService:
             if session_id:
                 conditions.append("session_id = CAST(:session_id AS uuid)")
                 params["session_id"] = session_id
+
+            if space_id:
+                conditions.append("space_id = CAST(:space_id AS uuid)")
+                params["space_id"] = space_id
 
             if query:
                 conditions.append("(content ILIKE :query_pattern OR title ILIKE :query_pattern)")
@@ -264,8 +270,8 @@ class MemoryService:
         async with async_session_factory() as db:
             result = await db.execute(
                 sa_delete(AgentMemory)
-                .where(AgentMemory.id == uuid.UUID(memory_id))
-                .where(AgentMemory.user_id == uuid.UUID(user_id))
+                .where(AgentMemory.id == uuid.UUID(str(memory_id)))
+                .where(AgentMemory.user_id == uuid.UUID(str(user_id)))
             )
             await db.commit()
             return result.rowcount > 0

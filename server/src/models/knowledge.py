@@ -21,6 +21,9 @@ class KnowledgeDocument(Base, TimestampMixin):
     doc_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
     chunk_count: Mapped[int] = mapped_column(default=0)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class KnowledgeChunk(Base):

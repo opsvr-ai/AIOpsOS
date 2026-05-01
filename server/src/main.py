@@ -1,13 +1,19 @@
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.api.control.router import router as control_router
 from src.api.execution.router import router as execution_router
+from src.api.execution.datasources import router as datasource_router
+from src.api.execution.webhooks import router as webhook_router
+from src.api.execution.notifications import router as notification_router
+from src.api.execution.callbacks import router as callback_router
+from src.api.execution.tasks import router as tasks_router
 from src.config import settings
 from src.core.logging import setup_logging
 from src.models.base import engine, Base
@@ -15,129 +21,264 @@ from src.models.base import engine, Base
 logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    setup_logging("DEBUG")
-    logger.info("AIOpsOS server starting (debug logging)")
+async def _auto_seed_agents() -> None:
+    """Ensure main agent + sub-agents + tool associations exist."""
+    from sqlalchemy import select, delete
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from src.models.base import async_session_factory
+    from src.models.agent import Agent, Tool, agent_sub_agents, agent_tools
+    from src.agent.deep_agent import (
+        AI_OPS_SYSTEM_PROMPT, KNOWLEDGE_SYSTEM_PROMPT,
+        MONITOR_SYSTEM_PROMPT, OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
+        MEMORY_SYSTEM_PROMPT, SUBAGENTS, KNOWLEDGE_TOOLS, MEMORY_TOOLS,
+    )
 
-    # create tables and seed data on first run
-    try:
-        os.makedirs(settings.upload_dir, exist_ok=True)
-        os.makedirs(settings.wiki_path, exist_ok=True)
-        for sub in ("wiki", "raw", "meta"):
-            os.makedirs(os.path.join(settings.wiki_path, sub), exist_ok=True)
-        app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+    async with async_session_factory() as db:
+        stale = (await db.execute(
+            select(Agent).where(Agent.agent_type == "orchestrator")
+        )).scalars().all()
+        for s in stale:
+            await db.execute(delete(agent_tools).where(agent_tools.c.agent_id == s.id))
+            await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.main_agent_id == s.id))
+            await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.sub_agent_id == s.id))
+            await db.delete(s)
+            logger.info("Removed stale agent: %s", s.name)
 
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        from scripts.seed import seed as run_seed
-        await run_seed()
-        # reload tools so registered tools are available
-        from src.services.tool_manager import tool_manager
+        main_rows = (await db.execute(
+            select(Agent).where(Agent.name == "AIOpsOS 主智能体").order_by(Agent.created_at.desc())
+        )).scalars().all()
+        # Deduplicate: keep the newest, remove older duplicates
+        for dup in main_rows[1:]:
+            await db.execute(delete(agent_tools).where(agent_tools.c.agent_id == dup.id))
+            await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.main_agent_id == dup.id))
+            await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.sub_agent_id == dup.id))
+            await db.delete(dup)
+            logger.info("Removed duplicate main agent: %s", dup.id)
+        main = main_rows[0] if main_rows else None
+        if main is None:
+            main = Agent(name="AIOpsOS 主智能体", type="main",
+                         system_prompt=AI_OPS_SYSTEM_PROMPT,
+                         model_name="deepseek-v4-flash", agent_type="deep_agent", is_active=True,
+                         is_builtin=True, space_id=None)
+            db.add(main)
+            await db.flush()
+            logger.info("Created main agent: AIOpsOS 主智能体")
+        else:
+            main.agent_type = "deep_agent"
+            main.is_active = True
+            main.is_builtin = True
+            main.space_id = None
+            await db.flush()
+
+        prompt_map = {
+            "knowledge": KNOWLEDGE_SYSTEM_PROMPT, "monitor": MONITOR_SYSTEM_PROMPT,
+            "ops": OPS_SYSTEM_PROMPT, "analysis": ANALYSIS_SYSTEM_PROMPT,
+            "memory": MEMORY_SYSTEM_PROMPT,
+        }
+        sub_map: dict[str, Agent] = {}
+        for sa in SUBAGENTS:
+            sub_name = f"{sa['name']} 子智能体"
+            sub_rows = (await db.execute(
+                select(Agent).where(Agent.name == sub_name).order_by(Agent.created_at.desc())
+            )).scalars().all()
+            for dup in sub_rows[1:]:
+                await db.execute(delete(agent_tools).where(agent_tools.c.agent_id == dup.id))
+                await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.main_agent_id == dup.id))
+                await db.execute(delete(agent_sub_agents).where(agent_sub_agents.c.sub_agent_id == dup.id))
+                await db.delete(dup)
+                logger.info("Removed duplicate sub-agent: %s %s", sub_name, dup.id)
+            sub = sub_rows[0] if sub_rows else None
+            if sub is None:
+                sub = Agent(name=sub_name, type="sub",
+                            system_prompt=prompt_map.get(sa['name'], ""),
+                            model_name="deepseek-v4-flash", agent_type="deep_agent", is_active=True,
+                            is_builtin=True, space_id=None)
+                db.add(sub)
+                await db.flush()
+                logger.info("Created sub-agent: %s", sub_name)
+            else:
+                sub.agent_type = "deep_agent"
+                sub.is_active = True
+                sub.is_builtin = True
+                sub.space_id = None
+                await db.flush()
+            sub_map[sa['name']] = sub
+
+        for kt in KNOWLEDGE_TOOLS:
+            result = await db.execute(select(Tool).where(Tool.name == kt.name))
+            tool = result.scalar_one_or_none()
+            if tool is None:
+                tool = Tool(name=kt.name, type="builtin", description=kt.description or "",
+                            is_active=True, is_approved=True, is_builtin=True)
+                db.add(tool)
+                await db.flush()
+            else:
+                tool.is_builtin = True
+            await db.execute(
+                pg_insert(agent_tools)
+                .values(agent_id=main.id, tool_id=tool.id)
+                .on_conflict_do_nothing()
+            )
+
+        memory_sub = sub_map.get("memory")
+        if memory_sub:
+            for mt in MEMORY_TOOLS:
+                result = await db.execute(select(Tool).where(Tool.name == mt.name))
+                tool = result.scalar_one_or_none()
+                if tool is None:
+                    tool = Tool(name=mt.name, type="builtin", description=mt.description or "",
+                                is_active=True, is_approved=True, is_builtin=True)
+                    db.add(tool)
+                    await db.flush()
+                else:
+                    tool.is_builtin = True
+                await db.execute(
+                    pg_insert(agent_tools)
+                    .values(agent_id=memory_sub.id, tool_id=tool.id)
+                    .on_conflict_do_nothing()
+                )
+
+        for _sa_name, sub in sub_map.items():
+            await db.execute(
+                pg_insert(agent_sub_agents)
+                .values(main_agent_id=main.id, sub_agent_id=sub.id)
+                .on_conflict_do_nothing()
+            )
+
+        await db.commit()
+        logger.info("Agent auto-seed complete: 1 main + %d sub-agents", len(sub_map))
+
+
+async def _init_database(app: FastAPI) -> bool:
+    """Create tables, run seeds, auto-migrate. Returns True on success."""
+    import src.models  # noqa: F401 — ensure all ORM models are registered with Base.metadata
+
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    os.makedirs(settings.wiki_path, exist_ok=True)
+    for sub in ("wiki", "raw", "meta"):
+        os.makedirs(os.path.join(settings.wiki_path, sub), exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    from scripts.seed import seed as run_seed
+    await run_seed()
+
+    from src.services.tool_manager import tool_manager
+    await tool_manager.reload()
+
+    from src.services.skill_sync import auto_register_filesystem_skills
+    registered = await auto_register_filesystem_skills()
+    if registered:
+        logger.info("Auto-registered %d filesystem skills as DB tools", registered)
         await tool_manager.reload()
 
-        # auto-register filesystem skills as DB tools
-        from src.services.skill_sync import auto_register_filesystem_skills
-        registered = await auto_register_filesystem_skills()
-        if registered:
-            logger.info("Auto-registered %d filesystem skills as DB tools", registered)
+    await _auto_seed_agents()
 
-        # auto-sync hermes agent skills (categorize + register new ones)
-        from src.services.hermes_skill_scanner import sync_hermes_skills_to_db
-        hermes_result = await sync_hermes_skills_to_db()
-        if hermes_result["created"] or hermes_result["updated"]:
-            logger.info("Hermes skill sync: created=%d, updated=%d, total=%d",
-                        hermes_result["created"], hermes_result["updated"],
-                        hermes_result["total_scanned"])
+    try:
+        from src.agent.deep_agent import get_deep_agent
+        _agent = await get_deep_agent()
+        logger.info("Agent pre-warmed successfully")
+    except Exception:
+        logger.exception("Agent pre-warm failed (non-fatal)")
 
-        if registered or hermes_result["created"] or hermes_result["updated"]:
-            await tool_manager.reload()
+    return True
 
-        # auto-seed agents from hardcoded definitions if none exist
-        from sqlalchemy import select, func
-        from src.models.agent import Agent, agent_sub_agents, agent_tools
-        from src.models.base import async_session_factory
-        async with async_session_factory() as db:
-            count = (await db.execute(select(func.count()).select_from(Agent))).scalar()
-            if count == 0:
-                from src.agent.deep_agent import (
-                    AI_OPS_SYSTEM_PROMPT, KNOWLEDGE_SYSTEM_PROMPT,
-                    MONITOR_SYSTEM_PROMPT, OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
-                    SUBAGENTS, KNOWLEDGE_TOOLS,
-                )
-                from src.models.agent import Tool
-                main = Agent(name="AIOpsOS 主智能体", type="main",
-                             system_prompt=AI_OPS_SYSTEM_PROMPT,
-                             model_name="deepseek-v4-flash", agent_type="deep_agent", is_active=True)
-                db.add(main)
-                await db.flush()
-                prompt_map = {"knowledge": KNOWLEDGE_SYSTEM_PROMPT, "monitor": MONITOR_SYSTEM_PROMPT,
-                              "ops": OPS_SYSTEM_PROMPT, "analysis": ANALYSIS_SYSTEM_PROMPT}
-                sub_map = {}
-                for sa in SUBAGENTS:
-                    sub = Agent(name=f"{sa['name']} 子智能体", type="sub",
-                                system_prompt=prompt_map.get(sa['name'], ""),
-                                model_name="deepseek-v4-flash", agent_type="deep_agent", is_active=True)
-                    db.add(sub)
-                    await db.flush()
-                    sub_map[sa['name']] = sub
-                for kt in KNOWLEDGE_TOOLS:
-                    result = await db.execute(select(Tool).where(Tool.name == kt.name))
-                    tool = result.scalar_one_or_none()
-                    if tool is None:
-                        tool = Tool(name=kt.name, type="builtin", description=kt.description or "",
-                                    is_active=True, is_approved=True)
-                        db.add(tool)
-                        await db.flush()
-                    try:
-                        await db.execute(agent_tools.insert().values(agent_id=main.id, tool_id=tool.id))
-                    except Exception:
-                        pass
-                for _sa_name, sub in sub_map.items():
-                    try:
-                        await db.execute(agent_sub_agents.insert().values(main_agent_id=main.id, sub_agent_id=sub.id))
-                    except Exception:
-                        pass
-                await db.commit()
-                logger.info("Auto-seeded %d agents from hardcoded definitions", 1 + len(sub_map))
 
-        # Start KB file monitor
-        if settings.kb_monitor_enabled:
+async def _start_background_services():
+    """Start all background services with individual error handling."""
+    if settings.kb_monitor_enabled:
+        try:
             from src.services.kb_monitor import kb_monitor
             await kb_monitor.start(poll_interval=settings.kb_monitor_poll_interval)
+        except Exception:
+            logger.exception("KB monitor failed to start")
 
-        # Start cron scheduler
+    try:
         from src.services.cron_scheduler import cron_scheduler
         await cron_scheduler.start()
+    except Exception:
+        logger.exception("Cron scheduler failed to start")
 
-        # Start sleep detector
+    try:
         from src.services.sleep_detector import sleep_detector
         await sleep_detector.start()
     except Exception:
-        logger.warning("DB init skipped (may not be available yet)")
+        logger.exception("Sleep detector failed to start")
 
-    yield
+    try:
+        from src.services.api_poller import api_poller
+        await api_poller.start()
+    except Exception:
+        logger.exception("API poller failed to start")
 
-    # Shutdown sleep detector
+    try:
+        from src.services.kafka_source_manager import kafka_source_manager
+        await kafka_source_manager.start()
+    except Exception:
+        logger.exception("Kafka source manager failed to start")
+
+
+async def _stop_background_services():
+    """Stop all background services with individual error handling."""
+    try:
+        from src.services.kafka_source_manager import kafka_source_manager
+        await kafka_source_manager.stop()
+    except Exception:
+        pass
+
+    try:
+        from src.services.api_poller import api_poller
+        await api_poller.stop()
+    except Exception:
+        pass
+
     try:
         from src.services.sleep_detector import sleep_detector
         await sleep_detector.stop()
     except Exception:
         pass
 
-    # Shutdown cron scheduler
     try:
         from src.services.cron_scheduler import cron_scheduler
         await cron_scheduler.stop()
     except Exception:
         pass
 
-    # Shutdown KB monitor
     try:
         from src.services.kb_monitor import kb_monitor
         await kb_monitor.stop()
     except Exception:
         pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_logging()
+    logger.info("AIOpsOS server starting")
+
+    # DB init — retry once with a short delay if the first attempt fails
+    db_ok = False
+    for attempt in (1, 2):
+        try:
+            db_ok = await _init_database(app)
+            break
+        except Exception:
+            logger.exception("DB init attempt %d failed", attempt)
+            if attempt == 1:
+                await __import__("asyncio").sleep(2)
+
+    if not db_ok:
+        logger.warning("DB init failed after retries; background services will not start")
+
+    # Start background services independently of DB init success
+    if db_ok:
+        await _start_background_services()
+
+    yield
+
+    await _stop_background_services()
     logger.info("AIOpsOS server shutting down")
 
 
@@ -156,8 +297,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start) * 1000
+    logger.info(
+        "%s %s %d %.1fms",
+        request.method, request.url.path, response.status_code, duration_ms,
+    )
+    return response
+
+
 app.include_router(control_router)
 app.include_router(execution_router)
+app.include_router(datasource_router)
+app.include_router(webhook_router)
+app.include_router(callback_router)
+app.include_router(notification_router)
+app.include_router(tasks_router)
 
 
 @app.get("/health")

@@ -2,10 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func as sa_func, select, update
 
-from src.api.deps import get_current_user
+from src.api.deps import get_current_user, get_optional_space_id
 from src.models.base import async_session_factory
 from src.models.session import Session
 
@@ -17,14 +17,18 @@ router = APIRouter()
 @router.get("/sleep-management/sessions")
 async def list_sleep_sessions(
     user=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
 ):
     """List user sessions with sleep and memory consolidation status."""
     async with async_session_factory() as db:
-        result = await db.execute(
+        query = (
             select(Session)
             .where(Session.user_id == user.id)
-            .order_by(Session.last_active_at.desc())
-            .limit(50)
+        )
+        if space_id:
+            query = query.where(Session.space_id == space_id)
+        result = await db.execute(
+            query.order_by(Session.last_active_at.desc()).limit(50)
         )
         sessions = list(result.scalars().all())
 
@@ -47,23 +51,18 @@ async def list_sleep_sessions(
 @router.get("/sleep-management/stats")
 async def get_sleep_stats(
     user=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
 ):
     """Get sleep and consolidation statistics for the current user."""
     async with async_session_factory() as db:
-        total = await db.scalar(
-            select(sa_func.count(Session.id))
-            .where(Session.user_id == user.id)
-        )
-        sleeping = await db.scalar(
-            select(sa_func.count(Session.id))
-            .where(Session.user_id == user.id)
-            .where(Session.sleep_status == "sleeping")
-        )
-        unconsolidated = await db.scalar(
-            select(sa_func.count(Session.id))
-            .where(Session.user_id == user.id)
-            .where(Session.memory_status == "unconsolidated")
-        )
+        def _base():
+            q = select(sa_func.count(Session.id)).where(Session.user_id == user.id)
+            if space_id:
+                q = q.where(Session.space_id == space_id)
+            return q
+        total = await db.scalar(_base())
+        sleeping = await db.scalar(_base().where(Session.sleep_status == "sleeping"))
+        unconsolidated = await db.scalar(_base().where(Session.memory_status == "unconsolidated"))
 
     return {
         "total": total or 0,

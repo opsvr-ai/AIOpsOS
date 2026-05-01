@@ -35,7 +35,12 @@ export default function InteractiveFormCard({
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     const init: Record<string, unknown> = {};
     for (const f of allFields) {
-      if (f.value !== undefined) init[f.key] = f.value;
+      if (f.value === undefined) continue;
+      if (f.type === 'checkbox' && !Array.isArray(f.value)) {
+        init[f.key] = [];
+      } else {
+        init[f.key] = f.value;
+      }
     }
     return init;
   });
@@ -201,11 +206,11 @@ export default function InteractiveFormCard({
             {submitted ? (
               <div style={{ fontSize: 13, color: token.colorText, padding: '4px 0' }}>
                 <CheckOutlined style={{ color: token.colorSuccess, marginRight: 6 }} />
-                {(values[f.key] as string[])?.join(', ') || 'None'}
+                {Array.isArray(values[f.key]) ? (values[f.key] as string[]).join(', ') || 'None' : String(values[f.key] || 'None')}
               </div>
             ) : (
               <Checkbox.Group
-                value={(values[f.key] as string[]) || []}
+                value={Array.isArray(values[f.key]) ? (values[f.key] as string[]) : []}
                 onChange={(vals) => handleFieldChange(f.key, vals)}
                 style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
               >
@@ -217,11 +222,11 @@ export default function InteractiveFormCard({
                       padding: '8px 14px',
                       borderRadius: 10,
                       border: `1px solid ${
-                        ((values[f.key] as string[]) || []).includes(opt.value)
+                        (Array.isArray(values[f.key]) && (values[f.key] as string[]).includes(opt.value))
                           ? token.colorPrimary
                           : token.colorBorderSecondary
                       }`,
-                      background: ((values[f.key] as string[]) || []).includes(opt.value)
+                      background: (Array.isArray(values[f.key]) && (values[f.key] as string[]).includes(opt.value))
                         ? token.colorPrimaryBg
                         : token.colorBgContainer,
                       margin: 0,

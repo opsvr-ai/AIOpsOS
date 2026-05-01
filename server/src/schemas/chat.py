@@ -50,6 +50,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     message: str
     scenario_id: str | None = None
+    space_id: str | None = None
+    model_provider_id: str | None = None
     params: dict = {}
 
 
@@ -63,3 +65,20 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     events: list[ChatEvent] = []
+
+
+class SessionFileOut(BaseModel):
+    id: str
+    session_id: str
+    filename: str
+    file_size: int
+    mime_type: str | None = None
+    content_text: str | None = None
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+    @field_serializer("id", "session_id")
+    @classmethod
+    def serialize_uuid(cls, v: UUID | str) -> str:
+        return str(v)

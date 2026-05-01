@@ -38,6 +38,7 @@ export default function ChatSidebar() {
     useChatStore();
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [search, setSearch] = useState('');
   const { message } = App.useApp();
   const { token } = theme.useToken();
 
@@ -160,6 +161,7 @@ export default function ChatSidebar() {
         </div>
       ) : (
         <div
+          className="chat-sidebar-collapsible"
           style={{
             width,
             flexShrink: 0,
@@ -175,27 +177,49 @@ export default function ChatSidebar() {
           {/* Header */}
           <div
             style={{
-              padding: '12px 16px',
+              padding: '12px 16px 8px',
               borderBottom: `1px solid ${token.colorBorderSecondary}`,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
             }}
           >
-            <Button
-              type="dashed"
-              icon={<PlusOutlined />}
-              onClick={handleNew}
-              style={{ borderRadius: 8, height: 36, fontSize: 13, flex: 1 }}
-            >
-              新建对话
-            </Button>
-            <Button
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Button
+                type="dashed"
+                icon={<PlusOutlined />}
+                onClick={handleNew}
+                style={{ borderRadius: 8, height: 36, fontSize: 13, flex: 1 }}
+              >
+                新建对话
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<MenuFoldOutlined />}
+                onClick={() => setCollapsed(true)}
+                style={{ color: token.colorTextTertiary, flexShrink: 0 }}
+              />
+            </div>
+            <input
               type="text"
-              size="small"
-              icon={<MenuFoldOutlined />}
-              onClick={() => setCollapsed(true)}
-              style={{ color: token.colorTextTertiary, flexShrink: 0 }}
+              placeholder="搜索对话..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 6,
+                padding: '4px 10px',
+                fontSize: 12,
+                outline: 'none',
+                background: token.colorBgContainer,
+                color: token.colorText,
+                fontFamily: 'inherit',
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = token.colorPrimary;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = token.colorBorderSecondary;
+              }}
             />
           </div>
 
@@ -212,60 +236,99 @@ export default function ChatSidebar() {
                 style={{ paddingTop: 40 }}
               />
             ) : (
-              sessions.map((s: SessionInfo) => {
-                const active = s.id === sessionId;
-                return (
-                  <div
-                    key={s.id}
-                    onClick={() => handleSelect(s.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '10px 16px',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s',
-                      background: active ? token.colorFillSecondary : 'transparent',
-                      borderRight: active
-                        ? `3px solid ${token.colorPrimary}`
-                        : '3px solid transparent',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) e.currentTarget.style.background = token.colorFillQuaternary;
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    {sessionIcon(s.title || '')}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Typography.Text
-                        style={{
-                          fontSize: 13,
-                          color: active ? token.colorPrimary : token.colorText,
-                          display: 'block',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          fontWeight: active ? 600 : 400,
-                        }}
-                      >
-                        {s.title || '新对话'}
-                      </Typography.Text>
-                      <Typography.Text style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                        {formatDate(s.updated_at || s.created_at)}
-                      </Typography.Text>
+              (() => {
+                const filtered = search
+                  ? sessions.filter((s) =>
+                      (s.title || '新对话').toLowerCase().includes(search.toLowerCase()),
+                    )
+                  : sessions;
+                // Group by time
+                const now = Date.now();
+                const today: SessionInfo[] = [];
+                const yesterday: SessionInfo[] = [];
+                const earlier: SessionInfo[] = [];
+                filtered.forEach((s) => {
+                  const d = new Date(s.updated_at || s.created_at).getTime();
+                  const daysAgo = (now - d) / 86400000;
+                  if (daysAgo < 1) today.push(s);
+                  else if (daysAgo < 2) yesterday.push(s);
+                  else earlier.push(s);
+                });
+                const groups: { label: string; items: SessionInfo[] }[] = [];
+                if (today.length) groups.push({ label: '今天', items: today });
+                if (yesterday.length) groups.push({ label: '昨天', items: yesterday });
+                if (earlier.length) groups.push({ label: '更早', items: earlier });
+                return groups.map((g) => (
+                  <div key={g.label}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: token.colorTextQuaternary,
+                        padding: '8px 16px 4px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {g.label}
                     </div>
-                    {!isRunning && (
-                      <DeleteOutlined
-                        onClick={(e) => handleDelete(e, s.id)}
-                        className="chat-sidebar-delete"
-                        style={{ fontSize: 12, flexShrink: 0 }}
-                      />
-                    )}
+                    {g.items.map((s: SessionInfo) => {
+                      const active = s.id === sessionId;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSelect(s.id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '10px 12px',
+                            margin: '2px 8px',
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            background: active ? token.colorFillSecondary : 'transparent',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!active)
+                              e.currentTarget.style.background = token.colorFillQuaternary;
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!active) e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          {sessionIcon(s.title || '')}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Typography.Text
+                              style={{
+                                fontSize: 13,
+                                color: active ? token.colorPrimary : token.colorText,
+                                display: 'block',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                fontWeight: active ? 600 : 400,
+                              }}
+                            >
+                              {s.title || '新对话'}
+                            </Typography.Text>
+                            <Typography.Text
+                              style={{ fontSize: 11, color: token.colorTextTertiary }}
+                            >
+                              {formatDate(s.updated_at || s.created_at)}
+                            </Typography.Text>
+                          </div>
+                          {!isRunning && (
+                            <DeleteOutlined
+                              onClick={(e) => handleDelete(e, s.id)}
+                              className="chat-sidebar-delete"
+                              style={{ fontSize: 12, flexShrink: 0 }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })
+                ));
+              })()
             )}
           </div>
 

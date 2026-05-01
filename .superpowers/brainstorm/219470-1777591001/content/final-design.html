@@ -1,0 +1,184 @@
+<h2>最终设计汇总</h2>
+<p class="subtitle">现代 SaaS 风 + 卡片/表格切换 + 统一布局 + 内置保护。确认后开始实现。</p>
+
+<div class="section">
+  <h3>智能体页面</h3>
+</div>
+
+<div class="mockup" style="margin-bottom: 16px;">
+  <div class="mockup-header">统计概览栏 + 视图切换 + 卡片网格</div>
+  <div class="mockup-body">
+    <div style="background: #f8fafc; padding: 14px; border-radius: 10px;">
+      <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+        <div style="flex:1; padding: 12px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border: 1px solid #f1f5f9;">
+          <div style="font-size: 22px; font-weight: 700; color: #0f172a;">6</div>
+          <div style="font-size: 11px; color: #94a3b8;">智能体总数</div>
+        </div>
+        <div style="flex:1; padding: 12px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border: 1px solid #f1f5f9;">
+          <div style="font-size: 22px; font-weight: 700; color: #22c55e;">5</div>
+          <div style="font-size: 11px; color: #94a3b8;">已启用</div>
+        </div>
+        <div style="flex:1; padding: 12px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border: 1px solid #f1f5f9;">
+          <div style="font-size: 22px; font-weight: 700; color: #ef4444;">1</div>
+          <div style="font-size: 11px; color: #94a3b8;">已停用</div>
+        </div>
+        <div style="flex:1; padding: 12px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border: 1px solid #f1f5f9;">
+          <div style="font-size: 22px; font-weight: 700; color: #f59e0b;">4</div>
+          <div style="font-size: 11px; color: #94a3b8;">内置</div>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; gap: 6px;">
+          <span style="padding: 4px 10px; background: #f1f5f9; border-radius: 6px; font-size: 10px;">全部类型</span>
+          <span style="padding: 4px 10px; background: #f1f5f9; border-radius: 6px; font-size: 10px;">搜索...</span>
+          <span style="padding: 4px 10px; background: #f1f5f9; border-radius: 6px; font-size: 10px;">全部状态</span>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span style="font-size: 10px; color: #94a3b8;">视图:</span>
+          <span style="padding: 3px 8px; background: #0f172a; color: white; border-radius: 4px; font-size: 10px;">卡片</span>
+          <span style="padding: 3px 8px; background: #f1f5f9; border-radius: 4px; font-size: 10px;">表格</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup" style="margin-bottom: 16px;">
+  <div class="mockup-header">内置智能体卡片 (渐变头像 + 内置徽章)</div>
+  <div class="mockup-body">
+    <div style="display: flex; gap: 10px;">
+      <div style="width: 220px; padding: 16px; background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: 600;">A</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight: 600; font-size: 12px;">AIOpsOS 主智能体</div>
+            <div style="font-size: 10px; color: #94a3b8;">deepseek-v4-flash</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: 10px;">内置</span>
+          <span style="background: #fff7ed; color: #c2410c; padding: 2px 8px; border-radius: 12px; font-size: 10px;">主智能体</span>
+          <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 10px;">5 工具</span>
+          <span style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 10px;">4 子智能体</span>
+        </div>
+      </div>
+      <div style="width: 220px; padding: 16px; background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: 600;">K</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight: 600; font-size: 12px;">知识库 子智能体</div>
+            <div style="font-size: 10px; color: #94a3b8;">deepseek-v4-flash</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <span style="background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 12px; font-size: 10px;">内置</span>
+          <span style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; font-size: 10px;">子智能体</span>
+          <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-size: 10px;">2 工具</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>工具市场页面</h3>
+</div>
+
+<div class="mockup" style="margin-bottom: 16px;">
+  <div class="mockup-header">工具卡片 (左侧色块图标 + 内置/MCP/技能 类型徽章)</div>
+  <div class="mockup-body">
+    <div style="display: flex; gap: 10px;">
+      <div style="width: 220px; padding: 16px; background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: #fef3c7; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: #92400e;">S</div>
+          <div style="flex:1; min-width:0;">
+            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 11px;">search_knowledge</span>
+              <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+            </div>
+            <div style="font-size: 10px; color: #94a3b8; line-height: 1.4; margin-bottom: 6px;">在知识库中搜索相关文档和上下文信息</div>
+            <div style="display: flex; gap: 3px;">
+              <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: 9px; color: #64748b;">知识库</span>
+              <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: 9px; color: #64748b;">搜索</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width: 220px; padding: 16px; background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: #dbeafe; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: #1e40af;">M</div>
+          <div style="flex:1; min-width:0;">
+            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 11px;">monitor_health</span>
+              <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+            </div>
+            <div style="font-size: 10px; color: #94a3b8; line-height: 1.4; margin-bottom: 6px;">监控所有服务健康状态，收集指标</div>
+            <div style="display: flex; gap: 3px;">
+              <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: 9px; color: #64748b;">监控</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width: 220px; padding: 16px; background: white; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: #ede9fe; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: #7c3aed;">G</div>
+          <div style="flex:1; min-width:0;">
+            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 11px;">gitlab-mcp</span>
+              <span style="background: #ede9fe; color: #7c3aed; padding: 1px 6px; border-radius: 10px; font-size: 9px;">MCP</span>
+            </div>
+            <div style="font-size: 10px; color: #94a3b8; line-height: 1.4; margin-bottom: 6px;">GitLab API 集成工具，管理 MR/Issue</div>
+            <div style="display: flex; gap: 3px;">
+              <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: 9px; color: #64748b;">DevOps</span>
+              <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: 9px; color: #64748b;">v2.1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>内置标记行为规则</h3>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>内置智能体</h4>
+    <ul>
+      <li>显示"内置"徽章 (金色)</li>
+      <li>不可删除（按钮隐藏）</li>
+      <li>不可停用（始终活跃）</li>
+      <li>可编辑 user_prompt 和工具关联</li>
+      <li>仅 admin 可编辑 system_prompt</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>内置工具</h4>
+    <ul>
+      <li>显示"内置"徽章 (金色)</li>
+      <li>不可删除</li>
+      <li>不可停用</li>
+      <li>不可编辑（名称/描述/配置锁定）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 20px;">
+  <h3>实施范围</h3>
+  <div style="background: #f8fafc; padding: 16px; border-radius: 10px; font-size: 13px; line-height: 1.8;">
+    <p><strong>后端 (server/)</strong></p>
+    <ul>
+      <li>Agent / Tool 模型增加 <code>is_builtin</code> 字段 (Boolean, default False)</li>
+      <li>种子数据标记 <code>is_builtin=True</code></li>
+      <li>API 响应 schema 增加 <code>is_builtin</code></li>
+      <li>删除/停用/编辑端点增加内置保护校验</li>
+    </ul>
+    <p><strong>前端 (web/)</strong></p>
+    <ul>
+      <li>智能体页面：统计概览栏 + 卡片/表格切换 + 内置徽章 + 操作按钮条件隐藏</li>
+      <li>工具市场：统计概览栏 + 卡片/表格切换 + 内置徽章 + 操作按钮条件隐藏</li>
+    </ul>
+  </div>
+</div>

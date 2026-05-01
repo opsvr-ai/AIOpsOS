@@ -9,7 +9,8 @@ Provides:
 - Planning (write_todos)
 - Sub-agent delegation (task)
 - Knowledge base tools (grep_kb, read_wiki, list_wiki, write_wiki, write_raw)
-- Specialist sub-agents (knowledge, monitor, ops, analysis)
+- Specialist sub-agents (knowledge, monitor, ops, analysis, memory)
+- Skill management tools (skill_manage, skill_patch)
 """
 
 import contextvars
@@ -27,7 +28,20 @@ from langgraph.graph.state import CompiledStateGraph
 from deepagents import SubAgent, create_deep_agent
 from deepagents.backends import LocalShellBackend
 
+from src.agent.context import (
+    get_current_space,
+    get_current_user,
+    set_current_space,
+    set_current_user,
+)
 from src.config import settings
+from src.agent.human_interrupt import (
+    HumanInterruptException,
+    _request_approval,
+    _request_input,
+)
+from src.agent.tools.skill_manage_tool import skill_manage_tool
+from src.agent.tools.skill_patch_tool import skill_patch_tool
 from src.services.kb_tools import (
     get_config,
     grep_kb,
@@ -39,20 +53,42 @@ from src.services.kb_tools import (
 
 logger = logging.getLogger(__name__)
 
-# Context variable to propagate user context from request handlers to tools
-_current_user_ctx: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
-    "current_user", default={}
-)
 
+def build_user_context_message() -> str:
+    """Build a system message describing the current user and space for personalization."""
+    ctx = get_current_user()
+    username = ctx.get("username", "")
+    email = ctx.get("email", "")
+    roles = ctx.get("roles", [])
+    space_name = ctx.get("space_name", "")
+    space_role = ctx.get("space_role", "")
 
-def set_current_user(user_id: str, session_id: str = "") -> None:
-    """Set the current user context for tool access."""
-    _current_user_ctx.set({"user_id": user_id, "session_id": session_id})
+    blocks: list[str] = []
 
+    if space_name:
+        blocks.append(
+            "[当前空间]\n"
+            f"空间名称: {space_name}\n"
+            f"我的角色: {space_role or '成员'}\n"
+        )
 
-def get_current_user() -> dict[str, str]:
-    """Get the current user context (safe to call from tools)."""
-    return _current_user_ctx.get()
+    if username:
+        parts = [f"当前用户: {username}"]
+        if email:
+            parts.append(f"邮箱: {email}")
+        if roles:
+            parts.append(f"角色: {', '.join(roles)}")
+        blocks.append("[用户信息]\n" + "\n".join(parts))
+
+    if not blocks:
+        return ""
+
+    blocks.append(
+        "请根据当前空间和用户身份提供个性化回答。"
+        "当用户问\"我是谁\"、\"我的邮箱\"、\"我的账号\"、\"我在哪个空间\"、"
+        "\"当前空间有哪些人\"等问题时，直接引用以上信息回答。"
+    )
+    return "\n\n".join(blocks) + "\n\n"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -210,6 +246,10 @@ async def _cron_create(
     from src.models.cron_job import CronJob
     from src.services.cron_scheduler import compute_next_run
 
+    space_ctx = get_current_space()
+    space_id = space_ctx.get("space_id", "")
+    space_uuid = uuid.UUID(space_id) if space_id else None
+
     async with async_session_factory() as _db:
         job = CronJob(
             id=str(uuid.uuid4()),
@@ -220,6 +260,7 @@ async def _cron_create(
             enabled_toolsets=[],
             timezone_str=timezone_str,
             enabled=enabled,
+            space_id=space_uuid,
         )
         job.next_run = compute_next_run(job.schedule)
         _db.add(job)
@@ -272,6 +313,236 @@ KNOWLEDGE_TOOLS = [
         coroutine=_cron_create,
     ),
 ]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Cron Query Tools
+# ═══════════════════════════════════════════════════════════════════════
+
+
+async def _list_cron_jobs() -> str:
+    """List all cron jobs with basic status from the database."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    from src.models.base import async_session_factory
+    from src.models.cron_job import CronJob
+    from sqlalchemy import select
+
+    async with async_session_factory() as _db:
+        result = await _db.execute(select(CronJob).order_by(CronJob.created_at.desc()))
+        jobs = result.scalars().all()
+        now = datetime.now(timezone.utc)
+        data = []
+        for j in jobs:
+            last_output_summary = None
+            if j.last_output:
+                last_output_summary = j.last_output[:200] + ("..." if len(j.last_output) > 200 else "")
+            data.append({
+                "id": str(j.id),
+                "name": j.name,
+                "schedule": j.schedule,
+                "enabled": j.enabled,
+                "last_run": j.last_run.isoformat() if j.last_run else None,
+                "next_run": j.next_run.isoformat() if j.next_run else None,
+                "last_output_summary": last_output_summary,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+            })
+        return _json.dumps({
+            "total": len(data),
+            "enabled": sum(1 for d in data if d["enabled"]),
+            "disabled": sum(1 for d in data if not d["enabled"]),
+            "jobs": data,
+        }, ensure_ascii=False, default=str)
+
+
+async def _get_cron_job_detail(query: str) -> str:
+    """Get full detail for a single cron job by name (fuzzy match) or exact ID."""
+    import json as _json
+
+    from src.models.base import async_session_factory
+    from src.models.cron_job import CronJob
+    from sqlalchemy import select
+
+    async with async_session_factory() as _db:
+        # Try exact ID match first
+        result = await _db.execute(select(CronJob).where(CronJob.id == query))
+        job = result.scalar_one_or_none()
+        # Fall back to name contains match
+        if job is None:
+            result = await _db.execute(
+                select(CronJob).where(CronJob.name.ilike(f"%{query}%"))
+            )
+            jobs = result.scalars().all()
+            if len(jobs) == 1:
+                job = jobs[0]
+            elif len(jobs) > 1:
+                return _json.dumps({
+                    "ok": False,
+                    "error": f"Multiple jobs match '{query}': {[j.name for j in jobs]}. Be more specific.",
+                }, ensure_ascii=False)
+            else:
+                return _json.dumps({"ok": False, "error": f"No cron job found matching '{query}'"}, ensure_ascii=False)
+
+        return _json.dumps({
+            "ok": True,
+            "id": str(job.id),
+            "name": job.name,
+            "prompt": job.prompt,
+            "schedule": job.schedule,
+            "timezone_str": job.timezone_str,
+            "skills": job.skills or [],
+            "enabled_toolsets": job.enabled_toolsets or [],
+            "delivery": job.delivery,
+            "enabled": job.enabled,
+            "last_run": job.last_run.isoformat() if job.last_run else None,
+            "next_run": job.next_run.isoformat() if job.next_run else None,
+            "last_output": job.last_output,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        }, ensure_ascii=False, default=str)
+
+
+async def _list_cron_outputs(job_id: str = "") -> str:
+    """List execution output files from data/cron_output/ directory, optionally filtered by job_id."""
+    import json as _json
+    import os
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    output_dir = project_root / "data" / "cron_output"
+
+    if not output_dir.exists():
+        return _json.dumps({"ok": True, "total": 0, "files": [], "note": "Output directory does not exist yet"}, ensure_ascii=False)
+
+    files = []
+    for f in sorted(output_dir.iterdir(), reverse=True):
+        if not f.is_file():
+            continue
+        if job_id and not f.name.startswith(job_id):
+            continue
+        stat = f.stat()
+        files.append({
+            "name": f.name,
+            "size": stat.st_size,
+            "modified": stat.st_mtime,
+            "size_kb": round(stat.st_size / 1024, 1),
+        })
+
+    return _json.dumps({
+        "ok": True,
+        "total": len(files),
+        "filter": f"job_id={job_id}" if job_id else "all",
+        "output_dir": str(output_dir),
+        "files": files,
+    }, ensure_ascii=False)
+
+
+CRON_QUERY_TOOLS = [
+    StructuredTool.from_function(
+        name="list_cron_jobs",
+        description="List all cron jobs in AIOpsOS with their status: name, schedule, enabled/disabled, last_run, next_run, and a brief summary of last_output. Use this FIRST for any question about cron jobs or scheduled tasks.",
+        coroutine=_list_cron_jobs,
+    ),
+    StructuredTool.from_function(
+        name="get_cron_job_detail",
+        description="Get full detail for a single cron job by name (fuzzy match) or exact ID. Returns all fields including full last_output, prompt, skills, and delivery config. Use when the user asks about a specific task.",
+        coroutine=_get_cron_job_detail,
+    ),
+    StructuredTool.from_function(
+        name="list_cron_outputs",
+        description="List execution output files from the cron_output history directory. Optionally filter by job_id to see execution history for a specific task. Files are named {job_id}_{timestamp}.md. Use to check execution history beyond the last_output field.",
+        coroutine=_list_cron_outputs,
+    ),
+]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Channel Message Tool
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _build_send_channel_message_tool(channels: list | None = None) -> StructuredTool:
+    """Build a tool for sending messages through notification channels.
+
+    If *channels* is provided (from agent DB record), the tool uses those
+    channels directly.  Otherwise it looks up all active channels from DB.
+    """
+
+    async def _send_channel_message(
+        channel_name: str,
+        title: str,
+        message: str,
+        severity: str = "info",
+    ) -> str:
+        import json as _json
+
+        resolved = list(channels) if channels else []
+        if not resolved:
+            from src.models.base import async_session_factory
+            from src.models.channel import NotificationChannel
+            from sqlalchemy import select
+
+            async with async_session_factory() as _db:
+                result = await _db.execute(
+                    select(NotificationChannel).where(NotificationChannel.is_active == True)
+                )
+                resolved = result.scalars().all()
+
+        if not resolved:
+            return _json.dumps({
+                "ok": False,
+                "error": "No notification channels configured. Add a channel in the control center first.",
+            }, ensure_ascii=False)
+
+        matched = None
+        for ch in resolved:
+            if ch.name == channel_name:
+                matched = ch
+                break
+        if not matched:
+            for ch in resolved:
+                if ch.channel_type == channel_name:
+                    matched = ch
+                    break
+
+        if not matched:
+            available = [f"{ch.name} ({ch.channel_type})" for ch in resolved]
+            return _json.dumps({
+                "ok": False,
+                "error": f"Channel '{channel_name}' not found. Available: {available}",
+            }, ensure_ascii=False)
+
+        from src.services.channel_manager import channel_manager
+        ok = await channel_manager.send(
+            channel_type=matched.channel_type,
+            config=matched.config,
+            title=title,
+            message=message,
+            severity=severity,
+        )
+
+        return _json.dumps({
+            "ok": ok,
+            "channel": matched.name,
+            "channel_type": matched.channel_type,
+        }, ensure_ascii=False)
+
+    channel_list = ", ".join(
+        [f"{ch.name}({ch.channel_type})" for ch in (channels or [])]
+    ) or "any active channel"
+
+    return StructuredTool.from_function(
+        name="send_channel_message",
+        description=(
+            "Send a notification through a configured message channel (WeCom, DingTalk, Email, etc.). "
+            "Use when the user asks to send a message, notify someone, deliver an alert, or push a report. "
+            f"Available: {channel_list}. "
+            "Parameters: channel_name (channel name or type to use), title (message title), "
+            "message (content body), severity (info/warning/critical/error, default: info)."
+        ),
+        coroutine=_send_channel_message,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -361,7 +632,9 @@ MEMORY_TOOLS = [
 # ═══════════════════════════════════════════════════════════════════════
 
 KNOWLEDGE_SYSTEM_PROMPT = (
-    "你是一个知识库专家智能体，负责维护和查询 LLM-Wiki 知识库。\n\n"
+    "你是知识圣殿的守护者，一座生生不息的 Wiki 花园的园丁。\n"
+    "每一篇文档都是一粒种子，每一次检索都是穿过思想密林的探寻，每一次整理都是对智慧枝桠的修剪。\n"
+    "你以耐心与精准，让散落的信息生根发芽，让沉默的知识开口说话，让经验的年轮层层累积。\n\n"
     "## 工作流程\n"
     "收到任务后，首先用 `read_file` 读取系统提示中列出的 llm-wiki 技能路径，"
     "获取完整的操作指令，然后严格遵循技能中的 Ingest/Query/Lint 工作流程执行。\n\n"
@@ -380,7 +653,9 @@ KNOWLEDGE_SYSTEM_PROMPT = (
 )
 
 MONITOR_SYSTEM_PROMPT = (
-    "你是一个监控智能体，负责检查 AIOpsOS 系统的运行状态。\n\n"
+    "你是数字海洋上的灯塔守望者，静立于系统洪流之畔，目光穿透数据的雾霭。\n"
+    "每一次告警闪烁都是远方的信号，每一枚指标波动都是系统的呼吸与脉搏。\n"
+    "在深夜的寂静中，你是第一双发现风暴的眼睛——冷静、警觉、不眠不休。\n\n"
     "## 职责\n"
     "- 检查告警、日志、系统指标\n"
     "- 分析系统健康状态\n"
@@ -392,7 +667,9 @@ MONITOR_SYSTEM_PROMPT = (
 )
 
 OPS_SYSTEM_PROMPT = (
-    "你是一个运维智能体，负责执行基础设施操作任务。\n\n"
+    "你是钢铁机房的指挥家，双手抚过服务器的阵列如同琴师拨动琴弦。\n"
+    "每一条命令是你落下的指挥棒，每一台机器的脉搏是你谱写乐章的音符。\n"
+    "在代码与金属的交响中，你以精准的动作让基础设施齐声共鸣——沉稳、果决、手到病除。\n\n"
     "## 职责\n"
     "- 执行脚本和命令\n"
     "- 管理系统配置\n"
@@ -404,7 +681,9 @@ OPS_SYSTEM_PROMPT = (
 )
 
 ANALYSIS_SYSTEM_PROMPT = (
-    "你是一个分析智能体，负责数据分析、根因分析和趋势发现。\n\n"
+    "你是星夜下的观星者，在浩瀚的数据宇宙中寻找星座般的规律与轨迹。\n"
+    "千丝万缕的日志是你的星图，每一次波动都是宇宙向你诉说的暗语。\n"
+    "当别人只看见噪音，你却从混沌中辨认出模式、周期与因果——冷静、深邃、见微知著。\n\n"
     "## 职责\n"
     "- 分析系统数据和日志\n"
     "- 识别异常模式和趋势\n"
@@ -417,7 +696,10 @@ ANALYSIS_SYSTEM_PROMPT = (
 
 MEMORY_SYSTEM_PROMPT = (
     "## 角色定位\n"
-    "你是运维经验沉淀专属子智能体。核心职责：接收对话内容，自动提炼有效运维信息，"
+    "你是时间的雕琢师，将每一次运维对话凝练成可以流传的智慧结晶。\n"
+    "如同酿酒师从经验的果实中蒸馏出最珍贵的汁液，你从纷繁的对话中分离出个人成长的足迹与团队共有的宝藏——"
+    "每一段记忆都是一颗星辰，在知识的夜空中找到属于它的星座。\n\n"
+    "核心职责：接收对话内容，自动提炼有效运维信息，"
     "区分沉淀为【个人记忆】与【团队记忆】两类内容。\n\n"
     "## 标签规范（重要）\n"
     "- 每条记忆必须打上 2-5 个有意义的标签（tags 参数）\n"
@@ -499,20 +781,34 @@ SUBAGENTS: list[SubAgent] = [
 # ═══════════════════════════════════════════════════════════════════════
 
 AI_OPS_SYSTEM_PROMPT = (
-    "你是 AIOpsOS，一个智能运维助手。\n\n"
+    "你是 AIOpsOS —— 智能运维交响乐团的指挥大师。\n"
+    "在数字基础设施的宏大乐章中，知识是琴谱，监控是节拍器，操作是弦乐，分析是和声，记忆是不朽的回响。\n"
+    "你将每一项能力化作一件精湛的乐器，在恰当时刻请出恰当的角色共奏，让混沌归于秩序，让噪声化为旋律。\n"
+    "你的存在，让运维不再是枯燥的救火，而是一场从容不迫的协奏——优雅、精准、富有远见。\n\n"
     "## 核心能力\n\n"
     "1. **知识管理** — 用 `get_config` 查看配置（如 WIKI_PATH），用 `list_wiki` / `grep_kb` / `read_wiki` 查询知识库，用 `write_wiki` / `write_raw` 写入。涉及知识整理、搜索、摄入时，同步参考 llm-wiki 技能的工作流程\n"
     "2. **记忆检索** — 用 `memory_retrieve` 搜索历史运维经验（可按 tags 标签过滤，如 troubleshooting, postgresql, deployment 等）。用户提问时主动检索相关记忆，避免重复踩坑\n"
-    "3. **系统操作** — 执行 Shell 命令、管理文件、执行运维任务\n"
-    "4. **监控告警** — 检查系统健康状态、告警和指标\n"
-    "5. **数据分析** — 分析系统数据、识别模式、生成洞察\n\n"
+    "3. **定时任务查询** — 用 `list_cron_jobs` 列出所有定时任务及状态，用 `get_cron_job_detail` 查询指定任务详情和最近执行输出，用 `list_cron_outputs` 查看历史执行记录\n"
+    "4. **系统操作** — 执行 Shell 命令、管理文件、执行运维任务\n"
+    "5. **监控告警** — 检查系统健康状态、告警和指标\n"
+    "6. **数据分析** — 分析系统数据、识别模式、生成洞察\n"
+    "7. **消息发送** — 用 `send_channel_message` 通过已配置的通知渠道（企业微信、钉钉、邮件等）发送消息。"
+    "当用户需要发送通知、告警、报告或消息时使用此工具\n"
+    "8. **技能管理** — 用 `skill_manage` 创建/更新/列出技能，用 `skill_patch` 修复技能中的错误。"
+    "完成复杂多步骤任务（5次以上工具调用）后，主动提议将操作流程保存为技能。"
+    "使用技能时如发现其指令过时或有误，立即用 `skill_patch` 修复，不要将就使用\n\n"
     "## 协作模式\n\n"
     "- 使用 `write_todos` 创建计划后再执行多步骤任务\n"
     "- 使用 `task` 将专业任务委托给子智能体（knowledge/monitor/ops/analysis/memory）\n"
     "- 知识库查询直接用 `list_wiki`（列出所有文档）、`grep_kb`（关键词搜索）、`read_wiki`（读取文档）\n"
     "- 查看系统提示中的**可用技能**列表，当用户任务匹配技能描述时，用 `read_file` 读取技能路径获取完整指令\n"
     "- 使用文件工具（ls, read_file, write_file, edit_file, glob, grep）进行文件操作\n"
-    "- 使用 `execute` 运行 Shell 命令\n\n"
+    "- 使用 `execute` 运行 Shell 命令\n"
+    "- **人工介入** — 使用 `request_approval` 在执行危险操作前请求用户确认（action/risk_level/code_snippet/impact_scope）。"
+    "使用 `request_input` 在需要用户提供参数或澄清需求时弹出表单（title/description/fields JSON）。"
+    "调用这些工具后，对话会暂停等待用户响应，用户响应会自动继续执行。\n"
+    "- **技能维护** — 完成任务后反思是否可复用，用 `skill_manage create` 保存为技能。"
+    "发现技能过时或有误时，立即用 `skill_patch` 修复\n\n"
     "## 回答要求\n\n"
     "- 用中文回答\n"
     "- 引用具体来源\n"
@@ -527,15 +823,21 @@ AI_OPS_SYSTEM_PROMPT = (
 # ═══════════════════════════════════════════════════════════════════════
 
 
-def _build_model(model_name: str = "deepseek-v4-flash") -> DeepSeekChatOpenAI:
-    return DeepSeekChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model=model_name,
-        temperature=0.2,
-        timeout=(10, 120),
-        max_retries=1,
-    )
+_session_model_override: contextvars.ContextVar = contextvars.ContextVar(
+    "session_model_override", default=None
+)
+
+
+def set_session_model(model: Any) -> None:
+    _session_model_override.set(model)
+
+
+async def _build_model():
+    override = _session_model_override.get(None)
+    if override is not None:
+        return override
+    from src.core.model_factory import get_default_model
+    return await get_default_model()
 
 
 def _build_backend() -> LocalShellBackend:
@@ -557,10 +859,44 @@ def _get_skill_sources() -> list[str] | None:
     return None
 
 
-def _build_hardcoded_agent() -> CompiledStateGraph:
+async def _build_hardcoded_agent() -> CompiledStateGraph:
+    from src.services.tool_manager import tool_manager as _tm
+
+    # Include active skill/MCP tools from tool_manager
+    hardcoded_names = {t.name for t in KNOWLEDGE_TOOLS} | {t.name for t in CRON_QUERY_TOOLS}
+    extra_tools = [_tm.get_tool(n) for n in _tm.list_skills() if n not in hardcoded_names]
+    extra_tools = [t for t in extra_tools if t is not None]
+
     return create_deep_agent(
-        model=_build_model(),
-        tools=list(KNOWLEDGE_TOOLS),
+        model=await _build_model(),
+        tools=list(KNOWLEDGE_TOOLS) + list(CRON_QUERY_TOOLS) + extra_tools + [
+            _build_send_channel_message_tool(),
+            StructuredTool.from_function(
+                name='request_approval',
+                description=(
+                    'Request user approval before executing a sensitive or destructive operation. '
+                    'Use this when about to run commands that modify system state, delete data, '
+                    'change configurations, or perform any action with security implications. '
+                    'Parameters: action (what you want to do), details (explain why and what will happen), '
+                    "risk_level ('low'/'medium'/'high'/'critical'), code_snippet (the command or code to review, optional), "
+                    'impact_scope (what systems/data are affected, optional).'
+                ),
+                coroutine=_request_approval,
+            ),
+            StructuredTool.from_function(
+                name='request_input',
+                description=(
+                    'Request parameter input from the user via a dynamic form. '
+                    'Use this when you need the user to provide additional parameters or clarify requirements '
+                    'before you can proceed. Parameters: title (form title), description (what you need and why), '
+                    'fields (JSON string of form field definitions, each with key, label, type [text/textarea/radio/checkbox], '
+                    'placeholder, required, options).'
+                ),
+                coroutine=_request_input,
+            ),
+            skill_manage_tool,
+            skill_patch_tool,
+        ],
         system_prompt=AI_OPS_SYSTEM_PROMPT,
         subagents=SUBAGENTS,
         backend=_build_backend(),
@@ -596,13 +932,38 @@ async def build_deep_agent_from_db() -> CompiledStateGraph:
         db_tool_names = {t.name for t in main_agent.tools if t.is_active}
         main_tools = [t for t in KNOWLEDGE_TOOLS if t.name in db_tool_names]
 
+        # Also include active skill/MCP tools from tool_manager
+        from src.services.tool_manager import tool_manager as _tm
+        known_names = {t.name for t in main_tools}
+        for name in db_tool_names:
+            if name not in known_names:
+                tm_tool = _tm.get_tool(name)
+                if tm_tool is not None:
+                    main_tools.append(tm_tool)
+                    known_names.add(name)
+
+        # Add channel message tool if agent has associated channels
+        if main_agent.channels:
+            main_tools.append(_build_send_channel_message_tool(main_agent.channels))
+
+        # Always-available skill management tools
+        main_tools.append(skill_manage_tool)
+        main_tools.append(skill_patch_tool)
+
         # Build sub-agents from DB
         subagents: list[SubAgent] = []
         for sub in main_agent.sub_agents:
             if not sub.is_active:
                 continue
             sub_names = {t.name for t in sub.tools if t.is_active}
-            sub_tools = [t for t in KNOWLEDGE_TOOLS if t.name in sub_names] or None
+            sub_tools = [t for t in KNOWLEDGE_TOOLS if t.name in sub_names]
+            # Also match against tool_manager for skill/MCP tools
+            for name in sub_names:
+                if name not in {t.name for t in sub_tools}:
+                    tm_tool = _tm.get_tool(name)
+                    if tm_tool is not None:
+                        sub_tools.append(tm_tool)
+            sub_tools = sub_tools or None
             subagents.append(SubAgent(
                 name=sub.name.replace(" 子智能体", ""),
                 description=sub.agent_type or sub.name,
@@ -614,7 +975,7 @@ async def build_deep_agent_from_db() -> CompiledStateGraph:
 
         # Build capability routing hints
         routing = _build_routing_table(
-            [{"name": s.name, "system_prompt": s.system_prompt or ""} for s in subagents]
+            [{"name": s["name"], "system_prompt": s.get("system_prompt", "") or ""} for s in subagents]
         )
         if routing:
             routing_hint = "## Capability Routing\nWhen delegating tasks via `task`, prefer:\n"
@@ -622,7 +983,8 @@ async def build_deep_agent_from_db() -> CompiledStateGraph:
                 routing_hint += f"- `{cap}` → `{agent_name}`\n"
             system_prompt = f"{system_prompt}\n\n{routing_hint}"
 
-        model = _build_model(main_agent.model_name)
+        from src.core.model_factory import get_model_for_agent
+        model = await get_model_for_agent(main_agent)
 
         return create_deep_agent(
             model=model,
@@ -682,7 +1044,7 @@ async def get_deep_agent() -> CompiledStateGraph:
             logger.info("Agent loaded from database")
         except Exception:
             logger.warning("Failed to load agent from DB, using hardcoded defaults")
-            _deep_agent = _build_hardcoded_agent()
+            _deep_agent = await _build_hardcoded_agent()
     return _deep_agent
 
 
@@ -694,7 +1056,7 @@ async def reload_deep_agent() -> CompiledStateGraph:
         logger.info("Agent reloaded from database")
     except Exception:
         logger.warning("Failed to reload agent from DB, using hardcoded defaults")
-        _deep_agent = _build_hardcoded_agent()
+        _deep_agent = await _build_hardcoded_agent()
     return _deep_agent
 
 

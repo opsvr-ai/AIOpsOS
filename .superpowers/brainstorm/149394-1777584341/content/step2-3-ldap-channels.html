@@ -1,0 +1,124 @@
+<h2>Step 2 & 3 — LDAP 集成 + 消息渠道</h2>
+<p class="subtitle">均为可选项，复用现有 LdapWizard 和 ChannelsPage 的配置能力，嵌入向导框架中。</p>
+
+<div class="split">
+  <!-- Step 2 LDAP -->
+  <div class="mockup">
+    <div class="mockup-header">Step 2/3 · LDAP 集成（可选）</div>
+    <div class="mockup-body">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+        <div style="width:28px;height:28px;border-radius:50%;background:#52c41a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">&#10003;</div>
+        <div style="flex:1;height:2px;background:#52c41a"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">2</div>
+        <div style="flex:1;height:2px;background:#e8e8e8"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:#e8e8e8;color:#999;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">3</div>
+      </div>
+
+      <div style="padding:16px 0">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+          <div style="width:36px;height:36px;border-radius:10px;background:#f0f5ff;display:flex;align-items:center;justify-content:center">&#9729;</div>
+          <div>
+            <div style="font-weight:600;font-size:14px">域账号登录集成</div>
+            <div style="font-size:12px;color:#999">配置 LDAP/AD 服务器，启用域账号一键登录</div>
+          </div>
+        </div>
+
+        <div style="font-size:13px;color:#666;margin-bottom:12px">需要配置：服务器地址、绑定 DN、密码、用户/群组映射</div>
+
+        <div class="mock-nav" style="margin-bottom:12px;font-size:12px">4 步子向导：服务器连接 → 用户映射 → 群组映射 → 测试同步</div>
+
+        <div style="display:flex;gap:8px">
+          <button class="mock-button" style="background:#1677ff;color:#fff;font-size:12px">开始配置</button>
+          <span style="display:flex;align-items:center;font-size:12px;color:#999">或</span>
+          <span style="display:flex;align-items:center;font-size:12px;color:#1677ff;cursor:pointer">跳过，以后配置</span>
+        </div>
+
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0">
+          <div style="font-size:12px;color:#999">后续可在：系统管理 → LDAP 集成 中随时配置</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 Channels -->
+  <div class="mockup">
+    <div class="mockup-header">Step 3/3 · 消息渠道（可选）</div>
+    <div class="mockup-body">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+        <div style="width:28px;height:28px;border-radius:50%;background:#52c41a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">&#10003;</div>
+        <div style="flex:1;height:2px;background:#52c41a"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:#52c41a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">&#10003;</div>
+        <div style="flex:1;height:2px;background:#1677ff"></div>
+        <div style="width:28px;height:28px;border-radius:50%;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">3</div>
+      </div>
+
+      <div style="padding:16px 0">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+          <div style="width:36px;height:36px;border-radius:10px;background:#f0f5ff;display:flex;align-items:center;justify-content:center">&#9993;</div>
+          <div>
+            <div style="font-weight:600;font-size:14px">通知渠道配置</div>
+            <div style="font-size:12px;color:#999">配置告警通知渠道，支持钉钉、企微、Webhook、邮件</div>
+          </div>
+        </div>
+
+        <!-- Channel type tabs -->
+        <div style="display:flex;gap:4px;margin-bottom:12px;font-size:11px">
+          <span style="background:#e6f7ff;color:#1677ff;padding:3px 8px;border-radius:4px">钉钉</span>
+          <span style="background:#f0f0f0;color:#666;padding:3px 8px;border-radius:4px">企微</span>
+          <span style="background:#f0f0f0;color:#666;padding:3px 8px;border-radius:4px">邮件</span>
+          <span style="background:#f0f0f0;color:#666;padding:3px 8px;border-radius:4px">Webhook</span>
+        </div>
+
+        <div style="font-size:13px;color:#666;margin-bottom:12px">钉钉：填写 Webhook URL 和加签密钥即可</div>
+
+        <div style="display:flex;gap:8px">
+          <button class="mock-button" style="background:#1677ff;color:#fff;font-size:12px">添加渠道</button>
+          <span style="display:flex;align-items:center;font-size:12px;color:#999">或</span>
+          <span style="display:flex;align-items:center;font-size:12px;color:#1677ff;cursor:pointer">跳过，以后配置</span>
+        </div>
+
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0">
+          <div style="font-size:12px;color:#999">后续可在：通知渠道 页面中随时配置</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>Step 2/3 设计决策 — 请确认</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="embed-existing" onclick="toggleSelect(this)">
+    <div class="letter">E1</div>
+    <div class="content">
+      <h3>嵌入向导（如上）</h3>
+      <p>Step 2/3 展示简化入口 + 引导文案，点击"开始配置"后展开完整配置表单。每步独立跳过。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="bare-link" onclick="toggleSelect(this)">
+    <div class="letter">E2</div>
+    <div class="content">
+      <h3>仅链接跳转</h3>
+      <p>Step 2/3 只展示功能说明 + "去配置"链接，点击跳转到系统管理页面。更简洁但割裂体验。</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" data-multiselect style="margin-top:16px">
+  <div class="option" data-choice="show-skip-both" onclick="toggleSelect(this)">
+    <div class="letter">S1</div>
+    <div class="content">
+      <h3>每步独立"跳过"（如上）</h3>
+      <p>Step 2 和 Step 3 各有自己的"跳过，以后配置"操作。灵活。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="skip-all" onclick="toggleSelect(this)">
+    <div class="letter">S2</div>
+    <div class="content">
+      <h3>统一"全部跳过"</h3>
+      <p>Step 2/3 共享一个"全部跳过，进入平台"按钮。减少操作但粒度粗。</p>
+    </div>
+  </div>
+</div>

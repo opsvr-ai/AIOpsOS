@@ -1,0 +1,80 @@
+<h2>智能体页面 & 工具市场 — 设计方向</h2>
+<p class="subtitle">首先确定整体风格基调。当前页面是基础卡片布局，你希望向哪个方向优化？</p>
+
+<div class="options">
+  <div class="option" data-choice="professional" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>专业运维风</h3>
+      <p>深色标题栏、数据密度高、紧凑布局、状态指示灯风格。适合运维人员日常使用的工具型界面，强调信息密度和操作效率。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="modern" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>现代 SaaS 风</h3>
+      <p>大卡片、圆角、柔和阴影、更多留白、渐变点缀。适合展示型页面，注重视觉层次和品牌感，类似 Vercel/Linear 风格。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>运维 + 现代混合</h3>
+      <p>在专业运维基础上加入现代设计元素：保留信息密度但优化卡片视觉、增加微妙动效、统一色彩体系、突出关键状态信息。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>当前页面参考</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">当前智能体页面</div>
+      <div class="mockup-body">
+        <div style="padding: 12px; background: #fafafa; border-radius: 6px;">
+          <div class="mock-nav" style="margin-bottom: 8px;">AI 中心 | 筛选栏: 类型/名称/状态</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="width: 180px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-weight: 600;">Agent 1</span><span style="background: #f59e0b; color: white; padding: 0 4px; border-radius: 3px; font-size: 9px;">主智能体</span>
+              </div>
+              <div style="color: #999; font-size: 10px; margin-bottom: 6px;">系统提示词摘要...</div>
+              <div style="display: flex; gap: 3px; flex-wrap: wrap;">
+                <span style="background: #e6f7ff; padding: 0 4px; border-radius: 3px; font-size: 9px;">deepseek</span>
+                <span style="background: #e6fffb; padding: 0 4px; border-radius: 3px; font-size: 9px;">3 工具</span>
+              </div>
+            </div>
+            <div style="width: 180px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-weight: 600;">Agent 2</span><span style="background: #22c55e; color: white; padding: 0 4px; border-radius: 3px; font-size: 9px;">子智能体</span>
+              </div>
+              <div style="color: #999; font-size: 10px;">系统提示词摘要...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">当前工具市场页面</div>
+      <div class="mockup-body">
+        <div style="padding: 12px; background: #fafafa; border-radius: 6px;">
+          <div class="mock-nav" style="margin-bottom: 8px;">工具市场 | Tab: 全部/内置/技能/插件/MCP</div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="width: 180px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-weight: 600;">Tool 1</span><span style="background: #f59e0b; color: white; padding: 0 4px; border-radius: 3px; font-size: 9px;">内置</span>
+              </div>
+              <div style="color: #999; font-size: 10px;">工具描述摘要...</div>
+            </div>
+            <div style="width: 180px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-weight: 600;">Skill 1</span><span style="background: #3b82f6; color: white; padding: 0 4px; border-radius: 3px; font-size: 9px;">Skill</span>
+              </div>
+              <div style="color: #999; font-size: 10px;">描述摘要...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

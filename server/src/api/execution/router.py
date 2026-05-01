@@ -1,20 +1,28 @@
+import asyncio
 import json
 import logging
+import os as _os
+import time
+import uuid as _uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.agent.deep_agent import get_deep_agent, set_current_user
-from src.config import settings
-from src.api.deps import get_current_user, get_db
+from src.agent.context import set_current_space, set_current_user
+from src.agent.deep_agent import get_deep_agent, set_session_model
+from src.core.model_factory import _build_model_from_provider
+from src.agent.human_interrupt import parse_interrupt_marker, INTERRUPT_MARKER
+from src.services.interrupt_manager import interrupt_manager
+from src.api.deps import get_current_user, get_db, get_optional_space_id
 from src.models.alert import Alert
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
-from src.schemas.alert import AlertActionRequest, AlertListParams, AlertOut
+from src.models.space import Space, SpaceMember
+from src.schemas.alert import AlertActionRequest, AlertCreate, AlertListParams, AlertOut, BatchActionRequest
 from src.schemas.chat import ChatRequest, ChatResponse, ChatEvent, MessageOut, SessionDetailOut, SessionOut
 from src.services.memory_provider import MemoryManager
 from src.services.sleep_detector import sleep_detector
@@ -22,19 +30,93 @@ from src.services.tool_manager import tool_manager
 
 logger = logging.getLogger(__name__)
 
+# TTL cache for tool_manager.reload() — avoid DB hit on every request
+_last_tool_reload: float = 0.0
+_TOOL_RELOAD_TTL: float = 60.0
+
+# Keyword-based intent classifier — sub-microsecond, no LLM call needed
+_INTENT_PATTERNS: list[tuple[str, list[str]]] = [
+    ("知识库查询", ["知识库", "wiki", "文档", "查", "搜索", "找", "资料", "知识"]),
+    ("执行运维命令", ["执行", "运行", "命令", "部署", "重启", "启动", "停止", "bash", "shell"]),
+    ("故障排查", ["故障", "报错", "错误", "bug", "异常", "问题", "排查", "修复", "失败"]),
+    ("数据分析", ["分析", "统计", "趋势", "报表", "图表", "数据", "指标"]),
+    ("监控告警", ["监控", "告警", "预警", "报警", "alert", "状态", "健康", "检查"]),
+    ("文件操作", ["文件", "读写", "创建", "删除", "编辑", "保存", "目录"]),
+    ("系统配置", ["配置", "设置", "参数", "环境", "变量", "config"]),
+    ("定时任务", ["定时", "cron", "周期", "调度", "计划", "例行"]),
+    ("记忆检索", ["记忆", "history", "之前", "上次", "上回", "记录", "过往"]),
+    ("消息发送", ["发送", "通知", "推送", "消息", "提醒"]),
+]
+
+
+def _classify_intent_fast(text: str) -> str:
+    """Classify user intent by keyword matching. Returns in microseconds."""
+    lower = text.lower()
+    for intent, keywords in _INTENT_PATTERNS:
+        for kw in keywords:
+            if kw in lower:
+                return intent
+    return "通用对话"
+
+
+async def _reload_tools_if_stale() -> None:
+    """Reload tools only if TTL has expired."""
+    global _last_tool_reload
+    now = time.monotonic()
+    if now - _last_tool_reload > _TOOL_RELOAD_TTL:
+        await tool_manager.reload()
+        _last_tool_reload = now
+
+
+async def _increment_turn(session_id: str) -> None:
+    """Increment session turn_count and set skill_review_due every N turns."""
+    from src.services.sleep_detector import REVIEW_INTERVAL_TURNS
+
+    async with async_session_factory() as db:
+        result = await db.execute(select(Session).where(Session.id == session_id))
+        session = result.scalar_one_or_none()
+        if session is None:
+            return
+        session.turn_count = (session.turn_count or 0) + 1
+        if session.turn_count >= REVIEW_INTERVAL_TURNS:
+            session.skill_review_due = True
+            session.turn_count = 0
+        await db.commit()
+
+
+def _get_user_context() -> SystemMessage | None:
+    """Build a SystemMessage with current user profile for personalization."""
+    from src.agent.deep_agent import build_user_context_message
+
+    msg = build_user_context_message()
+    if msg:
+        return SystemMessage(content=msg)
+    return None
+
+
+async def _resolve_space_context(user_id: str, space_id: str | None) -> None:
+    """Resolve space name and member role from space_id, then set context."""
+    if not space_id:
+        return
+    async with async_session_factory() as db:
+        result = await db.execute(
+            select(Space.name, SpaceMember.role)
+            .join(SpaceMember, SpaceMember.space_id == Space.id)
+            .where(Space.id == space_id, SpaceMember.user_id == user_id)
+        )
+        row = result.one_or_none()
+        if row:
+            set_current_space(space_id=str(space_id), space_name=row[0], space_role=row[1])
+
+
 router = APIRouter(prefix="/api/v1")
 
 
 async def _generate_title(user_msg: str, reply: str) -> str:
     """Use LLM to generate a concise session title."""
     from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.3,
-    )
+    from src.core.model_factory import get_default_model
+    llm = await get_default_model()
     resp = await llm.ainvoke([
         SystemMessage(content="Generate a short title (max 40 chars, in Chinese) for this conversation. Reply with ONLY the title."),
         HumanMessage(content=f"User: {user_msg[:200]}\nAssistant: {reply[:500]}"),
@@ -68,21 +150,36 @@ def _make_title(text: str, max_chars: int = 60) -> str:
 async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from datetime import UTC, datetime
 
+    space_id = body.space_id
+
     if body.session_id:
         result = await db.execute(select(Session).where(Session.id == body.session_id))
         session = result.scalar_one_or_none()
         if session is None:
-            session = Session(id=body.session_id, user_id=user.id, title=_make_title(body.message))
+            session = Session(id=body.session_id, user_id=user.id,
+                              title=_make_title(body.message),
+                              space_id=space_id,
+                              sleep_status="awake", auto_consolidate=True,
+                              memory_status="unconsolidated",
+                              last_active_at=datetime.now(UTC))
             db.add(session)
             await db.commit()
             await db.refresh(session)
         else:
-            if getattr(session, "sleep_status", "awake") == "sleeping":
-                session.sleep_status = "awake"
+            was_sleeping = session.sleep_status == "sleeping"
+            session.sleep_status = "awake"
             session.last_active_at = datetime.now(UTC)
+            if was_sleeping:
+                session.memory_status = "unconsolidated"
+            if space_id and not session.space_id:
+                session.space_id = space_id
             await db.commit()
     else:
-        session = Session(user_id=user.id, title=_make_title(body.message))
+        session = Session(user_id=user.id, title=_make_title(body.message),
+                          space_id=space_id,
+                          sleep_status="awake", auto_consolidate=True,
+                          memory_status="unconsolidated",
+                          last_active_at=datetime.now(UTC))
         db.add(session)
         await db.commit()
         await db.refresh(session)
@@ -91,15 +188,37 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
     db.add(user_msg)
     await db.commit()
 
-    await tool_manager.reload()
+    await _reload_tools_if_stale()
 
     # Propagate user context for memory tools
-    set_current_user(user_id=str(user.id), session_id=str(session.id))
+    set_current_user(
+        user_id=str(user.id),
+        session_id=str(session.id),
+        username=user.username,
+        email=user.email,
+        roles=[r.name for r in (user.roles or [])],
+    )
+
+    await _resolve_space_context(str(user.id), space_id)
+
+    model_provider_id = body.model_provider_id or (session.model_provider_id if session else None)
+    if model_provider_id:
+        from src.models.model_provider import ModelProvider
+        result = await db.execute(select(ModelProvider).where(ModelProvider.id == model_provider_id))
+        provider = result.scalar_one_or_none()
+        if provider:
+            session.model_provider_id = provider.id
+            await db.commit()
+            set_session_model(_build_model_from_provider(provider))
 
     agent = await get_deep_agent()
-    result = await agent.ainvoke({
-        "messages": [HumanMessage(content=body.message)],
-    })
+    messages: list = []
+    user_ctx = _get_user_context()
+    if user_ctx:
+        messages.append(user_ctx)
+    resolved_message = await _resolve_file_refs(body.message, str(session.id))
+    messages.append(HumanMessage(content=resolved_message))
+    result = await agent.ainvoke({"messages": messages})
     reply = result["messages"][-1].content if result.get("messages") else "Agent produced no output."
 
     assistant_msg = Message(session_id=session.id, role="assistant", content=reply,
@@ -115,23 +234,113 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
     except Exception:
         logger.exception("sync_turn failed in /chat")
 
-    # improve session title via LLM summarization if it is still short
+    # improve session title via LLM summarization if it is still short (background)
     if len(session.title or "") < 10:
-        try:
-            session.title = await _generate_title(body.message, reply)
-            await db.commit()
-        except Exception:
-            pass
+        asyncio.create_task(_update_session_title(str(session.id), body.message, reply))
+
+    # Increment turn counter and flag for periodic skill review
+    await _increment_turn(str(session.id))
 
     return ChatResponse(session_id=str(session.id), reply=reply)
 
 
 @router.get("/sessions", response_model=list[SessionOut])
-async def list_sessions(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Session).where(Session.user_id == user.id).order_by(Session.updated_at.desc())
-    )
+async def list_sessions(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    query = select(Session).where(Session.user_id == user.id)
+    if space_id:
+        query = query.where(Session.space_id == space_id)
+    result = await db.execute(query.order_by(Session.updated_at.desc()))
     return result.scalars().all()
+
+
+# ── Dynamic recommendations ────────────────────────────────────────────────────
+
+
+@router.get("/sessions/recommendations")
+async def get_recommendations(
+    user=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    suggestions = []
+
+    try:
+        async with async_session_factory() as db:
+            # Recent user sessions
+            if space_id:
+                result = await db.execute(
+                    select(Session.title)
+                    .where(Session.space_id == space_id, Session.title.isnot(None))
+                    .order_by(Session.last_active_at.desc())
+                    .limit(5)
+                )
+                titles = [row[0] for row in result.all() if row[0]]
+                if titles:
+                    suggestions.append(f"空间最近对话: {'; '.join(titles)}")
+
+            # Knowledge base hot items
+            try:
+                from src.models.knowledge import KnowledgeDocument
+                result = await db.execute(
+                    select(KnowledgeDocument.title)
+                    .order_by(KnowledgeDocument.updated_at.desc())
+                    .limit(5)
+                )
+                docs = [row[0] for row in result.all() if row[0]]
+                if docs:
+                    suggestions.append(f"知识库最新文档: {'; '.join(docs)}")
+            except Exception:
+                pass
+    except Exception:
+        logger.exception("Failed to gather recommendation context")
+
+    if not suggestions:
+        return [
+            {"label": "检查系统状态", "prompt": "查看系统当前运行状态"},
+            {"label": "查看告警信息", "prompt": "查看最近告警列表"},
+            {"label": "执行自动化任务", "prompt": "帮我执行一个自动化运维任务"},
+            {"label": "搜索运维知识", "prompt": "搜索运维相关知识库"},
+        ]
+
+    # Use LLM to generate personalized recommendations
+    try:
+        from src.core.model_factory import get_default_model
+
+        llm = await get_default_model()
+        prompt = f"""Based on the following context about a user in an IT operations platform, generate 4 short, actionable Chinese-language suggestion labels (max 8 chars each) and prompts (max 30 chars each):
+
+Context:
+{chr(10).join(suggestions)}
+
+Return ONLY a JSON array: [{{"label": "...", "prompt": "..."}}, ...]. No other text."""
+
+        resp = await llm.ainvoke([
+            SystemMessage(content="You are a helpful assistant. Output only valid JSON."),
+            HumanMessage(content=prompt),
+        ])
+
+        import json as _json
+
+        text = resp.content.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("\n```", 1)[0]
+        parsed = _json.loads(text)
+        if isinstance(parsed, list) and len(parsed) > 0:
+            return parsed
+    except Exception:
+        pass
+
+    return [
+        {"label": "检查系统状态", "prompt": "查看系统当前运行状态"},
+        {"label": "查看告警信息", "prompt": "查看最近告警列表"},
+        {"label": "执行自动化任务", "prompt": "帮我执行一个自动化运维任务"},
+        {"label": "搜索运维知识", "prompt": "搜索运维相关知识库"},
+    ]
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
@@ -217,11 +426,44 @@ async def list_alerts(
         query = query.where(Alert.source == params.source)
     if params.search:
         query = query.where(Alert.title.ilike(f"%{params.search}%"))
+    if params.space_id:
+        query = query.where(Alert.space_id == params.space_id)
     order_col = getattr(Alert, params.sort_by, Alert.created_at)
     query = query.order_by(order_col.desc() if params.sort_order == "desc" else order_col.asc())
     query = query.offset((params.page - 1) * params.page_size).limit(params.page_size)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.post("/alerts", response_model=AlertOut)
+async def create_alert(
+    body: AlertCreate,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ingest a new alert. Auto-analysis is triggered asynchronously."""
+    from datetime import UTC, datetime
+
+    alert = Alert(
+        event_id=body.event_id,
+        title=body.title,
+        source=body.source,
+        severity=body.severity,
+        raw_event=body.raw_event,
+        status="pending",
+    )
+    db.add(alert)
+    await db.commit()
+    await db.refresh(alert)
+
+    # Fire-and-forget: match triggers and run auto-analysis
+    try:
+        import asyncio
+        asyncio.create_task(_auto_analyze_alert(str(alert.id)))
+    except Exception:
+        logger.exception("Failed to spawn auto-analysis for alert %s", alert.id)
+
+    return alert
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertOut)
@@ -238,19 +480,93 @@ async def alert_action(
     alert_id: str, body: AlertActionRequest, user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from src.services.alert_state import validate_action, ACTION_TO_STATUS
+
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
     if alert is None:
         raise HTTPException(status_code=404, detail="Alert not found")
+
+    if not validate_action(alert.status, body.action):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Action '{body.action}' not allowed in status '{alert.status}'",
+        )
+
+    if body.action == "analyze":
+        alert.status = "analyzing"
+        await db.commit()
+        await db.refresh(alert)
+        import asyncio
+        asyncio.create_task(_auto_analyze_alert(str(alert.id)))
+        return {"detail": "ok", "status": alert.status}
+
     if body.action == "confirm":
         alert.status = "confirmed"
         alert.confirmed_by = user.username
-    elif body.action == "dismiss":
-        alert.status = "dismissed"
+    elif body.action == "close":
+        alert.status = "closed"
     else:
-        raise HTTPException(status_code=400, detail="Invalid action")
+        alert.status = ACTION_TO_STATUS.get(body.action, body.action)
+
     await db.commit()
     return {"detail": "ok", "status": alert.status}
+
+
+@router.post("/alerts/batch-action")
+async def batch_alert_action(
+    body: BatchActionRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from src.services.alert_state import validate_action
+
+    updated = 0
+    failed: list[str] = []
+
+    for alert_id in body.alert_ids:
+        result = await db.execute(select(Alert).where(Alert.id == alert_id))
+        alert = result.scalar_one_or_none()
+        if alert is None:
+            failed.append(alert_id)
+            continue
+        if not validate_action(alert.status, body.action):
+            failed.append(alert_id)
+            continue
+
+        if body.action == "confirm":
+            alert.status = "confirmed"
+            alert.confirmed_by = user.username
+        elif body.action == "dismiss":
+            alert.status = "dismissed"
+        else:
+            alert.status = body.action
+
+        updated += 1
+
+    await db.commit()
+    return {"detail": "ok", "updated": updated, "failed": failed}
+
+
+async def _auto_analyze_alert(alert_id: str) -> None:
+    """Run trigger matching and agent-based auto-analysis for an alert."""
+    from src.models.base import async_session_factory
+    from src.services.trigger_engine import match_triggers
+    from src.services.alert_analyzer import analyze
+
+    async with async_session_factory() as _db:
+        result = await _db.execute(select(Alert).where(Alert.id == alert_id))
+        alert = result.scalar_one_or_none()
+        if alert is None:
+            return
+
+        try:
+            triggers = await match_triggers(_db, alert)
+            if triggers:
+                await analyze(alert, triggers)
+                await _db.commit()
+        except Exception:
+            logger.exception("Auto-analysis failed for alert %s", alert_id)
 
 
 # ── SSE streaming chat ────────────────────────────────
@@ -294,21 +610,36 @@ async def chat_stream(
 ):
     from datetime import UTC, datetime
 
+    space_id = body.space_id
+
     if body.session_id:
         result = await db.execute(select(Session).where(Session.id == body.session_id))
         session = result.scalar_one_or_none()
         if session is None:
-            session = Session(id=body.session_id, user_id=user.id, title=_make_title(body.message))
+            session = Session(id=body.session_id, user_id=user.id,
+                              title=_make_title(body.message),
+                              space_id=space_id,
+                              sleep_status="awake", auto_consolidate=True,
+                              memory_status="unconsolidated",
+                              last_active_at=datetime.now(UTC))
             db.add(session)
             await db.commit()
             await db.refresh(session)
         else:
-            if getattr(session, "sleep_status", "awake") == "sleeping":
-                session.sleep_status = "awake"
+            was_sleeping = session.sleep_status == "sleeping"
+            session.sleep_status = "awake"
             session.last_active_at = datetime.now(UTC)
+            if was_sleeping:
+                session.memory_status = "unconsolidated"
+            if space_id and not session.space_id:
+                session.space_id = space_id
             await db.commit()
     else:
-        session = Session(user_id=user.id, title=_make_title(body.message))
+        session = Session(user_id=user.id, title=_make_title(body.message),
+                          space_id=space_id,
+                          sleep_status="awake", auto_consolidate=True,
+                          memory_status="unconsolidated",
+                          last_active_at=datetime.now(UTC))
         db.add(session)
         await db.commit()
         await db.refresh(session)
@@ -317,10 +648,27 @@ async def chat_stream(
     db.add(user_msg)
     await db.commit()
 
-    await tool_manager.reload()
-
     # Propagate user context for memory tools
-    set_current_user(user_id=str(user.id), session_id=str(session.id))
+    set_current_user(
+        user_id=str(user.id),
+        session_id=str(session.id),
+        username=user.username,
+        email=user.email,
+        roles=[r.name for r in (user.roles or [])],
+    )
+
+    await _resolve_space_context(str(user.id), space_id)
+
+    # Apply per-session model override if specified
+    model_provider_id = body.model_provider_id or (session.model_provider_id if session else None)
+    if model_provider_id:
+        from src.models.model_provider import ModelProvider
+        result = await db.execute(select(ModelProvider).where(ModelProvider.id == model_provider_id))
+        provider = result.scalar_one_or_none()
+        if provider:
+            session.model_provider_id = provider.id
+            await db.commit()
+            set_session_model(_build_model_from_provider(provider))
 
     # Initialize memory providers for this session
     mm = MemoryManager()
@@ -350,44 +698,62 @@ async def chat_stream(
         seen_task_ids: set[str] = set()  # dedupe sub-agent events
         collected_steps: list[dict] = []  # persisted to extra_metadata
 
-        # ── Phase 1: Intent recognition ──────────────────
+        # ── Resume check: inject interrupt response if pending ──
+        pending_interrupt = interrupt_manager.get_pending_for_session(session_id)
+        if pending_interrupt:
+            logger.info("Resuming session %s with interrupt %s", session_id, pending_interrupt.id)
+            response_data: dict[str, Any]
+            if pending_interrupt.type == "approval":
+                approved = body.message.strip().lower() in ("yes", "是", "同意", "确认", "approve", "ok", "y", "true", "1")
+                response_data = {"approved": approved, "message": body.message}
+            else:
+                response_data = {"values": body.message, "message": body.message}
+            interrupt_manager.resolve(pending_interrupt.id, response_data)
+
+        # ── Phase 1: Intent recognition (fast keyword-based, no LLM) ──
+        intent_text = _classify_intent_fast(body.message)
         yield _sse_event("status", {"message": "正在理解意图...", "session_id": session_id})
-        try:
-            from langchain_openai import ChatOpenAI
-            from langchain_core.messages import SystemMessage
-            intent_llm = ChatOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model="deepseek-v4-flash",
-                temperature=0,
-            )
-            intent_resp = await intent_llm.ainvoke([
-                SystemMessage(content="Classify the user's intent in ONE short phrase (max 20 chars Chinese). Be specific: e.g. '查询知识库', '执行运维命令', '故障排查', '数据分析', '文件操作', '系统配置'. Reply ONLY with the phrase."),
-                HumanMessage(content=body.message),
-            ])
-            intent_text = intent_resp.content.strip().strip('"').strip("'").strip()[:30]
-            yield _sse_event("intent", {
-                "intent": intent_text or "通用对话",
-                "session_id": session_id,
-            })
-        except Exception:
-            yield _sse_event("intent", {
-                "intent": "分析中...",
-                "session_id": session_id,
-            })
+        yield _sse_event("intent", {
+            "intent": intent_text,
+            "session_id": session_id,
+        })
         yield _sse_event("status", {"message": "正在规划任务...", "session_id": session_id})
 
         try:
-            # Inject relevant memories into agent context
-            recall_context = await mm.prefetch(body.message)
+            # Parallelize: memory prefetch + tool reload + agent init
+            recall_context, _, _agent = await asyncio.gather(
+                mm.prefetch(body.message),
+                _reload_tools_if_stale(),
+                get_deep_agent(),
+            )
             agent_messages = list(history_messages)
+            user_ctx = _get_user_context()
+            if user_ctx:
+                agent_messages.insert(0, user_ctx)
             if recall_context:
                 from langchain_core.messages import SystemMessage
                 agent_messages.append(SystemMessage(content=recall_context))
-            agent_messages.append(HumanMessage(content=body.message))
 
-            agent = await get_deep_agent()
-            async for event in agent.astream_events(
+            # Inject interrupt resolution context
+            pending = interrupt_manager.get_pending_for_session(session_id)
+            if pending is None:
+                # Check if current message is a response to a now-resolved interrupt
+                # The interrupt was resolved above; inject context so agent continues
+                last_assistant = None
+                for m in reversed(history_messages):
+                    if isinstance(m, AIMessage):
+                        last_assistant = m
+                        break
+                if last_assistant and hasattr(last_assistant, 'content') and '[等待人工介入]' in str(last_assistant.content):
+                    from langchain_core.messages import SystemMessage
+                    agent_messages.append(SystemMessage(
+                        content=f"[系统通知] 用户已响应你的介入请求。用户回复: {body.message}\n请根据用户回复继续执行任务。如果用户同意，继续原计划；如果用户拒绝，停止操作并解释原因。"
+                    ))
+
+            resolved_message = await _resolve_file_refs(body.message, str(session.id))
+            agent_messages.append(HumanMessage(content=resolved_message))
+
+            async for event in _agent.astream_events(
                 {"messages": agent_messages},
                 version="v2",
             ):
@@ -510,6 +876,36 @@ async def chat_stream(
                             s["status"] = "error" if "Error" in str(tool_output) else "done"
                             break
 
+                    # Check for human interrupt marker
+                    if name in ("request_approval", "request_input"):
+                        interrupt_data = parse_interrupt_marker(str(tool_output))
+                        if interrupt_data:
+                            yield _sse_event("interrupt", {
+                                "interrupt_id": interrupt_data["interrupt_id"],
+                                "type": interrupt_data["type"],
+                                "data": interrupt_data["data"],
+                                "session_id": session_id,
+                            })
+                            # Persist partial message before yielding
+                            async with async_session_factory() as _db:
+                                partial_msg = Message(
+                                    session_id=session_id, role="assistant",
+                                    content=final_answer or "[等待人工介入]",
+                                    extra_metadata={
+                                        "execution_steps": collected_steps,
+                                        "interrupt_pending": True,
+                                        "interrupt_id": interrupt_data["interrupt_id"],
+                                    },
+                                )
+                                _db.add(partial_msg)
+                                await _db.commit()
+                            yield _sse_event("done", {
+                                "session_id": session_id,
+                                "reply": final_answer or "[等待人工介入]",
+                                "interrupt_pending": True,
+                            })
+                            return  # end stream, wait for user response
+
             # Flush any remaining tokens
             if pending_tokens:
                 final_answer = "".join(
@@ -530,7 +926,10 @@ async def chat_stream(
                 result = await _db.execute(select(Session).where(Session.id == session_id))
                 s = result.scalar_one_or_none()
                 if s and (not s.title or len(s.title) < 10):
-                    s.title = await _generate_title(body.message, final_answer)
+                    # Fire-and-forget title generation — don't block the done event
+                    asyncio.create_task(_update_session_title(
+                        str(s.id), body.message, final_answer,
+                    ))
                 await _db.commit()
 
             # Sync per-turn memories (LLM-based, dual personal+team scope)
@@ -538,6 +937,9 @@ async def chat_stream(
                 await mm.sync_turn(body.message, final_answer)
             except Exception:
                 logger.exception("sync_turn failed in chat_stream")
+
+            # Increment turn counter and flag for periodic skill review
+            await _increment_turn(session_id)
 
             yield _sse_event("done", {
                 "session_id": session_id,
@@ -561,3 +963,164 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── Session file management ───────────────────────────────────────────────────
+
+from src.models.session import SessionFile
+from src.schemas.chat import SessionFileOut
+
+_UPLOAD_ROOT = "uploads/sessions"
+
+
+@router.get("/sessions/{session_id}/files", response_model=list[SessionFileOut])
+async def list_session_files(session_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(SessionFile)
+        .where(SessionFile.session_id == session_id)
+        .order_by(SessionFile.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/sessions/{session_id}/files", response_model=SessionFileOut)
+async def upload_session_file(
+    session_id: str,
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+):
+    # Verify session exists
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Save file to disk
+    upload_dir = _os.path.join(_UPLOAD_ROOT, session_id)
+    _os.makedirs(upload_dir, exist_ok=True)
+    file_id = str(_uuid.uuid4())
+    dest_path = _os.path.join(upload_dir, f"{file_id}_{file.filename}")
+
+    contents = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(contents)
+
+    session_file = SessionFile(
+        id=file_id,
+        session_id=session_id,
+        filename=file.filename or "untitled",
+        file_path=dest_path,
+        file_size=len(contents),
+        mime_type=file.content_type,
+    )
+    db.add(session_file)
+
+    # Parse document content with markitdown
+    from src.services.document_parser import is_parsable, parse_document_async, SYNC_PARSE_SIZE_LIMIT
+
+    if is_parsable(file.content_type):
+        if len(contents) <= SYNC_PARSE_SIZE_LIMIT:
+            text = await parse_document_async(dest_path, file.content_type)
+            if text:
+                session_file.content_text = text
+        else:
+            # Large file: schedule background parse
+            async def _bg_parse(sf_id: str, path: str, mime: str | None):
+                text = await parse_document_async(path, mime)
+                if text:
+                    async with async_session_factory() as _db:
+                        result = await _db.execute(select(SessionFile).where(SessionFile.id == sf_id))
+                        sf = result.scalar_one_or_none()
+                        if sf:
+                            sf.content_text = text
+                            await _db.commit()
+
+            asyncio.create_task(_bg_parse(str(session_file.id), dest_path, file.content_type))
+
+    await db.commit()
+    await db.refresh(session_file)
+    return session_file
+
+
+@router.delete("/sessions/{session_id}/files/{file_id}")
+async def delete_session_file(
+    session_id: str,
+    file_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SessionFile).where(
+            SessionFile.id == file_id,
+            SessionFile.session_id == session_id,
+        )
+    )
+    sf = result.scalar_one_or_none()
+    if not sf:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Remove from disk
+    if _os.path.exists(sf.file_path):
+        _os.remove(sf.file_path)
+
+    await db.delete(sf)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/sessions/{session_id}/files/{file_id}/download")
+async def download_session_file(
+    session_id: str,
+    file_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SessionFile).where(
+            SessionFile.id == file_id,
+            SessionFile.session_id == session_id,
+        )
+    )
+    sf = result.scalar_one_or_none()
+    if not sf:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not _os.path.exists(sf.file_path):
+        raise HTTPException(status_code=404, detail="File missing on disk")
+
+    return FileResponse(sf.file_path, filename=sf.filename, media_type=sf.mime_type or "application/octet-stream")
+
+
+async def _resolve_file_refs(message: str, session_id: str) -> str:
+    """Replace @[filename](ref:file_id) references with file content."""
+    import re as _re
+
+    refs = _re.findall(r'@\[([^\]]+)\]\(ref:([^)]+)\)', message)
+    if not refs:
+        return message
+
+    async with async_session_factory() as db:
+        file_ids = [ref[1] for ref in refs]
+        result = await db.execute(select(SessionFile).where(SessionFile.id.in_(file_ids)))
+        files = {str(sf.id): sf for sf in result.scalars().all()}
+
+    resolved = message
+    for filename, file_id in refs:
+        sf = files.get(file_id)
+        if sf and sf.content_text:
+            ctx = f"\n\n--- 文件: {filename} ---\n{sf.content_text[:8000]}\n--- 文件结束 ---"
+            resolved = resolved.replace(f'@[{filename}](ref:{file_id})', ctx)
+        else:
+            resolved = resolved.replace(f'@[{filename}](ref:{file_id})', f'[已引用文件: {filename}]')
+
+    return resolved
+
+
+async def _update_session_title(session_id: str, user_msg: str, reply: str) -> None:
+    """Background task: update session title via LLM without blocking the response."""
+    try:
+        title = await _generate_title(user_msg, reply)
+        async with async_session_factory() as db:
+            result = await db.execute(select(Session).where(Session.id == session_id))
+            s = result.scalar_one_or_none()
+            if s:
+                s.title = title
+                await db.commit()
+    except Exception:
+        logger.exception("Background title generation failed")

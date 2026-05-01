@@ -187,7 +187,6 @@ def get_config(key: str = "") -> str:
         "WIKI_PATH": settings.wiki_path,
         "UPLOAD_DIR": settings.upload_dir,
         "SERVICE_TYPE": settings.service_type,
-        "LLM_BASE_URL": settings.llm_base_url,
         "EMBEDDING_MODEL": settings.embedding_model,
         "DATABASE_URL": "[redacted — contains credentials]"
         if "@" in settings.database_url

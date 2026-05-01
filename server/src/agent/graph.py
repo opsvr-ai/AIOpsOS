@@ -256,15 +256,15 @@ tool_manager.register_builtin(
 )
 
 
-def _build_llm(**kwargs) -> ChatOpenAI:
+async def _build_llm(**kwargs):
+    from src.core.model_factory import get_default_model
+    model = await get_default_model()
     overrides = dict(kwargs or {})
     overrides.setdefault("timeout", 30)
-    return ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        **overrides,
-    )
+    for k, v in overrides.items():
+        if hasattr(model, k):
+            setattr(model, k, v)
+    return model
 
 
 # ── new nodes ──────────────────────────────────────────────────────
@@ -348,7 +348,7 @@ async def orchestrator_node(state: AgentState) -> dict:
     if not plan:
         return {"orchestration_decision": "direct", "current_sub_agent": None}
 
-    llm = _build_llm(temperature=0.2)
+    llm = await _build_llm(temperature=0.2)
 
     memory_summary = ""
     if memories:
@@ -363,8 +363,11 @@ async def orchestrator_node(state: AgentState) -> dict:
     )
 
     system = (
-        "You are an orchestrator for AIOpsOS. Given the user request, plan steps, "
-        "and available resources, decide the execution path.\n\n"
+        "You are the conductor of the AIOpsOS orchestra — a decisive routing intelligence "
+        "that reads the room before raising the baton.\n"
+        "Like a maestro who knows exactly which section to cue, you survey the user's "
+        "request, the assembled plan, and the talents at your disposal, then choose the "
+        "path that will bring the symphony home.\n\n"
         "Available tools:\n" + available + "\n\n"
         "Available sub-agents:\n" + sub_agent_descriptions + "\n\n"
         "Respond with ONLY a JSON object with keys:\n"

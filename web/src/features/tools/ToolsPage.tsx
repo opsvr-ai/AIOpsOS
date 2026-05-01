@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   Card,
   Button,
@@ -14,6 +14,7 @@ import {
   App,
   Empty,
   Spin,
+  Skeleton,
   theme,
   Row,
   Col,
@@ -22,7 +23,11 @@ import {
   Badge,
   Alert,
   Drawer,
+  Tabs,
+  Segmented,
+  Table,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -44,6 +49,10 @@ import {
   SyncOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  CloseCircleOutlined,
+  AppstoreOutlined,
+  UnorderedListOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Upload } from 'antd';
 import type { UploadFile } from 'antd';
@@ -63,7 +72,9 @@ interface ToolItem {
   config: Record<string, unknown>;
   is_active: boolean;
   is_approved: boolean;
+  is_builtin: boolean;
   is_consistent: boolean | null;
+  is_valid: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -75,9 +86,12 @@ interface SyncDiffItem {
   status: string;
   db_id: string | null;
   db_description: string | null;
+  db_version: string | null;
   fs_description: string | null;
+  fs_version: string | null;
   fs_category: string | null;
   source_path: string | null;
+  source_label: string | null;
   is_active: boolean;
 }
 
@@ -131,10 +145,21 @@ function validateSkillName(name: string): string | null {
 }
 
 const TYPE_CONFIG: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+  builtin: { color: '#F59E0B', icon: <ThunderboltOutlined />, label: '内置' },
   skill: { color: '#3B82F6', icon: <ToolOutlined />, label: 'Skill' },
+  plugin: { color: '#EC4899', icon: <RobotOutlined />, label: 'Plugin' },
   mcp: { color: '#8B5CF6', icon: <ApiOutlined />, label: 'MCP' },
   api: { color: '#22C55E', icon: <CodeOutlined />, label: 'API' },
 };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function nameToGradient(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const h = Math.abs(hash) % 360;
+  return `linear-gradient(135deg, hsl(${h}, 60%, 50%), hsl(${(h + 35) % 360}, 60%, 40%))`;
+}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
@@ -145,15 +170,38 @@ export default function ToolsPage() {
   // Data
   const [tools, setTools] = useState<ToolItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(24);
 
   // Filters
   const [filterType, setFilterType] = useState<string>('all');
   const [filterName, setFilterName] = useState('');
   const [filterDesc, setFilterDesc] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [debouncedName, setDebouncedName] = useState('');
+  const [debouncedDesc, setDebouncedDesc] = useState('');
+
+  // View mode
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+
+  // Debounce search inputs (300ms)
+  const nameTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const descTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    nameTimerRef.current = setTimeout(() => setDebouncedName(filterName.trim()), 300);
+    return () => clearTimeout(nameTimerRef.current);
+  }, [filterName]);
+  useEffect(() => {
+    descTimerRef.current = setTimeout(() => setDebouncedDesc(filterDesc.trim()), 300);
+    return () => clearTimeout(descTimerRef.current);
+  }, [filterDesc]);
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Preview drawer
+  const [previewTool, setPreviewTool] = useState<ToolItem | null>(null);
 
   // Modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -196,6 +244,9 @@ export default function ToolsPage() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [categories, setCategories] = useState<CategoryCount[]>([]);
 
+  // Health filter for invalid skills
+  const [filterHealth, setFilterHealth] = useState<string>('all');
+
   // Sync
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncScanResult, setSyncScanResult] = useState<SyncScanOut | null>(null);
@@ -208,20 +259,34 @@ export default function ToolsPage() {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number> = {};
       if (filterType !== 'all') params.type = filterType;
-      if (filterName.trim()) params.name = filterName.trim();
-      if (filterDesc.trim()) params.description = filterDesc.trim();
+      if (debouncedName) params.name = debouncedName;
+      if (debouncedDesc) params.description = debouncedDesc;
       if (filterCategory !== 'all') params.category = filterCategory;
       if (filterStatus !== 'all') params.status = filterStatus;
+      if (filterHealth === 'invalid') params.health = 'invalid';
+      params.page = page;
+      params.page_size = pageSize;
       const res = await api.get('/tools', { params });
-      setTools(res.data ?? []);
+      setTools(res.data?.items ?? []);
+      setTotal(res.data?.total ?? 0);
     } catch {
       msg.error('加载失败');
     } finally {
       setLoading(false);
     }
-  }, [msg, filterType, filterName, filterDesc, filterCategory, filterStatus]);
+  }, [
+    msg,
+    filterType,
+    debouncedName,
+    debouncedDesc,
+    filterCategory,
+    filterStatus,
+    filterHealth,
+    page,
+    pageSize,
+  ]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -253,26 +318,19 @@ export default function ToolsPage() {
   useEffect(() => {
     fetch();
     fetchCategories();
-    checkConsistency();
-  }, [fetch, fetchCategories, checkConsistency]);
+  }, [fetch, fetchCategories]);
 
-  // Auto-poll sync status every 30s
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await api.post('/tools/sync/scan');
-        const data = res.data as SyncScanOut;
-        setInconsistentCount(
-          data.only_in_db.length + data.only_in_fs.length + data.modified.length,
-        );
-      } catch {
-        // silent
-      }
+  // ── Stats ──────────────────────────────────────────────────────────────
+
+  const stats = useMemo(() => {
+    const active = tools.filter((t) => t.is_active).length;
+    return {
+      total: tools.length,
+      active,
+      inactive: tools.length - active,
+      builtin: tools.filter((t) => t.is_builtin).length,
     };
-    poll();
-    const timer = setInterval(poll, 30000);
-    return () => clearInterval(timer);
-  }, []);
+  }, [tools]);
 
   // ── Filtered data ──────────────────────────────────────────────────────
 
@@ -340,7 +398,6 @@ export default function ToolsPage() {
   };
 
   const handleToggle = async (tool: ToolItem) => {
-    // Validate before enabling a skill
     if (tool.type === 'skill' && !tool.is_active) {
       try {
         const res = await api.post(`/tools/${tool.id}/validate`);
@@ -388,15 +445,35 @@ export default function ToolsPage() {
 
   const handleBatchToggle = async (active: boolean) => {
     try {
-      await api.post('/tools/batch-status', {
+      const res = await api.post('/tools/batch-status', {
         tool_ids: [...selectedIds],
         is_active: active,
       });
-      msg.success(`已${active ? '启用' : '停用'} ${selectedIds.size} 个工具`);
+      const skipped = res.data?.skipped as string[] | undefined;
+      if (skipped?.length) {
+        msg.warning(
+          `已${active ? '启用' : '停用'} ${res.data?.count ?? 0} 个，跳过 ${skipped.length} 个无效 skill: ${skipped.join(', ')}`,
+        );
+      } else {
+        msg.success(`已${active ? '启用' : '停用'} ${selectedIds.size} 个工具`);
+      }
       clearSelection();
       fetch();
     } catch {
       msg.error('批量操作失败');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    try {
+      await api.post('/tools/batch-delete', {
+        tool_ids: [...selectedIds],
+      });
+      msg.success(`已删除 ${selectedIds.size} 个工具`);
+      clearSelection();
+      fetch();
+    } catch {
+      msg.error('批量删除失败');
     }
   };
 
@@ -673,6 +750,488 @@ export default function ToolsPage() {
 
   const selectedCount = selectedIds.size;
 
+  // ── Table columns ──────────────────────────────────────────────────────
+
+  const tableColumns: ColumnsType<ToolItem> = [
+    {
+      title: '名称',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name: string, record: ToolItem) => (
+        <Space size={8}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: nameToGradient(name),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontSize: 14,
+              flexShrink: 0,
+            }}
+          >
+            {typeIcon(record.type)}
+          </div>
+          <Space size={4}>
+            <Typography.Text strong style={{ fontSize: 13 }}>
+              {name}
+            </Typography.Text>
+            {record.is_builtin && (
+              <Tag
+                icon={<SafetyCertificateOutlined />}
+                color="gold"
+                style={{ borderRadius: 4, fontSize: 10, margin: 0 }}
+              >
+                内置
+              </Tag>
+            )}
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 90,
+      render: (t: string) => (
+        <Tag color={typeColor(t)} style={{ borderRadius: 4, fontSize: 11 }}>
+          {typeLabel(t)}
+        </Tag>
+      ),
+    },
+    {
+      title: '分类',
+      dataIndex: 'category',
+      key: 'category',
+      width: 100,
+      render: (c: string | null) =>
+        c ? (
+          <Tag color="geekblue" style={{ borderRadius: 4, fontSize: 11 }}>
+            {c}
+          </Tag>
+        ) : (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            -
+          </Typography.Text>
+        ),
+    },
+    {
+      title: '描述',
+      dataIndex: 'description',
+      key: 'description',
+      ellipsis: true,
+      render: (d: string | null) => (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {d || '暂无描述'}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      width: 80,
+      render: (active: boolean) => (
+        <Tag color={active ? 'green' : 'default'} style={{ borderRadius: 4, fontSize: 11 }}>
+          {active ? '启用' : '停用'}
+        </Tag>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 160,
+      render: (_: unknown, r: ToolItem) => (
+        <Space size={2}>
+          {r.type === 'skill' && (
+            <Tooltip title="高级编辑">
+              <Button
+                type="text"
+                size="small"
+                style={{ color: '#3B82F6' }}
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setSkillEditorTool(r);
+                  setSkillEditorOpen(true);
+                }}
+              />
+            </Tooltip>
+          )}
+          {r.type === 'skill' && (
+            <Tooltip title="版本历史">
+              <Button
+                type="text"
+                size="small"
+                icon={<HistoryOutlined />}
+                onClick={() => openVersions(r)}
+              />
+            </Tooltip>
+          )}
+          {!r.is_builtin && (
+            <Tooltip title="编辑">
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => openEdit(r)}
+              />
+            </Tooltip>
+          )}
+          {!r.is_builtin && (
+            <>
+              <Tooltip title={r.is_active ? '停用' : '启用'}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={r.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
+                  onClick={() => handleToggle(r)}
+                />
+              </Tooltip>
+              <Popconfirm
+                title="确定删除？"
+                onConfirm={() => handleDelete(r.id)}
+                okText="删除"
+                cancelText="取消"
+              >
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  // ── Stats bar ──────────────────────────────────────────────────────────
+
+  const renderStatsBar = () => (
+    <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
+      {(
+        [
+          { label: '工具总数', value: stats.total, color: '#0f172a' },
+          { label: '已启用', value: stats.active, color: token.colorSuccess },
+          { label: '已停用', value: stats.inactive, color: token.colorError },
+          { label: '内置', value: stats.builtin, color: token.colorWarning },
+        ] as const
+      ).map((s) => (
+        <Col xs={12} sm={6} key={s.label}>
+          <Card
+            size="small"
+            style={{
+              borderRadius: 12,
+              textAlign: 'center',
+              border: `1px solid ${token.colorBorderSecondary}`,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            }}
+          >
+            <Typography.Text style={{ fontSize: 12, color: token.colorTextTertiary }}>
+              {s.label}
+            </Typography.Text>
+            <div style={{ fontSize: 24, fontWeight: 700, color: s.color, lineHeight: 1.3 }}>
+              {s.value}
+            </div>
+          </Card>
+        </Col>
+      ))}
+    </Row>
+  );
+
+  // ── Render tool card ───────────────────────────────────────────────────
+
+  const renderToolCard = (tool: ToolItem) => {
+    const isSelected = selectedIds.has(tool.id);
+    const cfg = tool.config || {};
+    const version = cfg.version as string | undefined;
+    const skillPrompt = cfg.skill_prompt as string | undefined;
+    const isInconsistent =
+      tool.type === 'skill' && consistencyMap.has(tool.id) && consistencyMap.get(tool.id) === false;
+    const isInvalid = tool.type === 'skill' && tool.is_valid === false;
+
+    return (
+      <Col xs={24} sm={12} lg={8} xl={6} key={tool.id}>
+        <Card
+          hoverable
+          size="small"
+          style={{
+            borderRadius: 14,
+            height: '100%',
+            borderColor: isSelected ? token.colorPrimary : token.colorBorderSecondary,
+            boxShadow: isSelected
+              ? `0 0 0 2px ${token.colorPrimary}20, 0 2px 8px rgba(0,0,0,0.06)`
+              : '0 2px 8px rgba(0,0,0,0.04)',
+            overflow: 'hidden',
+            transition: 'box-shadow 0.2s, border-color 0.2s',
+            cursor: 'default',
+          }}
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('button') || target.closest('.ant-tag')) return;
+            setPreviewTool(tool);
+          }}
+        >
+          {/* Header with icon */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <Checkbox
+              checked={isSelected}
+              onChange={() => toggleSelect(tool.id)}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: nameToGradient(tool.name),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontSize: 16,
+                flexShrink: 0,
+              }}
+            >
+              {typeIcon(tool.type)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    color: tool.is_active ? token.colorSuccess : token.colorTextTertiary,
+                    fontSize: 8,
+                    flexShrink: 0,
+                  }}
+                >
+                  ●
+                </span>
+                <Typography.Text
+                  strong
+                  ellipsis={{ tooltip: tool.name }}
+                  style={{ fontSize: 14, flex: 1 }}
+                >
+                  {tool.name}
+                </Typography.Text>
+              </div>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                {typeLabel(tool.type)}
+                {version ? ` · v${version}` : ''}
+              </Typography.Text>
+            </div>
+          </div>
+
+          {/* Tags */}
+          <Space wrap size={[4, 4]} style={{ marginBottom: 10 }}>
+            {tool.is_builtin && (
+              <Tag
+                icon={<SafetyCertificateOutlined />}
+                color="gold"
+                style={{ borderRadius: 6, fontSize: 11, margin: 0 }}
+              >
+                内置
+              </Tag>
+            )}
+            <Tag color={typeColor(tool.type)} style={{ borderRadius: 6, fontSize: 11, margin: 0 }}>
+              {typeLabel(tool.type)}
+            </Tag>
+            {tool.category && (
+              <Tag
+                color="geekblue"
+                style={{ borderRadius: 6, fontSize: 11, margin: 0 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFilterCategory(tool.category!);
+                }}
+              >
+                {tool.category}
+              </Tag>
+            )}
+            {isInvalid && (
+              <Tooltip title="Skill 目录或 SKILL.md 文件缺失，无法启用">
+                <Tag
+                  color="error"
+                  style={{ borderRadius: 6, fontSize: 11, margin: 0, cursor: 'help' }}
+                  icon={<CloseCircleOutlined />}
+                >
+                  无效
+                </Tag>
+              </Tooltip>
+            )}
+            {isInconsistent && (
+              <Popover
+                title="文件不一致"
+                content={
+                  <Space direction="vertical" size={4}>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      SKILL.md 文件与数据库不一致
+                    </Typography.Text>
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<ArrowDownOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncFromFs(tool.id);
+                      }}
+                      style={{ padding: 0 }}
+                    >
+                      从文件同步到数据库
+                    </Button>
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<ArrowUpOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncToFs(tool.id);
+                      }}
+                      style={{ padding: 0 }}
+                    >
+                      从数据库同步到文件
+                    </Button>
+                  </Space>
+                }
+                trigger="click"
+              >
+                <Tag
+                  color="orange"
+                  style={{ borderRadius: 6, fontSize: 11, margin: 0, cursor: 'pointer' }}
+                  icon={<ExclamationCircleOutlined />}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  不一致
+                </Tag>
+              </Popover>
+            )}
+            {(cfg.source_label as string) && (
+              <Tag
+                color={(cfg.source_label as string) === 'standard' ? 'purple' : 'cyan'}
+                style={{ borderRadius: 6, fontSize: 11, margin: 0 }}
+              >
+                {(cfg.source_label as string) === 'standard' ? '标准' : '扩展'}
+              </Tag>
+            )}
+            {skillPrompt && (
+              <Tag
+                color="purple"
+                style={{ borderRadius: 6, fontSize: 11, margin: 0 }}
+                icon={<RobotOutlined />}
+              >
+                含提示词
+              </Tag>
+            )}
+            {(cfg.license as string) && (
+              <Tag style={{ borderRadius: 6, fontSize: 11, margin: 0 }}>
+                {cfg.license as string}
+              </Tag>
+            )}
+            {Array.isArray(cfg.allowed_tools) && (cfg.allowed_tools as string[]).length > 0 && (
+              <Tag style={{ borderRadius: 6, fontSize: 11, margin: 0 }}>
+                {(cfg.allowed_tools as string[]).length} tools
+              </Tag>
+            )}
+          </Space>
+
+          {/* Description */}
+          <Typography.Paragraph
+            type="secondary"
+            ellipsis={{ rows: 2 }}
+            style={{ marginBottom: 12, fontSize: 12, minHeight: 36 }}
+          >
+            {tool.description || '暂无描述'}
+          </Typography.Paragraph>
+
+          {/* Actions */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 2,
+              borderTop: `1px solid ${token.colorBorderSecondary}`,
+              paddingTop: 8,
+              marginTop: 4,
+            }}
+          >
+            {tool.type === 'skill' && (
+              <Tooltip title="高级编辑 (文件管理)">
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ color: '#3B82F6' }}
+                  icon={<EditOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSkillEditorTool(tool);
+                    setSkillEditorOpen(true);
+                  }}
+                />
+              </Tooltip>
+            )}
+            {tool.type === 'skill' && (
+              <Tooltip title="版本历史">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<HistoryOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openVersions(tool);
+                  }}
+                />
+              </Tooltip>
+            )}
+            {!tool.is_builtin && (
+              <Tooltip title="编辑">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(tool);
+                  }}
+                />
+              </Tooltip>
+            )}
+            {!tool.is_builtin && (
+              <>
+                <Tooltip title={tool.is_active ? '停用' : '启用'}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={tool.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggle(tool);
+                    }}
+                  />
+                </Tooltip>
+                <Popconfirm
+                  title="确定删除？"
+                  onConfirm={(e) => {
+                    e?.stopPropagation();
+                    handleDelete(tool.id);
+                  }}
+                  onCancel={(e) => e?.stopPropagation()}
+                >
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Popconfirm>
+              </>
+            )}
+          </div>
+        </Card>
+      </Col>
+    );
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -687,7 +1246,7 @@ export default function ToolsPage() {
         }}
       >
         <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>
-          工具注册
+          工具市场
         </Typography.Title>
         <Space>
           <Button
@@ -709,7 +1268,6 @@ export default function ToolsPage() {
               <Button
                 icon={<SyncOutlined spin={syncScanning} />}
                 onClick={handleSyncScan}
-                type={inconsistentCount > 0 ? 'default' : 'default'}
                 style={
                   inconsistentCount > 0
                     ? { borderColor: token.colorWarning, color: token.colorWarning }
@@ -752,7 +1310,10 @@ export default function ToolsPage() {
         </Space>
       </div>
 
-      {/* Search / Filter Bar */}
+      {/* Stats bar */}
+      {!loading && renderStatsBar()}
+
+      {/* Toolbar */}
       <Card
         size="small"
         style={{
@@ -765,37 +1326,51 @@ export default function ToolsPage() {
           <Col xs={24} sm={6} md={4}>
             <Select
               value={filterType}
-              onChange={(v) => setFilterType(v)}
+              onChange={(v) => {
+                setFilterType(v);
+                setPage(1);
+              }}
               style={{ width: '100%' }}
               options={[
                 { value: 'all', label: '全部类型' },
+                { value: 'builtin', label: '内置工具' },
                 { value: 'skill', label: 'Skill' },
+                { value: 'plugin', label: 'Plugin' },
                 { value: 'mcp', label: 'MCP' },
                 { value: 'api', label: 'API' },
               ]}
             />
           </Col>
-          <Col xs={24} sm={6} md={5}>
+          <Col xs={24} sm={6} md={4}>
             <Input
               placeholder="搜索名称..."
               value={filterName}
-              onChange={(e) => setFilterName(e.target.value)}
+              onChange={(e) => {
+                setFilterName(e.target.value);
+                setPage(1);
+              }}
               prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
               allowClear
             />
           </Col>
-          <Col xs={24} sm={6} md={5}>
+          <Col xs={24} sm={6} md={4}>
             <Input
               placeholder="搜索描述..."
               value={filterDesc}
-              onChange={(e) => setFilterDesc(e.target.value)}
+              onChange={(e) => {
+                setFilterDesc(e.target.value);
+                setPage(1);
+              }}
               allowClear
             />
           </Col>
           <Col xs={24} sm={6} md={3}>
             <Select
               value={filterCategory}
-              onChange={(v) => setFilterCategory(v)}
+              onChange={(v) => {
+                setFilterCategory(v);
+                setPage(1);
+              }}
               style={{ width: '100%' }}
               placeholder="分类"
               options={[
@@ -812,23 +1387,61 @@ export default function ToolsPage() {
           </Col>
           <Col xs={24} sm={6} md={3}>
             <Select
-              value={filterStatus}
-              onChange={(v) => setFilterStatus(v)}
+              value={filterHealth === 'invalid' ? 'invalid' : filterStatus}
+              onChange={(v) => {
+                if (v === 'invalid') {
+                  setFilterHealth('invalid');
+                  setFilterStatus('all');
+                } else {
+                  setFilterHealth('all');
+                  setFilterStatus(v);
+                }
+                setPage(1);
+              }}
               style={{ width: '100%' }}
               options={[
                 { value: 'all', label: '全部状态' },
                 { value: 'active', label: '启用' },
                 { value: 'inactive', label: '停用' },
+                { value: 'invalid', label: '无效 Skill' },
               ]}
             />
           </Col>
           <Col flex="auto" style={{ textAlign: 'right' }}>
-            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-              共 {filteredTools.length} 个工具
-            </Typography.Text>
+            <Space>
+              <Segmented
+                size="small"
+                value={viewMode}
+                onChange={(v) => setViewMode(v as 'card' | 'table')}
+                options={[
+                  { value: 'card', icon: <AppstoreOutlined /> },
+                  { value: 'table', icon: <UnorderedListOutlined /> },
+                ]}
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                共 {total} 个
+              </Typography.Text>
+            </Space>
           </Col>
         </Row>
       </Card>
+
+      {/* Type tabs */}
+      <Tabs
+        activeKey={filterType}
+        onChange={(v) => {
+          setFilterType(v);
+          setPage(1);
+        }}
+        style={{ marginBottom: 8 }}
+        items={[
+          { key: 'all', label: '全部' },
+          { key: 'builtin', label: '内置工具' },
+          { key: 'skill', label: '技能市场' },
+          { key: 'plugin', label: '插件市场' },
+          { key: 'mcp', label: 'MCP 市场' },
+        ]}
+      />
 
       {/* Batch action bar */}
       {selectedCount > 0 && (
@@ -855,6 +1468,17 @@ export default function ToolsPage() {
             <Button size="small" icon={<StopOutlined />} onClick={() => handleBatchToggle(false)}>
               批量停用
             </Button>
+            <Popconfirm
+              title={`确定删除选中的 ${selectedCount} 个工具？`}
+              onConfirm={handleBatchDelete}
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />}>
+                批量删除
+              </Button>
+            </Popconfirm>
             <Button size="small" icon={<ClearOutlined />} onClick={clearSelection}>
               取消选择
             </Button>
@@ -862,11 +1486,17 @@ export default function ToolsPage() {
         </Card>
       )}
 
-      {/* Card Grid */}
+      {/* Content */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 80 }}>
-          <Spin size="large" />
-        </div>
+        <Row gutter={[16, 16]}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Col xs={24} sm={12} lg={8} xl={6} key={i}>
+              <Card size="small" style={{ borderRadius: 12 }}>
+                <Skeleton active title paragraph={{ rows: 3 }} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
       ) : filteredTools.length === 0 ? (
         <Card style={{ borderRadius: 12, textAlign: 'center', padding: 60 }}>
           <Empty description="暂无工具">
@@ -880,6 +1510,47 @@ export default function ToolsPage() {
             </Space>
           </Empty>
         </Card>
+      ) : viewMode === 'table' ? (
+        <>
+          <div
+            style={{
+              marginBottom: 12,
+              paddingLeft: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <Checkbox
+              checked={selectedCount === filteredTools.length && filteredTools.length > 0}
+              indeterminate={selectedCount > 0 && selectedCount < filteredTools.length}
+              onChange={toggleSelectAll}
+            >
+              全选
+            </Checkbox>
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              共 {total} 个工具，当前显示 {filteredTools.length} 个
+            </Typography.Text>
+          </div>
+          <Table<ToolItem>
+            rowKey="id"
+            dataSource={filteredTools}
+            columns={tableColumns}
+            size="middle"
+            rowSelection={{
+              selectedRowKeys: [...selectedIds],
+              onChange: (keys) => setSelectedIds(new Set(keys as string[])),
+            }}
+            onRow={(record) => ({
+              style: { cursor: 'pointer' },
+              onClick: () => {
+                setPreviewTool(record);
+              },
+            })}
+            pagination={false}
+            style={{ borderRadius: 12, overflow: 'hidden' }}
+          />
+        </>
       ) : (
         <>
           <div style={{ marginBottom: 12, paddingLeft: 4 }}>
@@ -892,254 +1563,59 @@ export default function ToolsPage() {
             </Checkbox>
           </div>
 
-          <Row gutter={[16, 16]}>
-            {filteredTools.map((tool) => {
-              const isSelected = selectedIds.has(tool.id);
-              const cfg = tool.config || {};
-              const version = cfg.version as string | undefined;
-              const skillPrompt = cfg.skill_prompt as string | undefined;
+          <Row gutter={[16, 16]}>{filteredTools.map(renderToolCard)}</Row>
 
-              return (
-                <Col xs={24} sm={12} lg={8} xl={6} key={tool.id}>
-                  <Badge.Ribbon
-                    text={tool.is_active ? '启用' : '停用'}
-                    color={tool.is_active ? token.colorSuccess : token.colorTextTertiary}
-                  >
-                    <Card
-                      hoverable
-                      size="small"
-                      style={{
-                        borderRadius: 12,
-                        height: '100%',
-                        borderColor: isSelected ? token.colorPrimary : undefined,
-                        boxShadow: isSelected ? `0 0 0 2px ${token.colorPrimary}20` : undefined,
-                      }}
-                      onClick={(e) => {
-                        const target = e.target as HTMLElement;
-                        if (target.closest('button') || target.closest('.ant-tag')) return;
-                        toggleSelect(tool.id);
-                      }}
-                      title={
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Space>
-                            <Checkbox
-                              checked={isSelected}
-                              onChange={() => toggleSelect(tool.id)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span style={{ color: typeColor(tool.type), fontSize: 16 }}>
-                              {typeIcon(tool.type)}
-                            </span>
-                            <Typography.Text
-                              strong
-                              ellipsis={{ tooltip: tool.name }}
-                              style={{ maxWidth: 100, fontSize: 14 }}
-                            >
-                              {tool.name}
-                            </Typography.Text>
-                          </Space>
-                          <Space>
-                            <Tag
-                              color={typeColor(tool.type)}
-                              style={{ borderRadius: 4, margin: 0, fontSize: 11 }}
-                            >
-                              {typeLabel(tool.type)}
-                            </Tag>
-                            {tool.type === 'skill' &&
-                              consistencyMap.has(tool.id) &&
-                              consistencyMap.get(tool.id) === false && (
-                                <Popover
-                                  title="文件不一致"
-                                  content={
-                                    <Space direction="vertical" size={4}>
-                                      <Typography.Text style={{ fontSize: 12 }}>
-                                        SKILL.md 文件与数据库不一致
-                                      </Typography.Text>
-                                      <Button
-                                        size="small"
-                                        type="link"
-                                        icon={<ArrowDownOutlined />}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleSyncFromFs(tool.id);
-                                        }}
-                                        style={{ padding: 0 }}
-                                      >
-                                        从文件同步到数据库
-                                      </Button>
-                                      <Button
-                                        size="small"
-                                        type="link"
-                                        icon={<ArrowUpOutlined />}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleSyncToFs(tool.id);
-                                        }}
-                                        style={{ padding: 0 }}
-                                      >
-                                        从数据库同步到文件
-                                      </Button>
-                                    </Space>
-                                  }
-                                  trigger="click"
-                                >
-                                  <Tag
-                                    color="orange"
-                                    style={{
-                                      borderRadius: 4,
-                                      margin: 0,
-                                      fontSize: 11,
-                                      cursor: 'pointer',
-                                    }}
-                                    icon={<ExclamationCircleOutlined />}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    不一致
-                                  </Tag>
-                                </Popover>
-                              )}
-                          </Space>
-                        </div>
-                      }
-                      actions={[
-                        tool.type === 'skill' && (
-                          <Tooltip title="高级编辑 (文件管理)" key="skillEditor">
-                            <Button
-                              type="text"
-                              size="small"
-                              style={{ color: '#3B82F6' }}
-                              icon={<EditOutlined />}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSkillEditorTool(tool);
-                                setSkillEditorOpen(true);
-                              }}
-                            />
-                          </Tooltip>
-                        ),
-                        tool.type === 'skill' && (
-                          <Tooltip title="版本历史" key="versions">
-                            <Button
-                              type="text"
-                              size="small"
-                              icon={<HistoryOutlined />}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openVersions(tool);
-                              }}
-                            />
-                          </Tooltip>
-                        ),
-                        <Tooltip title="编辑" key="edit">
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(tool);
-                            }}
-                          />
-                        </Tooltip>,
-                        <Tooltip title={tool.is_active ? '停用' : '启用'} key="toggle">
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={tool.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggle(tool);
-                            }}
-                          />
-                        </Tooltip>,
-                        <Popconfirm
-                          key="delete"
-                          title="确定删除？"
-                          onConfirm={(e) => {
-                            e?.stopPropagation();
-                            handleDelete(tool.id);
-                          }}
-                          onCancel={(e) => e?.stopPropagation()}
-                        >
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </Popconfirm>,
-                      ]}
-                    >
-                      <div style={{ minHeight: 80 }}>
-                        <Typography.Paragraph
-                          type="secondary"
-                          ellipsis={{ rows: 3 }}
-                          style={{ marginBottom: 12, fontSize: 13, minHeight: 60 }}
-                        >
-                          {tool.description || '暂无描述'}
-                        </Typography.Paragraph>
-
-                        <Space wrap size={[4, 4]}>
-                          {tool.category && (
-                            <Tag
-                              color="geekblue"
-                              style={{ borderRadius: 4, fontSize: 11 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFilterCategory(tool.category!);
-                              }}
-                            >
-                              {tool.category}
-                            </Tag>
-                          )}
-                          {version && (
-                            <Tag color="blue" style={{ borderRadius: 4, fontSize: 11 }}>
-                              v{version}
-                            </Tag>
-                          )}
-                          {(cfg.license as string) && (
-                            <Tag style={{ borderRadius: 4, fontSize: 11 }}>
-                              {cfg.license as string}
-                            </Tag>
-                          )}
-                          {(cfg.source_label as string) && (
-                            <Tag
-                              color={(cfg.source_label as string) === 'core' ? 'green' : 'orange'}
-                              style={{ borderRadius: 4, fontSize: 11 }}
-                            >
-                              hermes/{cfg.source_label as string}
-                            </Tag>
-                          )}
-                          {skillPrompt && (
-                            <Tag
-                              color="purple"
-                              style={{ borderRadius: 4, fontSize: 11 }}
-                              icon={<RobotOutlined />}
-                            >
-                              含提示词
-                            </Tag>
-                          )}
-                          {Array.isArray(cfg.allowed_tools) &&
-                            (cfg.allowed_tools as string[]).length > 0 && (
-                              <Tag style={{ borderRadius: 4, fontSize: 11 }}>
-                                {(cfg.allowed_tools as string[]).length} tools
-                              </Tag>
-                            )}
-                        </Space>
-                      </div>
-                    </Card>
-                  </Badge.Ribbon>
-                </Col>
-              );
-            })}
-          </Row>
+          {/* Pagination */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 24,
+              padding: '0 4px',
+            }}
+          >
+            <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+              共 {total} 个工具，第 {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)}{' '}
+              个
+            </Typography.Text>
+            {total > pageSize && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Select
+                  value={pageSize}
+                  onChange={(v) => {
+                    setPageSize(v);
+                    setPage(1);
+                  }}
+                  size="small"
+                  style={{ width: 90 }}
+                  options={[
+                    { value: 12, label: '12 / 页' },
+                    { value: 24, label: '24 / 页' },
+                    { value: 48, label: '48 / 页' },
+                    { value: 96, label: '96 / 页' },
+                  ]}
+                />
+                <Button
+                  size="small"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  上一页
+                </Button>
+                <Typography.Text style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                  {page} / {Math.ceil(total / pageSize)}
+                </Typography.Text>
+                <Button
+                  size="small"
+                  disabled={page >= Math.ceil(total / pageSize)}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  下一页
+                </Button>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -1268,10 +1744,23 @@ export default function ToolsPage() {
                       <Typography.Text strong style={{ fontSize: 13 }}>
                         {item.name}
                       </Typography.Text>
+                      {item.source_label && (
+                        <Tag
+                          color={item.source_label === 'standard' ? 'purple' : 'cyan'}
+                          style={{ borderRadius: 4, fontSize: 10, marginLeft: 8 }}
+                        >
+                          {item.source_label === 'standard' ? '标准' : '扩展'}
+                        </Tag>
+                      )}
+                      {item.fs_version && (
+                        <Tag color="blue" style={{ borderRadius: 4, fontSize: 10, marginLeft: 4 }}>
+                          v{item.fs_version}
+                        </Tag>
+                      )}
                       {item.category && (
                         <Tag
                           color="geekblue"
-                          style={{ borderRadius: 4, fontSize: 10, marginLeft: 8 }}
+                          style={{ borderRadius: 4, fontSize: 10, marginLeft: 4 }}
                         >
                           {item.category}
                         </Tag>
@@ -1340,6 +1829,11 @@ export default function ToolsPage() {
                         <Typography.Text strong style={{ fontSize: 13 }}>
                           {item.name}
                         </Typography.Text>
+                        {item.db_version && (
+                          <Tag color="blue" style={{ borderRadius: 4, fontSize: 10 }}>
+                            v{item.db_version}
+                          </Tag>
+                        )}
                         {item.is_active && (
                           <Tag color="green" style={{ borderRadius: 4, fontSize: 10 }}>
                             已启用
@@ -1406,17 +1900,22 @@ export default function ToolsPage() {
                       onChange={() => toggleSyncItem(item.name)}
                     />
                     <div style={{ flex: 1 }}>
-                      <Typography.Text strong style={{ fontSize: 13 }}>
-                        {item.name}
-                      </Typography.Text>
-                      {item.fs_category && item.fs_category !== item.category && (
-                        <Tag
-                          color="orange"
-                          style={{ borderRadius: 4, fontSize: 10, marginLeft: 8 }}
-                        >
-                          {item.category} → {item.fs_category}
+                      <Space size={4}>
+                        <Typography.Text strong style={{ fontSize: 13 }}>
+                          {item.name}
+                        </Typography.Text>
+                        {item.source_label && (
+                          <Tag
+                            color={item.source_label === 'standard' ? 'purple' : 'cyan'}
+                            style={{ borderRadius: 4, fontSize: 10 }}
+                          >
+                            {item.source_label === 'standard' ? '标准' : '扩展'}
+                          </Tag>
+                        )}
+                        <Tag color="orange" style={{ borderRadius: 4, fontSize: 10 }}>
+                          v{item.db_version || '?'} → v{item.fs_version || '?'}
                         </Tag>
-                      )}
+                      </Space>
                       <Typography.Paragraph
                         type="secondary"
                         style={{ fontSize: 11, margin: '2px 0 0' }}
@@ -1479,8 +1978,10 @@ export default function ToolsPage() {
                 <Select
                   options={[
                     { value: 'skill', label: 'Skill' },
+                    { value: 'plugin', label: 'Plugin' },
                     { value: 'mcp', label: 'MCP' },
                     { value: 'api', label: 'API' },
+                    { value: 'builtin', label: '内置工具' },
                   ]}
                 />
               </Form.Item>
@@ -1681,6 +2182,208 @@ export default function ToolsPage() {
           )}
         </Space>
       </Modal>
+
+      {/* Skill Preview Drawer */}
+      <Drawer
+        title={null}
+        open={!!previewTool}
+        onClose={() => setPreviewTool(null)}
+        width={520}
+        styles={{ body: { padding: 0 } }}
+        extra={
+          previewTool && (
+            <Space>
+              {!previewTool.is_builtin && (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => {
+                      setPreviewTool(null);
+                      openEdit(previewTool);
+                    }}
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    icon={previewTool.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
+                    onClick={() => {
+                      handleToggle(previewTool);
+                      setPreviewTool(null);
+                    }}
+                  >
+                    {previewTool.is_active ? '停用' : '启用'}
+                  </Button>
+                </>
+              )}
+              <Button icon={<CloseCircleOutlined />} onClick={() => setPreviewTool(null)} />
+            </Space>
+          )
+        }
+      >
+        {previewTool && (
+          <div style={{ padding: '20px 24px' }}>
+            {/* Header */}
+            <div style={{ marginBottom: 24 }}>
+              <Space align="center" style={{ marginBottom: 8 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: nameToGradient(previewTool.name),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 16,
+                  }}
+                >
+                  {typeIcon(previewTool.type)}
+                </div>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  {previewTool.name}
+                </Typography.Title>
+              </Space>
+              <Space size={4} style={{ marginBottom: 12 }}>
+                {previewTool.is_builtin && (
+                  <Tag
+                    icon={<SafetyCertificateOutlined />}
+                    color="gold"
+                    style={{ borderRadius: 4, fontSize: 11 }}
+                  >
+                    内置
+                  </Tag>
+                )}
+                <Tag color={typeColor(previewTool.type)} style={{ borderRadius: 4, fontSize: 11 }}>
+                  {typeLabel(previewTool.type)}
+                </Tag>
+                <Tag
+                  color={previewTool.is_active ? 'green' : 'default'}
+                  style={{ borderRadius: 4, fontSize: 11 }}
+                >
+                  {previewTool.is_active ? '启用' : '停用'}
+                </Tag>
+                {previewTool.category && (
+                  <Tag color="geekblue" style={{ borderRadius: 4, fontSize: 11 }}>
+                    {previewTool.category}
+                  </Tag>
+                )}
+                {(previewTool.config?.version as string) && (
+                  <Tag color="blue" style={{ borderRadius: 4, fontSize: 11 }}>
+                    v{previewTool.config.version as string}
+                  </Tag>
+                )}
+                {(previewTool.config?.source_label as string) && (
+                  <Tag
+                    color={
+                      (previewTool.config.source_label as string) === 'standard' ? 'purple' : 'cyan'
+                    }
+                    style={{ borderRadius: 4, fontSize: 11 }}
+                  >
+                    {(previewTool.config.source_label as string) === 'standard' ? '标准' : '扩展'}
+                  </Tag>
+                )}
+              </Space>
+            </div>
+
+            {/* Description */}
+            <div style={{ marginBottom: 20 }}>
+              <Typography.Text
+                type="secondary"
+                style={{ fontSize: 12, marginBottom: 4, display: 'block' }}
+              >
+                描述
+              </Typography.Text>
+              <Typography.Paragraph style={{ fontSize: 14, margin: 0 }}>
+                {previewTool.description || '暂无描述'}
+              </Typography.Paragraph>
+            </div>
+
+            {/* SKILL.md content */}
+            {previewTool.type === 'skill' && (previewTool.config?.skill_prompt as string) && (
+              <div style={{ marginBottom: 20 }}>
+                <Typography.Text
+                  type="secondary"
+                  style={{ fontSize: 12, marginBottom: 8, display: 'block' }}
+                >
+                  SKILL.md 内容
+                </Typography.Text>
+                <div
+                  style={{
+                    background: token.colorFillQuaternary,
+                    borderRadius: 8,
+                    padding: 12,
+                    maxHeight: 300,
+                    overflow: 'auto',
+                  }}
+                  data-color-mode="light"
+                >
+                  <MDEditor.Markdown source={previewTool.config.skill_prompt as string} />
+                </div>
+              </div>
+            )}
+
+            {/* Metadata */}
+            {previewTool.type === 'skill' && (
+              <div style={{ marginBottom: 20 }}>
+                <Typography.Text
+                  type="secondary"
+                  style={{ fontSize: 12, marginBottom: 8, display: 'block' }}
+                >
+                  元数据
+                </Typography.Text>
+                <div
+                  style={{
+                    background: token.colorFillQuaternary,
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    maxHeight: 200,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {JSON.stringify(
+                    {
+                      version: previewTool.config?.version,
+                      license: previewTool.config?.license,
+                      metadata: previewTool.config?.metadata,
+                      allowed_tools: previewTool.config?.allowed_tools,
+                    },
+                    null,
+                    2,
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Info */}
+            <div>
+              <Typography.Text
+                type="secondary"
+                style={{ fontSize: 12, marginBottom: 8, display: 'block' }}
+              >
+                信息
+              </Typography.Text>
+              <Space direction="vertical" size={4}>
+                <Typography.Text style={{ fontSize: 13 }}>ID: {previewTool.id}</Typography.Text>
+                {previewTool.source_path && (
+                  <Typography.Text style={{ fontSize: 13 }} type="secondary">
+                    路径: {previewTool.source_path}
+                  </Typography.Text>
+                )}
+                <Typography.Text style={{ fontSize: 13 }} type="secondary">
+                  创建: {previewTool.created_at}
+                </Typography.Text>
+                <Typography.Text style={{ fontSize: 13 }} type="secondary">
+                  更新: {previewTool.updated_at}
+                </Typography.Text>
+              </Space>
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       {/* Skill Editor Drawer */}
       {skillEditorTool && (

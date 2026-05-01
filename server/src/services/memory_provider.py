@@ -228,20 +228,19 @@ class DatabaseMemoryProvider(MemoryProvider):
         uid = self._user_id
 
         async def _extract():
-            from langchain_openai import ChatOpenAI
             from langchain_core.messages import HumanMessage, SystemMessage
-            from src.config import settings
+            from src.core.model_factory import get_default_model
             from src.services.memory_service import memory_service
 
-            llm = ChatOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model="deepseek-v4-flash",
-                temperature=0.3,
-            )
+            try:
+                llm = await get_default_model()
+            except Exception:
+                logger.warning("Per-turn memory extraction: failed to get LLM model")
+                return
 
             prompt = (
-                "从以下运维对话中提取有价值的经验，区分个人记忆和团队记忆：\n\n"
+                "如同淘金者从泥沙中筛选金粒，从以下运维对话中提取有价值的经验，"
+                "区分个人记忆和团队记忆：\n\n"
                 f"用户：{user_content[:500]}\n"
                 f"助手：{assistant_content[:800]}\n\n"
                 "返回JSON，包含personal和team两个数组。\n"
@@ -253,7 +252,7 @@ class DatabaseMemoryProvider(MemoryProvider):
 
             try:
                 resp = await llm.ainvoke([
-                    SystemMessage(content="你是运维经验提取助手。只返回JSON。"),
+                    SystemMessage(content="你是运维经验的淘金者，在对话的沙砾中筛选智慧的颗粒。只返回JSON。"),
                     HumanMessage(content=prompt),
                 ])
 
@@ -279,7 +278,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                         scope="team", tags=["ops-knowledge", "per-turn"],
                     )
             except Exception:
-                logger.debug("Per-turn LLM extraction failed", exc_info=True)
+                logger.warning("Per-turn LLM extraction failed", exc_info=True)
 
         task = _asyncio.create_task(_extract())
         self._pending_tasks.append(task)
@@ -294,17 +293,14 @@ class DatabaseMemoryProvider(MemoryProvider):
         uid = self._user_id
 
         async def _summarize():
-            from langchain_openai import ChatOpenAI
-            from src.config import settings
+            from src.core.model_factory import get_default_model
             from src.services.memory_service import memory_service
 
-            llm = ChatOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                model="deepseek-v4-flash",
-                temperature=0.3,
-            )
-            await memory_service.summarize_session(sid, uid, llm)
+            try:
+                llm = await get_default_model()
+                await memory_service.summarize_session(sid, uid, llm)
+            except Exception:
+                logger.warning("Session-end summarization failed", exc_info=True)
 
         task = _asyncio.create_task(_summarize())
         self._pending_tasks.append(task)

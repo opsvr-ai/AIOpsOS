@@ -1,12 +1,11 @@
 """SleepDetector — background service that monitors session activity and
-triggers memory consolidation for idle sessions.
+triggers memory consolidation and skill review for idle sessions.
 
 Polls every 60 seconds:
   1. Finds sessions where sleep_status='awake' AND last_active_at < now() - 5min
   2. Marks them as sleep_status='sleeping'
   3. If auto_consolidate=true AND memory_status='unconsolidated', triggers consolidation
-
-Also provides wake_session() for the chat endpoint to reactivate sleeping sessions.
+  4. If skill_review_due=true, spawns SkillReviewAgent for background skill extraction
 """
 
 from __future__ import annotations
@@ -24,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 IDLE_THRESHOLD_MINUTES: int = 5
 POLL_INTERVAL_SECONDS: int = 60
+REVIEW_INTERVAL_TURNS: int = 15
+
+
+async def _run_skill_review(agent, session_id: str) -> None:
+    """Fire-and-forget wrapper for skill review with error handling."""
+    try:
+        result = await agent.review(session_id)
+        logger.info("Skill review complete for session %s: %s", session_id, result)
+    except Exception:
+        logger.exception("Skill review failed for session %s", session_id)
 
 
 class SleepDetector:
@@ -32,6 +41,7 @@ class SleepDetector:
     def __init__(self) -> None:
         self._running: bool = False
         self._task: _asyncio.Task | None = None
+        self._tick_count: int = 0
 
     @property
     def running(self) -> bool:
@@ -68,18 +78,26 @@ class SleepDetector:
 
     async def _tick(self) -> None:
         """Single detection tick: find idle sessions and process them."""
+        self._tick_count += 1
+        if self._tick_count % 10 == 0:
+            logger.info("SleepDetector heartbeat #%d", self._tick_count)
+
         threshold = datetime.now(UTC) - timedelta(minutes=IDLE_THRESHOLD_MINUTES)
 
         async with async_session_factory() as db:
             result = await db.execute(
-                select(Session.id, Session.user_id)
+                select(Session.id, Session.user_id,
+                       Session.auto_consolidate, Session.memory_status)
                 .where(
-                    Session.sleep_status == "awake",
                     Session.last_active_at < threshold,
+                    (Session.sleep_status == "awake") | (Session.sleep_status.is_(None)),
                 )
                 .limit(20)
             )
             idle_sessions = list(result.fetchall())
+
+        # Skill review runs every tick, independent of idle detection
+        await self._maybe_skill_review()
 
         if not idle_sessions:
             return
@@ -90,7 +108,34 @@ class SleepDetector:
             sid = str(row.id)
             uid = str(row.user_id)
             await self._put_to_sleep(sid)
-            await self._maybe_consolidate(sid, uid)
+            await self._maybe_consolidate(sid, uid, row.auto_consolidate, row.memory_status)
+
+    @staticmethod
+    async def _maybe_skill_review() -> None:
+        """Check for sessions flagged for skill review and spawn background reviews."""
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Session.id, Session.user_id)
+                .where(Session.skill_review_due == True)
+                .limit(5)
+            )
+            due_sessions = list(result.fetchall())
+
+        if not due_sessions:
+            return
+
+        logger.info("SleepDetector: %d session(s) due for skill review", len(due_sessions))
+
+        for row in due_sessions:
+            sid = str(row.id)
+            try:
+                from src.agent.sub_agents.skill_review_agent import SkillReviewAgent
+
+                agent = SkillReviewAgent()
+                # Fire-and-forget: review runs in background, resets flag on completion
+                _asyncio.create_task(_run_skill_review(agent, sid))
+            except Exception:
+                logger.exception("Failed to spawn SkillReviewAgent for session %s", sid)
 
     @staticmethod
     async def _put_to_sleep(session_id: str) -> None:
@@ -104,19 +149,10 @@ class SleepDetector:
             await db.commit()
 
     @staticmethod
-    async def _maybe_consolidate(session_id: str, user_id: str) -> None:
-        """Check if auto-consolidation should run and trigger it."""
-        async with async_session_factory() as db:
-            result = await db.execute(
-                select(Session.auto_consolidate, Session.memory_status)
-                .where(Session.id == session_id)
-            )
-            row = result.one_or_none()
-            if not row:
-                return
-
-            auto_consolidate, memory_status = row
-
+    async def _maybe_consolidate(session_id: str, user_id: str,
+                                 auto_consolidate: bool = True,
+                                 memory_status: str = "unconsolidated") -> None:
+        """Trigger memory consolidation if the session is eligible."""
         if not auto_consolidate or memory_status == "consolidated":
             logger.debug("Session %s: skip consolidation (auto=%s, status=%s)",
                          session_id, auto_consolidate, memory_status)

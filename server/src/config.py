@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     llm_api_key: str = ""
-    llm_base_url: str = "https://api.openai.com/v1"
+    llm_base_url: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     embedding_api_key: str = ""
@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     kb_monitor_enabled: bool = True
     kb_monitor_poll_interval: int = 30  # seconds between filesystem scans
     kb_monitor_model: str = "deepseek-v4-flash"
+    log_level: str = "INFO"
+    log_dir: str = "data/logs"
+    log_format: str = "text"
+    log_retention_days: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="")
 

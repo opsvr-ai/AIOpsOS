@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Card, Descriptions, Tag, Typography, Spin, Space, theme } from 'antd';
-import { SettingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import api from '@/services/api';
+import { Card, Descriptions, Tag, Typography, Spin, Space, theme, Tabs } from 'antd';
+import {
+  SettingOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  BgColorsOutlined,
+  CloudServerOutlined,
+} from '@ant-design/icons';
+import BrandSettings from './BrandSettings';
+import LdapWizard from './LdapWizard';
 
-export default function SystemPage() {
+function SystemInfo() {
   const { token } = theme.useToken();
   const [health, setHealth] = useState<{ status: string } | null>(null);
 
   useEffect(() => {
-    api
-      .get('/health')
-      .then((res) => setHealth(res.data))
+    fetch('/health')
+      .then((res) => res.json())
+      .then((data) => setHealth(data))
       .catch(() => setHealth({ status: 'unreachable' }));
   }, []);
 
@@ -37,19 +44,15 @@ export default function SystemPage() {
   ];
 
   const components = [
-    { name: 'API Server', status: health?.status === 'ok', desc: 'FastAPI 异步服务' },
-    { name: 'Agent Engine', status: true, desc: 'LangGraph 智能体引擎' },
-    { name: 'Knowledge Base', status: true, desc: 'LLM-WIKI 检索管道' },
-    { name: 'Memory Service', status: true, desc: 'pgvector 长期记忆' },
-    { name: 'Tool Registry', status: true, desc: 'Skill/MCP 工具注册' },
+    { name: 'API 服务', status: health?.status === 'ok', desc: 'FastAPI 异步服务' },
+    { name: '智能体引擎', status: true, desc: 'LangGraph 智能体引擎' },
+    { name: '知识库', status: true, desc: 'LLM-WIKI 检索管道' },
+    { name: '记忆服务', status: true, desc: 'pgvector 长期记忆' },
+    { name: '工具注册', status: true, desc: 'Skill/MCP 工具注册' },
   ];
 
   return (
     <div>
-      <Typography.Title level={4} style={{ marginBottom: 24, fontWeight: 600 }}>
-        <SettingOutlined style={{ marginRight: 8 }} />
-        系统管理
-      </Typography.Title>
       <Card title="系统信息" style={{ borderRadius: 12, marginBottom: 16 }}>
         <Descriptions column={2} size="middle">
           {info.map((i) => (
@@ -89,6 +92,49 @@ export default function SystemPage() {
           </div>
         ))}
       </Card>
+    </div>
+  );
+}
+
+export default function SystemPage() {
+  return (
+    <div>
+      <Typography.Title level={4} style={{ marginBottom: 24, fontWeight: 600 }}>
+        <SettingOutlined style={{ marginRight: 8 }} />
+        系统管理
+      </Typography.Title>
+      <Tabs
+        type="card"
+        items={[
+          {
+            key: 'info',
+            label: (
+              <span>
+                <SettingOutlined /> 系统信息
+              </span>
+            ),
+            children: <SystemInfo />,
+          },
+          {
+            key: 'branding',
+            label: (
+              <span>
+                <BgColorsOutlined /> 品牌设置
+              </span>
+            ),
+            children: <BrandSettings />,
+          },
+          {
+            key: 'ldap',
+            label: (
+              <span>
+                <CloudServerOutlined /> LDAP 集成
+              </span>
+            ),
+            children: <LdapWizard />,
+          },
+        ]}
+      />
     </div>
   );
 }

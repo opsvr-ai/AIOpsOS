@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对话页面优化 — 方案预览</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --card: #fff; --text: #1a1a1a; --text2: #666;
+    --border: #e8e8e8; --blue: #1677ff; --blue-bg: #e6f4ff;
+    --green: #52c41a; --orange: #fa8c16; --red: #ff4d4f;
+    --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px; line-height: 1.6; }
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  .subtitle { color: var(--text2); margin-bottom: 24px; font-size: 14px; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .section-num { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+
+  .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+  .comp-col { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .comp-label { font-size: 12px; font-weight: 600; padding: 8px 14px; display: flex; align-items: center; gap: 6px; }
+  .comp-label.before { background: #fff2f0; color: var(--red); }
+  .comp-label.after { background: #f6ffed; color: var(--green); }
+  .comp-content { padding: 16px; }
+
+  .chat-msg { margin-bottom: 16px; display: flex; gap: 10px; align-items: flex-start; max-width: 500px; }
+  .chat-msg.me { margin-left: auto; flex-direction: row-reverse; }
+  .chat-avatar { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; flex-shrink: 0; }
+  .chat-avatar.bot { background: linear-gradient(135deg, #1677ff, #0958d9); }
+  .chat-avatar.me-avatar { background: #d9d9d9; color: #666; }
+  .chat-bubble { padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.6; max-width: 100%; }
+  .chat-bubble.bot { background: #f0f0f0; border-bottom-left-radius: 4px; }
+  .chat-bubble.me-bubble { background: #1677ff; color: #fff; border-bottom-right-radius: 4px; }
+  .chat-time { font-size: 10px; color: #999; margin-top: 4px; }
+  .chat-msg.me .chat-time { text-align: right; }
+
+  .chat-bubble.bot-v2 { background: #fff; border: 1px solid #e8e8e8; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+  .chat-actions { display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity 0.15s; }
+  .chat-msg:hover .chat-actions { opacity: 1; }
+  .chat-action-btn { font-size: 11px; color: #999; padding: 2px 6px; border-radius: 4px; border: none; background: transparent; cursor: pointer; }
+  .chat-action-btn:hover { background: #f0f0f0; color: #333; }
+
+  .tool-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: #fafafa; border: 1px solid #e8e8e8; margin: 4px 0; font-size: 12px; }
+  .tool-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tool-dot.running { background: #1677ff; animation: pulse 1.2s infinite; }
+  .tool-dot.done { background: #52c41a; }
+  .tool-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .approach-card { background: var(--card); border: 2px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 12px; }
+  .approach-card.recommended { border-color: var(--blue); background: var(--blue-bg); }
+  .approach-card h3 { font-size: 15px; margin-bottom: 6px; }
+  .approach-card p { font-size: 13px; color: var(--text2); }
+  .badge-recommend { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--blue); color: #fff; margin-left: 8px; font-weight: 600; }
+
+  .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; font-size: 12px; }
+  .pros { color: var(--green); }
+  .cons { color: var(--red); }
+  .pros strong, .cons strong { display: block; margin-bottom: 4px; }
+
+  .nav-btns { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; gap: 12px; }
+  button { padding: 10px 24px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #4096ff; }
+  .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+</style>
+</head>
+<body>
+<h1>对话页面优化 — 设计方案</h1>
+<p class="subtitle">采用渐进式增强策略，保留现有 Virtuoso + SSE 流式架构，逐组件升级视觉与交互</p>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">1</span> 总体策略：渐进增强 vs 重构</div>
+  <div class="approach-card recommended">
+    <h3>方案 A：渐进增强 <span class="badge-recommend">推荐</span></h3>
+    <p>保留现有 Virtuoso + SSE 流式架构不变，逐组件升级视觉样式和微交互。每项改动独立可控，风险低，可分批上线。</p>
+    <div class="pros-cons">
+      <div class="pros"><strong>优势</strong>风险低、单次改动小、可分批验证、不破坏现有功能</div>
+      <div class="cons"><strong>劣势</strong>无法根本性改变信息架构，部分组件历史债务保留</div>
+    </div>
+  </div>
+  <div class="approach-card">
+    <h3>方案 B：架构重构</h3>
+    <p>将 SSE 解析逻辑从 ChatPage 中提取为独立 hook，将 Bubble 拆分为更细粒度的子组件，重构状态管理。</p>
+    <div class="pros-cons">
+      <div class="pros"><strong>优势</strong>代码质量更高，组件复用性更好，更易维护</div>
+      <div class="cons"><strong>劣势</strong>风险高，耗时 3-5 天，可能引入回归 bug</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">2</span> 消息气泡 — 视觉升级</div>
+  <div class="comparison">
+    <div class="comp-col">
+      <div class="comp-label before">当前</div>
+      <div class="comp-content">
+        <div class="chat-msg me">
+          <div class="chat-avatar me-avatar">U</div>
+          <div>
+            <div class="chat-bubble me-bubble">帮我检查一下系统状态</div>
+            <div class="chat-time">10:32</div>
+          </div>
+        </div>
+        <div class="chat-msg">
+          <div class="chat-avatar bot">AI</div>
+          <div>
+            <div class="chat-bubble bot">系统运行正常，CPU 使用率 45%，内存使用率 62%，磁盘空间充足。</div>
+            <div class="chat-time">10:32</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="comp-col">
+      <div class="comp-label after">优化后</div>
+      <div class="comp-content">
+        <div class="chat-msg me">
+          <div class="chat-avatar me-avatar" style="background: linear-gradient(135deg, #1677ff, #0958d9);">U</div>
+          <div style="text-align:right">
+            <div class="chat-bubble me-bubble" style="box-shadow: 0 2px 8px rgba(22,119,255,0.25);">帮我检查一下系统状态</div>
+            <div class="chat-time">10:32</div>
+          </div>
+        </div>
+        <div class="chat-msg">
+          <div class="chat-avatar bot" style="box-shadow: 0 2px 8px rgba(22,119,255,0.2);">AI</div>
+          <div>
+            <div class="chat-bubble bot-v2">系统运行正常，CPU 使用率 45%，内存使用率 62%，磁盘空间充足。</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <span class="chat-time">10:32</span>
+              <div class="chat-actions" style="opacity:0.7;">
+                <button class="chat-action-btn">复制</button>
+                <button class="chat-action-btn">👍</button>
+                <button class="chat-action-btn">👎</button>
+                <button class="chat-action-btn">重新生成</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--text2);margin-top:8px;">改动：AI 气泡加白色背景+边框+微阴影，用户气泡加投影，操作按钮始终可见（hover 时高亮），头像统一设计语言</p>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">3</span> 流式输出 — 体验提升</div>
+  <div class="comparison">
+    <div class="comp-col">
+      <div class="comp-label before">当前</div>
+      <div class="comp-content">
+        <div class="chat-bubble bot">
+          AI 正在处理您的请求<span style="display:inline-block;width:2px;height:16px;background:#1677ff;margin-left:2px;animation:blink 1s infinite;vertical-align:text-bottom;"></span>
+        </div>
+        <div style="font-size:12px;color:#1677ff;margin-top:4px;">AI 正在处理...</div>
+      </div>
+    </div>
+    <div class="comp-col">
+      <div class="comp-label after">优化后</div>
+      <div class="comp-content">
+        <div class="chat-bubble bot-v2">
+          系统当前运行状态如下：<br/>
+          • CPU 使用率 45%<br/>
+          • 内存使用率 62%<br/>
+          • 磁盘空间充足<span style="display:inline-block;width:2px;height:15px;background:var(--blue);margin-left:1px;animation:blink 0.8s infinite;vertical-align:text-bottom;border-radius:1px;"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#1677ff;">
+          <span style="display:flex;gap:3px;"><span style="width:4px;height:4px;border-radius:50%;background:#1677ff;animation:pulse 1.2s infinite;"></span><span style="width:4px;height:4px;border-radius:50%;background:#1677ff;animation:pulse 1.2s 0.2s infinite;"></span><span style="width:4px;height:4px;border-radius:50%;background:#1677ff;animation:pulse 1.2s 0.4s infinite;"></span></span>
+          生成中 · 2 个工具已执行
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">4</span> 工具执行可视化 — 手风琴式展开</div>
+  <div class="comparison">
+    <div class="comp-col">
+      <div class="comp-label before">当前：内联 toggle + 独立 Timeline</div>
+      <div class="comp-content">
+        <div style="font-size:12px;margin-bottom:4px;cursor:pointer;color:#1677ff;">▼ 执行中 (1/3)</div>
+        <div class="tool-row"><span class="tool-dot done"></span><span class="tool-tag" style="background:#f6ffed;color:#52c41a;">工具</span>kubectl_get_pods</div>
+        <div class="tool-row"><span class="tool-dot running"></span><span class="tool-tag" style="background:#e6f4ff;color:#1677ff;">Skill</span>analyze_metrics</div>
+        <div class="tool-row"><span class="tool-dot" style="background:#d9d9d9;"></span><span class="tool-tag" style="background:#f5f5f5;color:#999;">子智能体</span>log_analyzer</div>
+      </div>
+    </div>
+    <div class="comp-col">
+      <div class="comp-label after">优化后：进度条 + 图标状态 + 紧凑卡片</div>
+      <div class="comp-content">
+        <div style="font-size:11px;color:#999;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+          <div style="flex:1;height:3px;background:#f0f0f0;border-radius:2px;overflow:hidden;"><div style="width:33%;height:100%;background:#1677ff;border-radius:2px;transition:width 0.3s;"></div></div>
+          <span>1/3 步骤</span>
+        </div>
+        <div class="tool-row" style="background:#f6ffed;border-color:#b7eb8f;">
+          <span style="font-size:14px;">&#x2705;</span>
+          <span class="tool-tag" style="background:#f6ffed;color:#52c41a;border:1px solid #b7eb8f;">工具</span>
+          <span style="font-size:12px;">kubectl_get_pods</span>
+          <span style="font-size:10px;color:#999;">10:32:15</span>
+        </div>
+        <div class="tool-row" style="background:#e6f4ff;border-color:#91caff;">
+          <span style="font-size:14px;animation:pulse 1.2s infinite;">&#x2699;</span>
+          <span class="tool-tag" style="background:#e6f4ff;color:#1677ff;border:1px solid #91caff;">Skill</span>
+          <span style="font-size:12px;">analyze_metrics</span>
+          <span style="font-size:10px;color:#999;margin-left:auto;">执行中...</span>
+        </div>
+        <div class="tool-row">
+          <span style="font-size:14px;">&#x23F3;</span>
+          <span class="tool-tag" style="background:#f5f5f5;color:#999;border:1px solid #e8e8e8;">子智能体</span>
+          <span style="font-size:12px;">log_analyzer</span>
+          <span style="font-size:10px;color:#999;margin-left:auto;">等待中</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">5</span> 输入区域 — 布局优化</div>
+  <div class="comparison">
+    <div class="comp-col">
+      <div class="comp-label before">当前</div>
+      <div class="comp-content">
+        <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#f0f0f0;">系统状态</span>
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#f0f0f0;">最近告警</span>
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#f0f0f0;">知识搜索</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:12px;padding:8px 12px;display:flex;align-items:flex-end;gap:8px;">
+          <div style="flex:1;font-size:13px;color:#bfbfbf;">输入消息，Enter 发送...</div>
+          <span>&#x1F4CE;</span>
+          <span style="width:32px;height:32px;border-radius:50%;background:#1677ff;display:flex;align-items:center;justify-content:center;color:#fff;">&#x27A4;</span>
+        </div>
+        <div style="text-align:center;font-size:10px;color:#bfbfbf;margin-top:4px;">AI 生成内容仅供参考</div>
+      </div>
+    </div>
+    <div class="comp-col">
+      <div class="comp-label after">优化后</div>
+      <div class="comp-content">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="display:flex;gap:4px;">
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:#f0f0f0;cursor:pointer;">/ 指令</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:#f0f0f0;cursor:pointer;">@ 引用</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:#f0f0f0;cursor:pointer;">&#x1F4CE; 附件</span>
+          </div>
+          <span style="font-size:10px;color:#bfbfbf;">Enter 发送 · Shift+Enter 换行</span>
+        </div>
+        <div style="border:1.5px solid #1677ff;border-radius:16px;padding:8px 8px 8px 16px;display:flex;align-items:flex-end;gap:8px;box-shadow:0 2px 12px rgba(22,119,255,0.1);">
+          <div style="flex:1;font-size:13px;min-height:22px;">检查系统状态</div>
+          <span style="font-size:10px;color:#bfbfbf;">0/4000</span>
+          <span style="width:34px;height:34px;border-radius:50%;background:#1677ff;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 6px rgba(22,119,255,0.3);">&#x27A4;</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#e6f4ff;color:#1677ff;cursor:pointer;">&#x26A1; 系统状态</span>
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#f0f0f0;cursor:pointer;">最近告警</span>
+          <span style="font-size:11px;padding:2px 10px;border-radius:12px;background:#f0f0f0;cursor:pointer;">知识搜索</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span class="section-num">6</span> 空状态 / 会话管理 / Markdown / 加载态 / 响应式</div>
+  <div class="comparison">
+    <div class="comp-col">
+      <div class="comp-label before">当前</div>
+      <div class="comp-content">
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>空状态：</strong>简单 Logo + 标题 + 4 个静态建议卡片（垂直网格）</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>会话管理：</strong>基础列表，hover 显示删除按钮，无搜索/分组</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>Markdown：</strong>代码块有复制功能，表格基础样式，图片有边框</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>加载态：</strong>骨架屏仅用于空状态建议卡片</p>
+        <p style="font-size:12px;color:var(--text2);"><strong>响应式：</strong>无断点适配，固定宽度 280px 侧边栏</p>
+      </div>
+    </div>
+    <div class="comp-col">
+      <div class="comp-label after">优化后</div>
+      <div class="comp-content">
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>空状态：</strong>渐变 Logo + 3 列能力展示卡片 + 动态推荐 prompt（带颜色图标），打字机动画</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>会话管理：</strong>顶部搜索框 + "今天/昨天/更早"时间分组 + 右键菜单（重命名/删除/置顶）</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>Markdown：</strong>代码块语言图标 + 折叠长输出，表格斑马条纹，图片点击放大</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>加载态：</strong>消息列表 shimmer 骨架 + 历史消息底部 loading 指示器</p>
+        <p style="font-size:12px;color:var(--text2);"><strong>响应式：</strong>md 以下侧边栏默认折叠，消息区全宽显示，输入框适配</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="nav-btns">
+  <button class="btn-secondary" onclick="window.history.back()">返回选择</button>
+  <span style="flex:1;"></span>
+  <button class="btn-primary" onclick="submitConfirm()">确认方案，开始实施</button>
+</div>
+
+<script>
+  function submitConfirm() {
+    fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'approach', value: 'incremental' })
+    }).then(function() {
+      window.location.href = '/screen-3-implement';
+    }).catch(function() {
+      window.location.href = '/screen-3-implement';
+    });
+  }
+</script>
+</body>
+</html>

@@ -2,34 +2,45 @@ import uuid
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from src.schemas.channel import ChannelOut
+
 
 class AgentCreate(BaseModel):
     name: str
     type: str = "sub"
     system_prompt: str | None = None
+    user_prompt: str | None = None
     model_name: str = "deepseek-v4-flash"
     agent_type: str | None = "deep_agent"
     config: dict = {}
     is_active: bool = True
+    viewable_roles: list[str] = []
+    editable_roles: list[str] = []
     tool_ids: list[str] = []
     sub_agent_ids: list[str] = []
     channel_ids: list[str] = []
+    space_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
     name: str | None = None
     type: str | None = None
     system_prompt: str | None = None
+    user_prompt: str | None = None
     model_name: str | None = None
     agent_type: str | None = None
     config: dict | None = None
     is_active: bool | None = None
+    viewable_roles: list[str] | None = None
+    editable_roles: list[str] | None = None
     tool_ids: list[str] | None = None
     sub_agent_ids: list[str] | None = None
     channel_ids: list[str] | None = None
+    space_id: str | None = None
 
 
-class AgentOut(BaseModel):
+class AgentRefOut(BaseModel):
+    """Non-recursive agent reference — used as sub_agent items to prevent infinite nesting."""
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -40,15 +51,53 @@ class AgentOut(BaseModel):
     agent_type: str | None = None
     config: dict
     is_active: bool
+    is_builtin: bool = False
+    viewable_roles: list[str] = []
+    editable_roles: list[str] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None
     tools: list["ToolOut"] = []
-    sub_agents: list["AgentOut"] = []
-    channels: list[dict] = []
+    channels: list[ChannelOut] = []
+    space_id: uuid.UUID | None = None
 
     @field_serializer("id")
     def serialize_id(self, value: uuid.UUID) -> str:
         return str(value)
+
+    @field_serializer("space_id")
+    def serialize_space_id(self, value: uuid.UUID | None) -> str | None:
+        return str(value) if value else None
+
+
+class AgentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    type: str
+    system_prompt: str | None = None
+    user_prompt: str | None = None
+    model_name: str
+    agent_type: str | None = None
+    config: dict
+    is_active: bool
+    is_builtin: bool = False
+    viewable_roles: list[str] = []
+    editable_roles: list[str] = []
+    space_id: uuid.UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    tools: list["ToolOut"] = []
+    sub_agents: list[AgentRefOut] = []
+    channels: list[ChannelOut] = []
+
+    @field_serializer("id")
+    def serialize_id(self, value: uuid.UUID) -> str:
+        return str(value)
+
+    @field_serializer("space_id")
+    def serialize_space_id(self, value: uuid.UUID | None) -> str | None:
+        return str(value) if value else None
 
 
 class AgentVersionOut(BaseModel):
@@ -58,6 +107,7 @@ class AgentVersionOut(BaseModel):
     agent_id: uuid.UUID
     name: str
     system_prompt: str | None = None
+    user_prompt: str | None = None
     model_name: str
     agent_type: str | None = None
     config: dict
@@ -133,13 +183,21 @@ class ToolUpdate(BaseModel):
     skill_prompt: str | None = None
 
 
+class ToolListOut(BaseModel):
+    """Paginated tool list response."""
+    items: list["ToolOut"]
+    total: int
+
+
 class ToolSearchParams(BaseModel):
     """Query params for GET /tools search/filter."""
     type: str | None = None
     name: str | None = None
     description: str | None = None
     category: str | None = None
+    space_id: str | None = None
     status: str | None = None  # "active" | "inactive" | "all"
+    health: str | None = None  # "invalid" for orphaned skills, otherwise all
     page: int = 1
     page_size: int = 50
 
@@ -148,6 +206,11 @@ class BatchStatusRequest(BaseModel):
     """Batch enable/disable tools."""
     tool_ids: list[str]
     is_active: bool
+
+
+class BatchDeleteRequest(BaseModel):
+    """Batch delete tools by IDs."""
+    tool_ids: list[str]
 
 
 class SkillGenerateRequest(BaseModel):
@@ -188,9 +251,11 @@ class ToolOut(BaseModel):
     config: dict
     is_approved: bool
     is_active: bool
+    is_builtin: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
     is_consistent: bool | None = None  # populated by consistency-aware endpoints
+    is_valid: bool | None = None  # skill has valid directory + SKILL.md on disk
 
     @field_serializer("id")
     def serialize_id(self, value: uuid.UUID) -> str:
@@ -263,14 +328,17 @@ class ConsistencySummary(BaseModel):
 class SyncDiffItem(BaseModel):
     """A single inconsistency between filesystem and DB."""
     name: str
-    category: str | None = None  # from filesystem
+    category: str | None = None  # from DB
     type: str = "skill"
     status: str  # "only_in_db" | "only_in_fs" | "modified" | "consistent"
     db_id: str | None = None
     db_description: str | None = None
+    db_version: str | None = None
     fs_description: str | None = None
+    fs_version: str | None = None
     fs_category: str | None = None
     source_path: str | None = None
+    source_label: str | None = None  # "standard" | "extended" | None for user skills
     is_active: bool = False
 
 

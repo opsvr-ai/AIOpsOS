@@ -53,3 +53,64 @@ class KnowledgeUploadResponse(BaseModel):
 class KnowledgeReindexResponse(BaseModel):
     documents_processed: int
     chunks_created: int
+
+
+# ── Raw file schemas ────────────────────────────────────────────────
+
+class RawFileOut(BaseModel):
+    filename: str
+    sha256: str = ""
+    ingested: bool = False
+    size: int = 0
+    last_modified: str = ""
+    compiled: bool = False
+    wiki_pages_count: int = 0
+
+
+class CompileRequest(BaseModel):
+    filepath: str
+
+
+class CompileResult(BaseModel):
+    ok: bool
+    filepath: str
+    wiki_pages_created: int = 0
+    error: str = ""
+
+
+# ── Wiki schemas ────────────────────────────────────────────────────
+
+class WikiTreeNode(BaseModel):
+    name: str
+    title: str
+    path: str
+    type: str = "page"  # "directory" | "page"
+    count: int = 0
+    children: list["WikiTreeNode"] = []
+
+
+class WikiPageOut(BaseModel):
+    name: str
+    title: str
+    content: str
+    type: str = ""
+    tags: list[str] = []
+    sources: list[str] = []
+    created: str = ""
+    updated: str = ""
+    links_to: list[str] = []
+    linked_from: list[str] = []
+    word_count: int = 0
+    size: int = 0
+
+
+class WikiSearchHit(BaseModel):
+    name: str
+    title: str
+    snippet: str
+    score: float = 0.0
+
+
+class WikiSearchResponse(BaseModel):
+    results: list[WikiSearchHit]
+    total: int = 0

@@ -1,0 +1,99 @@
+<h2>工具市场页面 — 布局方案</h2>
+<p class="subtitle">智能体页面已选：统计概览 + 卡片/表格切换。工具市场是否沿用相同模式，还是有不同需求？</p>
+
+<div class="options">
+  <div class="option" data-choice="same-pattern" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>与智能体页面一致</h3>
+      <p>统计概览 + 卡片/表格切换。顶部显示工具总数/启用/内置统计，卡片网格默认展示，可切换到表格。保持两个页面设计语言统一。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="marketplace-style" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>市场风格</h3>
+      <p>去掉统计概览，强化分类 Tab 导航（全部/内置/技能/插件/MCP）。卡片更大、展示更多描述信息，类似插件市场的浏览体验。支持按分类、标签筛选。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="split-by-tab" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>按类型分视图</h3>
+      <p>内置工具用紧凑列表（不可编辑），Skill/Plugin/MCP 用市场卡片。每种类型有独立的展示逻辑，强调"内置工具是系统能力，市场工具是可扩展生态"的区别。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>预览对比</h3>
+  <div class="mockup" style="margin-bottom: 16px;">
+    <div class="mockup-header">B: 市场风格 — 强化分类、卡片更大</div>
+    <div class="mockup-body">
+      <div style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <span style="padding: 4px 12px; background: #1e293b; color: white; border-radius: 16px; font-size: 11px;">全部 12</span>
+          <span style="padding: 4px 12px; background: #f1f5f9; border-radius: 16px; font-size: 11px;">内置工具 4</span>
+          <span style="padding: 4px 12px; background: #f1f5f9; border-radius: 16px; font-size: 11px;">技能市场 5</span>
+          <span style="padding: 4px 12px; background: #f1f5f9; border-radius: 16px; font-size: 11px;">MCP 3</span>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <div style="width: 200px; padding: 16px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: #fef3c7; display: flex; align-items: center; justify-content: center; font-size: 18px;">S</div>
+              <div style="flex:1;">
+                <div style="font-weight: 600; font-size: 12px;">search_knowledge</div>
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px; line-height: 1.4;">在知识库中搜索相关文档和上下文信息，支持语义检索和多模态查询</div>
+                <div style="display: flex; gap: 4px; margin-top: 8px;">
+                  <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+                  <span style="background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 10px; font-size: 9px;">知识库</span>
+                  <span style="background: #f3e8ff; color: #7c3aed; padding: 1px 6px; border-radius: 10px; font-size: 9px;">v1.0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="width: 200px; padding: 16px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <div style="width: 40px; height: 40px; border-radius: 10px; background: #dbeafe; display: flex; align-items: center; justify-content: center; font-size: 18px;">M</div>
+              <div style="flex:1;">
+                <div style="font-weight: 600; font-size: 12px;">monitor_health</div>
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px; line-height: 1.4;">监控所有服务的健康状态，收集 CPU/内存/磁盘指标</div>
+                <div style="display: flex; gap: 4px; margin-top: 8px;">
+                  <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+                  <span style="background: #dcfce7; color: #166534; padding: 1px 6px; border-radius: 10px; font-size: 9px;">监控</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">C: 按类型分视图 — 内置紧凑列表 + 市场卡片</div>
+    <div class="mockup-body">
+      <div style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+        <div style="margin-bottom: 10px; font-size: 11px; font-weight: 600; color: #64748b;">内置工具 (系统能力)</div>
+        <div style="display: flex; gap: 6px; margin-bottom: 14px;">
+          <span style="padding: 3px 10px; background: #fef3c7; border-radius: 6px; font-size: 10px;">search_knowledge</span>
+          <span style="padding: 3px 10px; background: #fef3c7; border-radius: 6px; font-size: 10px;">monitor_health</span>
+          <span style="padding: 3px 10px; background: #fef3c7; border-radius: 6px; font-size: 10px;">execute_ops</span>
+          <span style="padding: 3px 10px; background: #fef3c7; border-radius: 6px; font-size: 10px;">store_memory</span>
+        </div>
+        <div style="font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 10px;">可扩展市场</div>
+        <div style="display: flex; gap: 8px;">
+          <div style="width: 180px; padding: 12px; background: white; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <div style="font-weight: 600; font-size: 11px;">custom-monitor</div>
+            <div style="font-size: 9px; color: #94a3b8;">自定义监控采集器</div>
+            <span style="background: #dbeafe; padding:1px 6px; border-radius: 10px; font-size: 9px;">Skill</span>
+          </div>
+          <div style="width: 180px; padding: 12px; background: white; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <div style="font-weight: 600; font-size: 11px;">gitlab-mcp</div>
+            <div style="font-size: 9px; color: #94a3b8;">GitLab API 集成</div>
+            <span style="background: #ede9fe; padding:1px 6px; border-radius: 10px; font-size: 9px;">MCP</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

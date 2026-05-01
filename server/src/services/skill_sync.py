@@ -116,6 +116,37 @@ def sync_tool_to_filesystem(tool: Tool) -> Path | None:
         return None
 
 
+def batch_inconsistency_count(tools: list) -> int:
+    """Fast batch consistency check — scans filesystem once, compares in memory.
+
+    Replaces N individual file existence checks + reads with a single
+    directory walk plus reads, avoiding per-file stat syscalls.
+    """
+    if not tools:
+        return 0
+
+    # Single pass: scan filesystem for all SKILL.md files and hash them
+    fs_hashes: dict[str, str] = {}
+    if SKILLS_DIR.exists():
+        for md_path in SKILLS_DIR.rglob("SKILL.md"):
+            try:
+                name = md_path.parent.name
+                raw = md_path.read_text(encoding="utf-8")
+                fs_hashes[name] = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            except OSError:
+                pass
+
+    count = 0
+    for t in tools:
+        if t.type != "skill":
+            continue
+        db_hash = compute_content_hash(t)
+        fs_hash = fs_hashes.get(t.name)
+        if fs_hash is None or fs_hash != db_hash:
+            count += 1
+    return count
+
+
 def check_tool_consistency(tool: Tool) -> dict:
     """Return consistency info for a single tool.
 
@@ -192,26 +223,51 @@ async def create_version_snapshot(db, tool: Tool) -> SkillVersion:
 
 
 def list_filesystem_skills() -> list[dict]:
-    """Scan data/skills/ and return metadata for each valid SKILL.md found."""
+    """Scan data/skills/ recursively and return metadata for each valid SKILL.md found.
+
+    Supports two layouts:
+      Flat:   data/skills/<name>/SKILL.md  (user-created, no classification)
+      Nested: data/skills/<source_label>/<category>/<name>/SKILL.md  (classified)
+
+    When a skill exists in both layouts, the classified (nested) version wins.
+
+    Returns list of dicts with name, description, version, license, metadata,
+    body, _dir, category, source_label.
+    """
     skills: list[dict] = []
     if not SKILLS_DIR.exists():
         return skills
 
-    for skill_dir in sorted(SKILLS_DIR.iterdir()):
-        if not skill_dir.is_dir():
-            continue
-        md = skill_dir / "SKILL.md"
-        if not md.exists():
-            continue
-
+    for md_path in sorted(SKILLS_DIR.rglob("SKILL.md")):
+        skill_dir = md_path.parent
         try:
-            metadata = _parse_skill_md(md)
+            metadata = _parse_skill_md(md_path)
             metadata["_dir"] = str(skill_dir)
+
+            rel = skill_dir.relative_to(SKILLS_DIR)
+            parts = rel.parts  # e.g. ("standard", "devops", "my-skill") or ("my-skill",)
+
+            if len(parts) >= 3:
+                metadata["source_label"] = parts[0]
+                metadata["category"] = parts[1]
+            else:
+                metadata["source_label"] = None
+                metadata["category"] = None
+
             skills.append(metadata)
         except Exception:
-            logger.warning("Failed to parse skill file: %s", md, exc_info=True)
+            logger.warning("Failed to parse skill file: %s", md_path, exc_info=True)
 
-    return skills
+    # Deduplicate: classified (nested) wins over flat (unclassified)
+    seen: dict[str, dict] = {}
+    for s in skills:
+        name = s["name"]
+        if name not in seen:
+            seen[name] = s
+        elif s.get("source_label") and not seen[name].get("source_label"):
+            seen[name] = s  # prefer classified version
+
+    return list(seen.values())
 
 
 def _parse_skill_md(filepath: Path) -> dict:
@@ -238,6 +294,8 @@ def _parse_skill_md(filepath: Path) -> dict:
 async def auto_register_filesystem_skills() -> int:
     """Scan data/skills/ and create DB records for any skill not yet registered.
 
+    Also updates existing records with stale or missing source_path / category.
+
     Skills are registered as inactive (is_active=False) — the user must
     explicitly enable them via the web UI before they take effect.
 
@@ -248,36 +306,60 @@ async def auto_register_filesystem_skills() -> int:
         return 0
 
     count = 0
+    updated = 0
     async with async_session_factory() as db:
         for sk in fs_skills:
             name = sk["name"]
-            existing = await db.scalar(select(Tool.id).where(Tool.name == name))
+            existing = await db.scalar(select(Tool).where(Tool.name == name))
             if existing is not None:
+                sp = existing.source_path
+                needs_update = (
+                    not sp
+                    or not str(sp).startswith(str(SKILLS_DIR))
+                    or sp != sk["_dir"]
+                    or existing.category != sk.get("category")
+                )
+                if needs_update:
+                    existing.source_path = sk["_dir"]
+                    existing.category = sk.get("category") or existing.category
+                    cfg = dict(existing.config or {})
+                    if sk.get("source_label"):
+                        cfg["source_label"] = sk["source_label"]
+                    existing.config = cfg
+                    db.add(existing)
+                    updated += 1
                 continue
+            cfg = {
+                "version": sk.get("version"),
+                "license": sk.get("license"),
+                "metadata": sk.get("metadata", {}),
+                "skill_prompt": sk.get("body", ""),
+            }
+            if sk.get("source_label"):
+                cfg["source_label"] = sk["source_label"]
             tool = Tool(
                 name=name,
                 type="skill",
                 description=sk["description"],
+                category=sk.get("category"),
+                source_path=sk["_dir"],
                 is_active=False,
                 is_approved=True,
-                config={
-                    "version": sk.get("version"),
-                    "license": sk.get("license"),
-                    "metadata": sk.get("metadata", {}),
-                    "skill_prompt": sk.get("body", ""),
-                },
+                config=cfg,
             )
             db.add(tool)
             count += 1
             logger.info("Auto-registered filesystem skill as DB tool (inactive): %s", name)
-        if count:
+        if count or updated:
             await db.commit()
+        if updated:
+            logger.info("Updated %d stale source_paths to data/skills/", updated)
     return count
 
 
 # ── File Management ────────────────────────────────────────────────────────
 
-_SKILL_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$')
+_SKILL_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$')
 _SKILL_REQUIRED_DIRS = ["templates", "examples", "references", "scripts"]
 
 

@@ -167,6 +167,25 @@ class ToolManager:
             return "(no skills registered)"
         return "[已注册技能]:\n" + "\n".join(lines)
 
+    def describe_skills_compact(self) -> str:
+        """Return compact one-line-per-skill index for the system prompt.
+
+        Each line: ``name: description (truncated to 80 chars)``.
+        Use for progressive disclosure (Tier 1) to save tokens.
+        """
+        lines: list[str] = []
+        for name in sorted(self._tools):
+            if name in self._builtin:
+                continue
+            tool = self._tools[name]
+            desc = (tool.description or "").replace("\n", " ").strip()
+            if len(desc) > 80:
+                desc = desc[:77] + "..."
+            lines.append(f"    {name}: {desc}")
+        if not lines:
+            return "(no skills registered)"
+        return "[已注册技能]:\n" + "\n".join(lines)
+
     def register_builtin(self, name: str, description: str, afn: Callable) -> None:
         """Register a built-in tool (not from DB) with an async callable."""
         async def _wrapper(**kwargs: Any) -> str:

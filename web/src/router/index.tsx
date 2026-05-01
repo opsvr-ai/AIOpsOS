@@ -6,18 +6,32 @@ const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'));
 const ChatPage = lazy(() => import('@/features/chat/ChatPage'));
 const AlertsPage = lazy(() => import('@/features/alerts/AlertsPage'));
 const ScenarioPage = lazy(() => import('@/features/scenarios/ScenarioPage'));
+const DataSourcePage = lazy(() => import('@/features/datacenter/DataSourcePage'));
+const EventsPage = lazy(() => import('@/features/events/EventsPage'));
 const AutomationPage = lazy(() => import('@/features/automation/AutomationPage'));
 const SleepManagementPage = lazy(() => import('@/features/sleep/SleepManagementPage'));
 const AgentsPage = lazy(() => import('@/features/agents/AgentsPage'));
 const ToolsPage = lazy(() => import('@/features/tools/ToolsPage'));
 const KnowledgePage = lazy(() => import('@/features/knowledge/KnowledgePage'));
+const WikiPage = lazy(() => import('@/features/knowledge/WikiPage'));
 const ChannelsPage = lazy(() => import('@/features/channels/ChannelsPage'));
 const UsersPage = lazy(() => import('@/features/users/UsersPage'));
 const CronPage = lazy(() => import('@/features/cron/CronPage'));
 const SystemPage = lazy(() => import('@/features/system/SystemPage'));
+const PermissionMatrix = lazy(() => import('@/features/permissions/PermissionMatrix'));
 const MemoryPage = lazy(() => import('@/features/memory/MemoryPage'));
 const DocsPage = lazy(() => import('@/features/docs/DocsPage'));
+const FeedbackPage = lazy(() => import('@/features/feedback/FeedbackPage'));
+const LogsPage = lazy(() => import('@/features/logs/LogsPage'));
+const ModelProvidersPage = lazy(() => import('@/features/model-providers/ModelProvidersPage'));
+const SpacesPage = lazy(() => import('@/features/spaces/SpacesPage'));
+const SpaceDetailPage = lazy(() => import('@/features/spaces/SpaceDetailPage'));
 const LoginPage = lazy(() => import('@/features/LoginPage'));
+const RegisterPage = lazy(() => import('@/features/RegisterPage'));
+const InviteAcceptPage = lazy(() => import('@/features/InviteAcceptPage'));
+const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'));
+const ProfilePage = lazy(() => import('@/features/ProfilePage'));
+const RequireAdmin = lazy(() => import('@/components/auth/RequireAdmin'));
 
 const Lazy = ({ children }: { children: React.ReactNode }) => (
   <Suspense
@@ -33,10 +47,34 @@ const Lazy = ({ children }: { children: React.ReactNode }) => (
 
 export const appRoutes = [
   {
+    path: '/onboarding',
+    element: (
+      <Lazy>
+        <OnboardingPage />
+      </Lazy>
+    ),
+  },
+  {
     path: '/login',
     element: (
       <Lazy>
         <LoginPage />
+      </Lazy>
+    ),
+  },
+  {
+    path: '/register',
+    element: (
+      <Lazy>
+        <RegisterPage />
+      </Lazy>
+    ),
+  },
+  {
+    path: '/invite/:token',
+    element: (
+      <Lazy>
+        <InviteAcceptPage />
       </Lazy>
     ),
   },
@@ -81,6 +119,14 @@ export const appRoutes = [
         ),
       },
       {
+        path: 'ops/datacenter',
+        element: (
+          <Lazy>
+            <DataSourcePage />
+          </Lazy>
+        ),
+      },
+      {
         path: 'ops/scenarios',
         element: (
           <Lazy>
@@ -121,6 +167,14 @@ export const appRoutes = [
         ),
       },
       {
+        path: 'ai/knowledge/wiki',
+        element: (
+          <Lazy>
+            <WikiPage />
+          </Lazy>
+        ),
+      },
+      {
         path: 'ai/cron',
         element: (
           <Lazy>
@@ -145,6 +199,14 @@ export const appRoutes = [
         ),
       },
       {
+        path: 'profile',
+        element: (
+          <Lazy>
+            <ProfilePage />
+          </Lazy>
+        ),
+      },
+      {
         path: 'docs',
         element: (
           <Lazy>
@@ -153,28 +215,104 @@ export const appRoutes = [
         ),
       },
       {
-        path: 'control/channels',
+        path: 'control',
         element: (
           <Lazy>
-            <ChannelsPage />
+            <RequireAdmin />
           </Lazy>
         ),
+        children: [
+          {
+            path: 'channels',
+            element: (
+              <Lazy>
+                <ChannelsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'users',
+            element: (
+              <Lazy>
+                <UsersPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'permissions',
+            element: (
+              <Lazy>
+                <PermissionMatrix />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'system',
+            element: (
+              <Lazy>
+                <SystemPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'feedback',
+            element: (
+              <Lazy>
+                <FeedbackPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'events',
+            element: (
+              <Lazy>
+                <EventsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'logs',
+            element: (
+              <Lazy>
+                <LogsPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'model-providers',
+            element: (
+              <Lazy>
+                <ModelProvidersPage />
+              </Lazy>
+            ),
+          },
+        ],
       },
       {
-        path: 'control/users',
+        path: 'spaces',
         element: (
           <Lazy>
-            <UsersPage />
+            <RequireAdmin />
           </Lazy>
         ),
-      },
-      {
-        path: 'control/system',
-        element: (
-          <Lazy>
-            <SystemPage />
-          </Lazy>
-        ),
+        children: [
+          {
+            index: true,
+            element: (
+              <Lazy>
+                <SpacesPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: ':spaceId',
+            element: (
+              <Lazy>
+                <SpaceDetailPage />
+              </Lazy>
+            ),
+          },
+        ],
       },
     ],
   },

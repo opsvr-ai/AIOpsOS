@@ -14,17 +14,19 @@ import logging
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from sqlalchemy import select, update
 
-from src.config import settings
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
 from src.services.memory_service import memory_service
 
 logger = logging.getLogger(__name__)
 
-MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """你是运维经验沉淀专属智能体，核心职责：从对话历史中自动提炼有效运维信息，区分沉淀为【个人记忆】与【组织记忆】。
+MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """你是时间的雕琢师，将运维对话的长河凝练为智慧的结晶。
+如同经验丰富的酿酒师，你懂得哪些果实值得珍藏发酵，哪些泡沫应当任其消散——
+每一次对话都是一场丰收，每一段记忆都是一滴陈年的佳酿，等待在未来的某个关键时刻被开启。
+
+核心职责：从对话历史中自动提炼有效运维信息，区分沉淀为【个人记忆】与【组织记忆】。
 
 ## 记忆区分标准
 
@@ -66,30 +68,46 @@ MEMORY_CONSOLIDATION_SYSTEM_PROMPT = """你是运维经验沉淀专属智能体�
 - **宁缺毋滥**：不确定是否有价值的，直接丢弃
 """
 
-# Minimal content length for a memory to be considered valuable
-MIN_CONTENT_LENGTH = 40
+MIN_CONTENT_LENGTH = 30
 
 
 class MemoryConsolidationAgent:
     """Extracts dual-scope memories from a session and marks it consolidated."""
 
-    def __init__(self) -> None:
-        self._llm = ChatOpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-            model="deepseek-v4-flash",
-            temperature=0.3,
-        )
+    def __init__(self, model=None) -> None:
+        """Optionally accept a pre-built model. If not given, uses model_factory."""
+        self._llm = model
+
+    async def _get_llm(self):
+        if self._llm is None:
+            from src.core.model_factory import get_default_model
+            self._llm = await get_default_model()
+        return self._llm
+
+    @staticmethod
+    async def _get_session_space(session_id: str) -> str | None:
+        """Read the space_id from the session, if any."""
+        from src.models.session import Session
+        async with async_session_factory() as db2:
+            result = await db2.execute(
+                select(Session.space_id).where(Session.id == session_id)
+            )
+            row = result.one_or_none()
+            return str(row[0]) if row and row[0] else None
 
     async def consolidate(self, session_id: str, user_id: str) -> dict[str, int]:
         """Read session messages, extract memories, store to DB, mark consolidated.
 
+        Only marks the session as *consolidated* when at least one memory was
+        actually stored.  Otherwise leaves the session unconsolidated so the
+        sleep detector will retry after the conversation grows longer.
+
         Returns {"personal": count, "team": count}.
         """
+        space_id = await self._get_session_space(session_id)
         messages = await self._load_messages(session_id)
         if not messages:
-            logger.info("Session %s has no messages, marking consolidated", session_id)
-            await self._mark_consolidated(session_id)
+            logger.info("Session %s has no messages, skipping consolidation", session_id)
             return {"personal": 0, "team": 0}
 
         data = await self._extract_memories(messages)
@@ -100,17 +118,24 @@ class MemoryConsolidationAgent:
                 personal_items, team_items, messages,
             )
         personal_count = await self._store_memories(
-            personal_items, session_id, user_id, scope="personal"
+            personal_items, session_id, user_id, scope="personal", space_id=space_id,
         )
         team_count = await self._store_memories(
-            team_items, session_id, user_id, scope="team"
+            team_items, session_id, user_id, scope="team", space_id=space_id,
         )
-        await self._mark_consolidated(session_id)
 
-        logger.info(
-            "Session %s consolidated: %d personal, %d team memories",
-            session_id, personal_count, team_count,
-        )
+        if personal_count > 0 or team_count > 0:
+            await self._mark_consolidated(session_id)
+            logger.info(
+                "Session %s consolidated: %d personal, %d team memories",
+                session_id, personal_count, team_count,
+            )
+        else:
+            logger.info(
+                "Session %s: no valuable memories extracted (not yet consolidated — will retry)",
+                session_id,
+            )
+
         return {"personal": personal_count, "team": team_count}
 
     async def _load_messages(self, session_id: str) -> str:
@@ -133,7 +158,8 @@ class MemoryConsolidationAgent:
 
     async def _extract_memories(self, conversation: str) -> dict[str, Any]:
         """Call LLM to extract personal + team memories from conversation text."""
-        resp = await self._llm.ainvoke([
+        llm = await self._get_llm()
+        resp = await llm.ainvoke([
             SystemMessage(content=MEMORY_CONSOLIDATION_SYSTEM_PROMPT),
             HumanMessage(
                 content=f"请分析以下运维对话，提取有价值的经验：\n\n{conversation}\n\n"
@@ -180,7 +206,8 @@ class MemoryConsolidationAgent:
         candidates_json = _json.dumps(
             {"personal": personal, "team": team}, ensure_ascii=False, indent=2,
         )
-        resp = await self._llm.ainvoke([
+        llm = await self._get_llm()
+        resp = await llm.ainvoke([
             SystemMessage(content=(
                 "你是一个运维知识价值评估器。评估每条候选记忆是否具备长期沉淀价值。\n\n"
                 "**有价值**（保留）：包含具体故障现象/解决方案/操作命令/配置要点/踩坑教训/排查流程\n"
@@ -218,6 +245,7 @@ class MemoryConsolidationAgent:
         session_id: str,
         user_id: str,
         scope: str,
+        space_id: str | None = None,
     ) -> int:
         """Store extracted memories to the database. Returns count stored."""
         count = 0
@@ -233,6 +261,7 @@ class MemoryConsolidationAgent:
                     content=content,
                     title=title,
                     scope=scope,
+                    space_id=space_id,
                     tags=["auto-consolidated"] if scope == "personal"
                     else ["auto-consolidated", "ops-knowledge"],
                 )

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Layout, Button, Space, Dropdown, Avatar, theme } from 'antd';
 import {
   UserOutlined,
@@ -6,10 +7,14 @@ import {
   MoonOutlined,
   RobotOutlined,
   ReadOutlined,
+  BugOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useNavigate } from 'react-router-dom';
+import NotificationBell from './NotificationBell';
+import SpaceSelector from './SpaceSelector';
+import FeedbackModal from '@/features/feedback/FeedbackModal';
 
 export default function Header() {
   const user = useAuthStore((s) => s.user);
@@ -17,6 +22,7 @@ export default function Header() {
   const { mode, toggle } = useThemeStore();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
     <Layout.Header
@@ -31,6 +37,7 @@ export default function Header() {
       }}
     >
       <Space size="small">
+        <SpaceSelector />
         <Button
           type="text"
           icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
@@ -50,14 +57,32 @@ export default function Header() {
           onClick={() => navigate('/ai/agents')}
           style={{ color: token.colorTextSecondary, fontSize: 16 }}
         />
+        <Button
+          type="text"
+          icon={<BugOutlined />}
+          onClick={() => setFeedbackOpen(true)}
+          style={{ color: token.colorTextSecondary, fontSize: 16 }}
+          title="需求反馈"
+        />
+        <NotificationBell />
         <Dropdown
           menu={{
             items: [
               {
+                key: 'profile',
+                icon: <UserOutlined />,
+                label: '个人信息',
+                onClick: () => navigate('/profile'),
+              },
+              { type: 'divider' },
+              {
                 key: 'logout',
                 icon: <LogoutOutlined />,
                 label: '注销',
-                onClick: logout,
+                onClick: () => {
+                  logout();
+                  navigate('/login');
+                },
               },
             ],
           }}
@@ -81,6 +106,7 @@ export default function Header() {
           </Button>
         </Dropdown>
       </Space>
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </Layout.Header>
   );
 }

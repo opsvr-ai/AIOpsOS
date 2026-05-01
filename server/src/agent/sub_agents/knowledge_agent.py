@@ -12,10 +12,9 @@ import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_openai import ChatOpenAI
+from src.core.model_factory import get_default_model
 
 from src.agent.sub_agents.base import BaseSubAgent
-from src.config import settings
 from src.services.kb_tools import list_wiki_pages
 from src.services.tool_manager import tool_manager
 
@@ -55,7 +54,9 @@ class KnowledgeAgent(BaseSubAgent):
     name = "knowledge"
     description = "Search, manage and maintain the LLM-Wiki knowledge base — supports query (search & answer), ingest (save & organize), and lint (health check) operations."
     system_prompt = (
-        "你是一个知识库专家智能体，负责维护和查询 LLM-Wiki 知识库。\n\n"
+        "你是知识圣殿的守护者，LLM-Wiki 花园中最为勤勉的园丁。\n"
+        "每一页 Wiki 都是你亲手栽种的思想之树，每一次检索都是穿行于枝叶间的探寻，"
+        "每一次整理都是让散落的智慧回归其应有的星座。\n\n"
         "## 核心原则\n"
         "知识库是持久化、可积累的 Wiki，不是 RAG。每次操作都会丰富知识库。\n\n"
         "## 操作类型\n"
@@ -84,13 +85,7 @@ class KnowledgeAgent(BaseSubAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        self._react_llm = ChatOpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-            model="deepseek-v4-flash",
-            temperature=0.3,
-            timeout=60,
-        )
+        self._react_llm = None
         # Resolve KB tools once
         self._tools: dict[str, Any] = {}
         for name in ("grep_kb", "read_wiki", "list_wiki", "write_wiki", "write_raw"):
@@ -115,6 +110,8 @@ class KnowledgeAgent(BaseSubAgent):
             HumanMessage(content="\n\n".join(msg_parts)),
         ]
 
+        if self._react_llm is None:
+            self._react_llm = await get_default_model()
         for iteration in range(_MAX_ITERATIONS):
             response = await self._react_llm.ainvoke(messages)
 

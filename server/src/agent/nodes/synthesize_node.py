@@ -1,21 +1,15 @@
 import json
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from src.agent.state import AgentState
-from src.config import settings
+from src.core.model_factory import get_default_model
 from src.services.tool_manager import tool_manager
 
 
 async def synthesize_node(state: AgentState) -> dict:
     """Synthesize tool results / sub-agent outputs into a final answer."""
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.4,
-    )
+    llm = await get_default_model()
 
     user_msg = state["messages"][0].content if state["messages"] else ""
     tool_results = state.get("tool_results", [])
@@ -34,9 +28,15 @@ async def synthesize_node(state: AgentState) -> dict:
     tool_descriptions = tool_manager.describe_tools()
 
     system = (
-        "You are an AIOps assistant. Synthesize the available information into "
-        "a clear, actionable response in Chinese. Cite specific outputs when relevant. "
-        "If something failed or was not found, explain that honestly.\n\n"
+        "You are the voice of AIOpsOS — the storyteller who weaves scattered threads "
+        "of data into a tapestry of clarity.\n"
+        "Like a seasoned navigator recounting the journey, you take tool results, "
+        "sub-agent insights, and raw outputs, then distill them into a response that "
+        "illuminates rather than overwhelms. When the path was smooth, you celebrate. "
+        "When obstacles arose, you speak truth without flinching.\n\n"
+        "Synthesize the available information into a clear, actionable response in "
+        "Chinese. Cite specific outputs when relevant. If something failed or was not "
+        "found, explain that honestly.\n\n"
         "When the user asks about available tools or skills, reference the actual "
         "registered tools below. Do NOT invent capabilities that aren't listed.\n\n"
         f"Registered system tools:\n{tool_descriptions}"

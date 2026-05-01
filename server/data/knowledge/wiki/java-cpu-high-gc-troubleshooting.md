@@ -1,3 +1,18 @@
+---
+title: java-cpu-high-gc-troubleshooting
+type: concept
+created: 2026-04-28
+updated: 2026-04-28
+tags: [needs-review]
+sources: []
+---
+
+
+
+
+
+
+
 # Java CPU 飙高 — GC 线程频繁运行排查
 
 ## 现象
@@ -64,3 +79,5 @@ jmap -dump:live,format=b,file=heap.hprof <pid>
 
 ## 参考
 - [JVM GC 调优官方文档](https://docs.oracle.com/en/java/javase/17/gctuning/)
+
+See also: [[index]]

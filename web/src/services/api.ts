@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/authStore";
+import { useSpaceStore } from "@/stores/spaceStore";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -10,6 +11,10 @@ api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const space = useSpaceStore.getState().currentSpace;
+  if (space?.id) {
+    config.headers["X-Space-Id"] = space.id;
   }
   return config;
 });

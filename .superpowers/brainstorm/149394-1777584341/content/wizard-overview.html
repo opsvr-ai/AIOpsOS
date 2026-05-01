@@ -1,0 +1,106 @@
+<h2>管理员引导配置向导 — 整体设计方向</h2>
+<p class="subtitle">首次部署后第一个管理员登录时触发，参考登录页面淡入淡出 + 科技质感</p>
+
+<div class="section">
+  <h3>向导结构：3 步线性流程</h3>
+</div>
+
+<div class="cards">
+  <div class="card" data-choice="flow" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:24px;background:linear-gradient(135deg,#EEF2FF,#F9FAFB,#ECFDF5)">
+      <div style="display:flex;align-items:center;justify-content:center;gap:12px;font-family:monospace;font-size:13px">
+        <div style="background:#fff;border:2px solid #1677ff;border-radius:12px;padding:16px 20px;text-align:center">
+          <div style="font-weight:700;color:#1677ff">Step 1</div>
+          <div style="margin-top:4px;color:#333">大模型配置</div>
+          <div style="font-size:10px;color:#ff4d4f;margin-top:2px">必配</div>
+        </div>
+        <div style="color:#bbb;font-size:20px">→</div>
+        <div style="background:#fff;border:2px solid #e8e8e8;border-radius:12px;padding:16px 20px;text-align:center">
+          <div style="font-weight:700;color:#999">Step 2</div>
+          <div style="margin-top:4px;color:#333">LDAP 集成</div>
+          <div style="font-size:10px;color:#999;margin-top:2px">可选</div>
+        </div>
+        <div style="color:#bbb;font-size:20px">→</div>
+        <div style="background:#fff;border:2px solid #e8e8e8;border-radius:12px;padding:16px 20px;text-align:center">
+          <div style="font-weight:700;color:#999">Step 3</div>
+          <div style="margin-top:4px;color:#333">消息渠道</div>
+          <div style="font-size:10px;color:#999;margin-top:2px">可选</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>线性三步向导</h3>
+      <p>按顺序推进，每步独立完成。必配项完成后可直接进入平台，LDAP 和渠道可后续配置。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>请确认以下几点</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="linear" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>纯步骤式推进</h3>
+      <p>必须按 1→2→3 顺序（但 Step1 完成后可直接"进入平台"，跳过 2、3）。当前推荐方案。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="free" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Tab 页签式切换</h3>
+      <p>三个配置Tab可自由切换，大模型配置完成前其他Tab置灰。完成所有配置统一提交。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="inline" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>单页面长表单</h3>
+      <p>所有配置在一个长页面中，Section 分区，顶部有进度指示器。简单直接但页面较长。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>关于"跳过"逻辑</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="skip-later" onclick="toggleSelect(this)">
+    <div class="letter">P1</div>
+    <div class="content">
+      <h3>必配项完成后可随时"进入平台"</h3>
+      <p>Step 1（大模型）完成后就出现"进入平台"按钮。Step 2/3 提供"跳过，以后配置"按钮。后续可在系统管理页面完成。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="skip-force" onclick="toggleSelect(this)">
+    <div class="letter">P2</div>
+    <div class="content">
+      <h3>全部完成才能进入</h3>
+      <p>三步必须全部勾选"已完成"或显式跳过才能进入平台。确保管理员不会遗漏关键配置。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>视觉风格</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="tech-dark" onclick="toggleSelect(this)">
+    <div class="letter">V1</div>
+    <div class="content">
+      <h3>深色科技风</h3>
+      <p>深蓝/深灰背景 + 发光边框 + 粒子/网格动效。类似运维监控大屏的科技感。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="tech-light" onclick="toggleSelect(this)">
+    <div class="letter">V2</div>
+    <div class="content">
+      <h3>浅色科技风（推荐）</h3>
+      <p>与登录页面一致的浅色渐变 + 微质感卡片 + 精细阴影 + 淡入淡出动效。保持平台UI一致性，同时加入科技点缀（点阵背景、细线网格）。</p>
+    </div>
+  </div>
+</div>

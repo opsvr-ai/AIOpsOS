@@ -8,10 +8,8 @@ Sub-agents can enrich their context with real data from the database.
 from abc import ABC, abstractmethod
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
-from src.config import settings
 
 
 class BaseSubAgent(ABC):
@@ -21,13 +19,15 @@ class BaseSubAgent(ABC):
     description: str = ""
     system_prompt: str = ""
 
-    def __init__(self) -> None:
-        self._llm = ChatOpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-            model="deepseek-v4-flash",
-            temperature=0.3,
-        )
+    def __init__(self, model: BaseChatModel | None = None) -> None:
+        self._llm = model
+
+    async def _get_llm(self):
+        """Lazy-init the LLM from the platform's configured ModelProvider."""
+        if self._llm is None:
+            from src.core.model_factory import get_default_model
+            self._llm = await get_default_model()
+        return self._llm
 
     @abstractmethod
     async def __call__(self, task: str, context: dict[str, Any] | None = None) -> str:

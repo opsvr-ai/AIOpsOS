@@ -1,5 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
 
 *,
 *::before,
@@ -84,20 +88,22 @@ body {
   }
 }
 
-/* Streaming cursor */
+/* Streaming cursor — smooth blink */
 .streaming-cursor {
   display: inline-block;
   width: 2px;
-  height: 1.15em;
+  height: 1.2em;
   background: currentColor;
   margin-left: 2px;
-  animation: cursorBlink 0.8s step-end infinite;
+  animation: cursorBlink 1s ease-in-out infinite;
   vertical-align: text-bottom;
+  border-radius: 1px;
+  opacity: 0.9;
 }
 
 @keyframes cursorBlink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  50% { opacity: 0.15; }
 }
 
 /* Thinking pulse indicator */
@@ -212,12 +218,20 @@ body {
 /* ── Streaming text fade-in ───────────────────────────────────── */
 
 .streaming-content {
-  animation: streamFadeIn 0.4s ease-out;
+  animation: streamFadeIn 0.5s ease-out;
 }
 
 @keyframes streamFadeIn {
-  0% { opacity: 0.6; }
-  100% { opacity: 1; }
+  0% { opacity: 0.7; transform: translateY(2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Message group separator ──────────────────────────────────── */
+
+.msg-group-separator {
+  height: 0;
+  border-top: 1px dashed transparent;
+  margin: 8px 0;
 }
 
 /* ── Message entry animation ──────────────────────────────────── */
@@ -277,8 +291,51 @@ body {
   border-color: inherit;
 }
 
+/* ── Markdown table zebra stripe ──────────────────────────────── */
+
+.chat-table tr:nth-child(even) td {
+  background: rgba(0,0,0,0.02);
+}
+
+@media (prefers-color-scheme: dark) {
+  .chat-table tr:nth-child(even) td {
+    background: rgba(255,255,255,0.03);
+  }
+}
+
+/* ── Responsive layout ────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .chat-sidebar-collapsible {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .msg-enter {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────── */
+
 @media (prefers-reduced-motion: reduce) {
-  .interactive-form-card .form-field {
-    animation: none;
+  .interactive-form-card .form-field,
+  .msg-enter,
+  .exec-step-enter,
+  .streaming-content,
+  .streaming-cursor,
+  .typing-dot {
+    animation: none !important;
+  }
+  .agent-avatar-thinking,
+  .agent-avatar-planning,
+  .agent-avatar-executing,
+  .agent-avatar-wave,
+  .agent-avatar-wave::after,
+  .user-avatar-waiting,
+  .user-avatar-reading {
+    animation: none !important;
   }
 }

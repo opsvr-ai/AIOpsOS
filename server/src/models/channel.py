@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,9 @@ class NotificationChannel(Base, TimestampMixin):
     channel_type: Mapped[str] = mapped_column(String(64), nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class AgentProfile(Base, TimestampMixin):
@@ -30,6 +33,13 @@ class AgentProfile(Base, TimestampMixin):
     model_config: Mapped[dict] = mapped_column(JSONB, default=dict)
     resources: Mapped[dict] = mapped_column(JSONB, default=dict)
     update_policy: Mapped[dict] = mapped_column(JSONB, default=dict)
+    online: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_heartbeat: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    connected_agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    hostname: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    os_info: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
 
 class SystemConfig(Base):

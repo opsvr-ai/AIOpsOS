@@ -1,10 +1,11 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import DbSession, get_current_user, require_perm
+from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_admin, require_perm
 from src.models.agent import (
     Agent, AgentVersion, Scenario, Tool,
     agent_channels, agent_sub_agents, agent_tools,
@@ -26,7 +27,8 @@ async def _load_agent_with_rels(db, agent_id: str) -> Agent | None:
         .where(Agent.id == agent_id)
         .options(
             selectinload(Agent.tools),
-            selectinload(Agent.sub_agents),
+            selectinload(Agent.sub_agents).selectinload(Agent.tools),
+            selectinload(Agent.sub_agents).selectinload(Agent.channels),
             selectinload(Agent.channels),
         )
     )
@@ -34,16 +36,23 @@ async def _load_agent_with_rels(db, agent_id: str) -> Agent | None:
 
 
 @router.get("/agents", response_model=list[AgentOut])
-async def list_agents(db: DbSession, _=Depends(get_current_user)):
-    result = await db.execute(
+async def list_agents(
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    query = (
         select(Agent)
         .options(
             selectinload(Agent.tools),
-            selectinload(Agent.sub_agents),
+            selectinload(Agent.sub_agents).selectinload(Agent.tools),
+            selectinload(Agent.sub_agents).selectinload(Agent.channels),
             selectinload(Agent.channels),
         )
-        .order_by(Agent.created_at.desc())
     )
+    if space_id:
+        query = query.where((Agent.space_id == space_id) | (Agent.space_id.is_(None)))
+    result = await db.execute(query.order_by(Agent.created_at.desc()))
     return result.scalars().all()
 
 
@@ -88,8 +97,21 @@ async def get_agent(agent_id: str, db: DbSession, _=Depends(get_current_user)):
 @router.patch("/agents/{agent_id}", response_model=AgentOut)
 async def update_agent(
     agent_id: str, body: AgentUpdate, db: DbSession,
-    _=Depends(require_perm("agents", "update"))
+    user=Depends(get_current_user),
 ):
+    # Permission check inline so we can distinguish admin vs regular
+    is_admin = False
+    has_perm = False
+    for role in (user.roles or []):
+        for perm in (role.permissions or []):
+            if perm.resource == "admin":
+                is_admin = True
+                has_perm = True
+            if perm.resource == "agents" and perm.action == "update":
+                has_perm = True
+    if not has_perm:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
     agent = await _load_agent_with_rels(db, agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -97,6 +119,25 @@ async def update_agent(
     await create_agent_version_snapshot(db, agent)
 
     data = body.model_dump(exclude_unset=True)
+
+    # Builtin protection
+    if agent.is_builtin:
+        if data.get("is_active") is False:
+            raise HTTPException(status_code=403, detail="Built-in agents cannot be deactivated")
+        if "name" in data and not is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can rename built-in agents")
+
+    # system_prompt: admin only
+    if "system_prompt" in data and not is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can edit system prompt")
+
+    # user_prompt: admin or matching editable_roles
+    if "user_prompt" in data and not is_admin:
+        user_role_names = {r.name for r in (user.roles or [])}
+        agent_editable = set(agent.editable_roles or [])
+        if not agent_editable or not user_role_names & agent_editable:
+            raise HTTPException(status_code=403, detail="You don't have permission to edit the user prompt")
+
     tool_ids = data.pop("tool_ids", None)
     sub_agent_ids = data.pop("sub_agent_ids", None)
     channel_ids = data.pop("channel_ids", None)
@@ -128,6 +169,8 @@ async def delete_agent(
     agent = await _load_agent_with_rels(db, agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.is_builtin:
+        raise HTTPException(status_code=403, detail="Built-in agents cannot be deleted")
     await db.delete(agent)
     await db.commit()
     return {"detail": "deleted"}
@@ -278,7 +321,7 @@ async def reload_agents(_=Depends(require_perm("agents", "update"))):
 # ── Seed ──────────────────────────────────────────────────────────────
 
 @router.post("/agents/seed")
-async def seed_agents(db: DbSession, _=Depends(require_perm("agents", "create"))):
+async def seed_agents(db: DbSession, _=Depends(get_current_user)):
     from src.agent.deep_agent import (
         AI_OPS_SYSTEM_PROMPT,
         KNOWLEDGE_SYSTEM_PROMPT, MONITOR_SYSTEM_PROMPT,
@@ -300,11 +343,13 @@ async def seed_agents(db: DbSession, _=Depends(require_perm("agents", "create"))
             agent.system_prompt = prompt
             agent.model_name = model
             agent.agent_type = agent_type
+            agent.is_builtin = True
             updated += 1
         else:
             agent = Agent(
                 name=name, type=atype, system_prompt=prompt,
                 model_name=model, agent_type=agent_type, is_active=True,
+                is_builtin=True,
             )
             db.add(agent)
             created += 1
@@ -318,10 +363,12 @@ async def seed_agents(db: DbSession, _=Depends(require_perm("agents", "create"))
         if tool is None:
             tool = Tool(
                 name=name, type="builtin", description=desc,
-                is_active=True, is_approved=True,
+                is_active=True, is_approved=True, is_builtin=True,
             )
             db.add(tool)
             await db.flush()
+        else:
+            tool.is_builtin = True
         return tool
 
     main = await _upsert_agent("AIOpsOS 主智能体", "main", AI_OPS_SYSTEM_PROMPT)
@@ -342,22 +389,18 @@ async def seed_agents(db: DbSession, _=Depends(require_perm("agents", "create"))
 
     for kt in KNOWLEDGE_TOOLS:
         tool = await _upsert_tool(kt.name, kt.description or "")
-        try:
-            await db.execute(
-                agent_tools.insert().values(agent_id=main.id, tool_id=tool.id)
-            )
-        except Exception:
-            pass
+        await db.execute(
+            pg_insert(agent_tools)
+            .values(agent_id=main.id, tool_id=tool.id)
+            .on_conflict_do_nothing()
+        )
 
     for _sa_name, sub in sub_map.items():
-        try:
-            await db.execute(
-                agent_sub_agents.insert().values(
-                    main_agent_id=main.id, sub_agent_id=sub.id,
-                )
-            )
-        except Exception:
-            pass
+        await db.execute(
+            pg_insert(agent_sub_agents)
+            .values(main_agent_id=main.id, sub_agent_id=sub.id)
+            .on_conflict_do_nothing()
+        )
 
     await db.commit()
     return {"created": created, "updated": updated, "agents": agent_ids}
@@ -366,8 +409,15 @@ async def seed_agents(db: DbSession, _=Depends(require_perm("agents", "create"))
 # ── Scenarios ─────────────────────────────────────────────────────────
 
 @router.get("/scenarios", response_model=list[ScenarioOut])
-async def list_scenarios(db: DbSession, _=Depends(get_current_user)):
-    result = await db.execute(select(Scenario).order_by(Scenario.created_at.desc()))
+async def list_scenarios(
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    query = select(Scenario)
+    if space_id:
+        query = query.where((Scenario.space_id == space_id) | (Scenario.space_id.is_(None)))
+    result = await db.execute(query.order_by(Scenario.created_at.desc()))
     return result.scalars().all()
 
 

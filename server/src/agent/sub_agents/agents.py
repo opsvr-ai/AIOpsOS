@@ -17,7 +17,12 @@ class MonitorAgent(BaseSubAgent):
     name = "monitor"
     description = "Analyze alerts, triage incidents, and summarize system health"
     system_prompt = (
-        "You are a monitoring and alert analysis specialist. Your role:\n"
+        "You are the vigilant sentinel of the digital realm — the first to hear the "
+        "whisper of trouble before it becomes a roar.\n"
+        "Like a seasoned lighthouse keeper reading the sea, you scan the horizon of "
+        "alerts, trace patterns in the blink of warning lights, and separate the "
+        "signal from the noise with calm, practiced eyes.\n\n"
+        "Your role:\n"
         "1. Analyze alert patterns and identify root causes\n"
         "2. Triage incidents by severity and impact\n"
         "3. Summarize system health status\n"
@@ -59,7 +64,8 @@ class MonitorAgent(BaseSubAgent):
         enriched_context = dict(context or {})
         enriched_context["real-time data"] = real_data
         msgs = self._build_messages(task, enriched_context)
-        resp = await self._llm.ainvoke(msgs)
+        llm = await self._get_llm()
+        resp = await llm.ainvoke(msgs)
         return str(resp.content)
 
 
@@ -69,7 +75,11 @@ class OpsAgent(BaseSubAgent):
     name = "ops"
     description = "Execute operational tasks: config checks, deployments, runbooks"
     system_prompt = (
-        "You are an operations specialist. Your role:\n"
+        "You are the steady hand on the tiller of infrastructure — the operator who "
+        "turns intention into action with the precision of a master craftsman.\n"
+        "Like a pilot in the cockpit scanning every gauge and switch, you navigate "
+        "through configuration, deployment, and maintenance with methodical grace.\n\n"
+        "Your role:\n"
         "1. Check configuration status and consistency\n"
         "2. Query deployment status and pipeline health\n"
         "3. Execute runbook procedures\n"
@@ -102,7 +112,8 @@ class OpsAgent(BaseSubAgent):
         enriched_context = dict(context or {})
         enriched_context["real-time data"] = real_data
         msgs = self._build_messages(task, enriched_context)
-        resp = await self._llm.ainvoke(msgs)
+        llm = await self._get_llm()
+        resp = await llm.ainvoke(msgs)
         return str(resp.content)
 
 
@@ -112,7 +123,12 @@ class AnalysisAgent(BaseSubAgent):
     name = "analysis"
     description = "Perform data analysis, trend identification, and reporting"
     system_prompt = (
-        "You are a data analysis specialist. Your role:\n"
+        "You are the astronomer of the system — the mind that finds constellations "
+        "in the scattered stars of data.\n"
+        "Like a detective who reads the silent language of numbers and trends, you "
+        "trace correlations across sources, uncover the hidden story within metrics, "
+        "and illuminate the path forward with evidence as your compass.\n\n"
+        "Your role:\n"
         "1. Analyze metrics and identify trends\n"
         "2. Correlate events across different data sources\n"
         "3. Generate summary reports\n"
@@ -152,5 +168,6 @@ class AnalysisAgent(BaseSubAgent):
         enriched_context = dict(context or {})
         enriched_context["real-time data"] = real_data
         msgs = self._build_messages(task, enriched_context)
-        resp = await self._llm.ainvoke(msgs)
+        llm = await self._get_llm()
+        resp = await llm.ainvoke(msgs)
         return str(resp.content)

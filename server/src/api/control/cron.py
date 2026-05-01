@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
-from src.api.deps import DbSession, get_current_user
+from src.api.deps import DbSession, get_current_user, get_optional_space_id
 from src.models.cron_job import CronJob
 from src.schemas.cron import CronJobCreate, CronJobOut, CronJobUpdate
 from src.services.cron_scheduler import compute_next_run
@@ -10,8 +10,15 @@ router = APIRouter()
 
 
 @router.get("/cron/jobs", response_model=list[CronJobOut])
-async def list_cron_jobs(db: DbSession, _=Depends(get_current_user)):
-    result = await db.execute(select(CronJob).order_by(CronJob.created_at.desc()))
+async def list_cron_jobs(
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    query = select(CronJob)
+    if space_id:
+        query = query.where(CronJob.space_id == space_id)
+    result = await db.execute(query.order_by(CronJob.created_at.desc()))
     return result.scalars().all()
 
 

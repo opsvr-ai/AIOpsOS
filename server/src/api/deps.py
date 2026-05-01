@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +43,17 @@ async def get_current_user(
     return user
 
 
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Require admin permission (resource == 'admin')."""
+    if not user.roles:
+        raise HTTPException(status_code=403, detail="Admin permission required")
+    for role in user.roles:
+        for perm in role.permissions:
+            if perm.resource == "admin":
+                return user
+    raise HTTPException(status_code=403, detail="Admin permission required")
+
+
 def require_perm(resource: str, action: str):
     """Factory: returns a dependency that checks RBAC for the given resource/action."""
     async def checker(user: User = Depends(get_current_user)) -> User:
@@ -56,6 +67,14 @@ def require_perm(resource: str, action: str):
                     return user
         raise HTTPException(status_code=403, detail="Permission denied")
     return checker
+
+
+async def get_optional_space_id(
+    space_id: str | None = Query(None, description="Filter by space"),
+    x_space_id: str | None = Header(None, alias="X-Space-Id"),
+) -> str | None:
+    """Read space_id from query parameter or X-Space-Id header."""
+    return space_id or x_space_id
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

@@ -52,11 +52,26 @@ export interface FormDefinition {
   submit_label?: string;
 }
 
+export interface InterruptData {
+  interrupt_id: string;
+  type: 'approval' | 'form';
+  data: {
+    action?: string;
+    details?: string;
+    risk_level?: string;
+    code_snippet?: string;
+    impact_scope?: string;
+    title?: string;
+    description?: string;
+    fields?: FormField[];
+  };
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type: 'text' | 'intent' | 'plan' | 'exec' | 'final' | 'interactive_form';
+  type: 'text' | 'intent' | 'plan' | 'exec' | 'final' | 'interactive_form' | 'interrupt';
   timestamp: number;
   planSteps?: PlanStep[];
   execResults?: ToolResult[];
@@ -68,6 +83,10 @@ export interface ChatMessage {
   formData?: FormDefinition;
   /** Whether the form has been submitted (read-only mode) */
   formSubmitted?: boolean;
+  /** Interrupt data for human-in-the-loop approval/input requests */
+  interruptData?: InterruptData;
+  /** Whether the interrupt has been responded to */
+  interruptResolved?: boolean;
 }
 
 export interface SessionInfo {

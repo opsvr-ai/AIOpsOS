@@ -1,0 +1,145 @@
+<h2>Step 1 — 大模型配置 界面设计</h2>
+<p class="subtitle">必配项。浅色科技风：渐变背景 + 点阵纹理 + 淡入动效 + 微质感卡片。</p>
+
+<div class="section">
+  <h3>页面布局</h3>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">Step 1/3 · 大模型配置（必配）</div>
+  <div class="mockup-body">
+    <!-- Top progress bar -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px">
+      <div style="width:32px;height:32px;border-radius:50%;background:#1677ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">1</div>
+      <div style="flex:1;height:3px;background:#1677ff;border-radius:2px"></div>
+      <div style="width:32px;height:32px;border-radius:50%;background:#e8e8e8;color:#999;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">2</div>
+      <div style="flex:1;height:3px;background:#e8e8e8;border-radius:2px"></div>
+      <div style="width:32px;height:32px;border-radius:50%;background:#e8e8e8;color:#999;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">3</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:#999;margin-bottom:28px">
+      <span style="color:#1677ff;font-weight:600">大模型配置</span>
+      <span>LDAP 集成</span>
+      <span>消息渠道</span>
+    </div>
+
+    <!-- Content card -->
+    <div style="background:#fff;border-radius:16px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="margin-bottom:24px">
+        <h3 style="margin:0 0 4px;font-size:16px">配置 AI 模型提供商</h3>
+        <p style="margin:0;color:#999;font-size:13px">至少配置一个大模型才能使用平台核心功能。支持 OpenAI 兼容接口和 Anthropic 原生接口。</p>
+      </div>
+
+      <!-- Form fields - mock -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">名称 <span style="color:#ff4d4f">*</span></div>
+          <div class="mock-input" style="width:100%">例如：DeepSeek V4</div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">提供商类型 <span style="color:#ff4d4f">*</span></div>
+          <div class="mock-input" style="width:100%">OpenAI 兼容</div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">模型名称 <span style="color:#ff4d4f">*</span></div>
+          <div class="mock-input" style="width:100%">deepseek-v4-flash</div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">模型类型 <span style="color:#ff4d4f">*</span></div>
+          <div class="mock-input" style="width:100%">LLM</div>
+        </div>
+        <div style="grid-column:1/-1">
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">API 密钥 <span style="color:#ff4d4f">*</span></div>
+          <div class="mock-input" style="width:100%">••••••••••••••••</div>
+        </div>
+        <div style="grid-column:1/-1">
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">接口地址</div>
+          <div class="mock-input" style="width:100%">https://api.deepseek.com/v1（留空使用默认）</div>
+        </div>
+      </div>
+
+      <!-- Test + Add button row -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:20px;border-top:1px solid #f0f0f0">
+        <button class="mock-button" style="background:#fff;color:#1677ff;border:1px solid #1677ff">测试连接</button>
+        <div style="display:flex;gap:8px">
+          <span style="font-size:12px;color:#52c41a;display:flex;align-items:center">&#10003; 连接正常 · 120ms</span>
+          <button class="mock-button" style="background:#1677ff;color:#fff">添加并继续 →</button>
+        </div>
+      </div>
+
+      <!-- Already added providers list -->
+      <div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f0">
+        <div style="font-size:13px;font-weight:500;margin-bottom:8px">已配置的提供商</div>
+        <div style="display:flex;align-items:center;gap:8px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:8px 12px">
+          <span style="width:8px;height:8px;border-radius:50%;background:#52c41a"></span>
+          <span style="font-size:13px;font-weight:500">DeepSeek V4</span>
+          <span style="font-size:12px;color:#999">deepseek-v4-flash · openai</span>
+          <span style="margin-left:auto;font-size:11px;background:#fff2e8;color:#fa8c16;padding:2px 6px;border-radius:4px">默认</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom actions -->
+    <div style="display:flex;justify-content:space-between;margin-top:24px">
+      <span style="color:#999;font-size:13px">此步骤为必配项，添加至少一个模型后即可继续</span>
+      <div style="display:flex;gap:12px">
+        <span style="color:#1677ff;font-size:13px;display:flex;align-items:center;cursor:pointer">进入平台</span>
+        <button class="mock-button" style="background:#1677ff;color:#fff">下一步：LDAP 集成 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:28px">
+  <h3>这个界面需要你确认的几个点</h3>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="grid-form" onclick="toggleSelect(this)">
+    <div class="letter">F1</div>
+    <div class="content">
+      <h3>双列表单布局（如上）</h3>
+      <p>名称和提供商类型并排，API 密钥和接口地址独占一行。紧凑且信息层级清晰。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="single-form" onclick="toggleSelect(this)">
+    <div class="letter">F2</div>
+    <div class="content">
+      <h3>单列垂直布局</h3>
+      <p>所有字段按顺序垂直排列，更符合移动端习惯，但占用更多纵向空间。</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" data-multiselect style="margin-top:16px">
+  <div class="option" data-choice="test-before-add" onclick="toggleSelect(this)">
+    <div class="letter">T1</div>
+    <div class="content">
+      <h3>先测试后添加（如上）</h3>
+      <p>填写完成后提供"测试连接"按钮，测试通过后再添加到列表。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="add-inline" onclick="toggleSelect(this)">
+    <div class="letter">T2</div>
+    <div class="content">
+      <h3>直接添加 + 列表内测试</h3>
+      <p>点击添加直接进列表，在列表每项旁边有测试按钮。更快速但可能添加无效配置。</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" data-multiselect style="margin-top:16px">
+  <div class="option" data-choice="bottom-actions" onclick="toggleSelect(this)">
+    <div class="letter">B1</div>
+    <div class="content">
+      <h3>底部双按钮（如上）</h3>
+      <p>"进入平台"（文本链接，满足条件后出现）+ "下一步"（主按钮）。推荐。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="only-next" onclick="toggleSelect(this)">
+    <div class="letter">B2</div>
+    <div class="content">
+      <h3>仅"下一步"按钮</h3>
+      <p>不提供中间退出，必须走完三步或在 Step2/3 处显式跳过。</p>
+    </div>
+  </div>
+</div>

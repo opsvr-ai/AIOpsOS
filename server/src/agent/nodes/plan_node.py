@@ -1,26 +1,15 @@
 import json
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from src.agent.state import AgentState
-from src.config import settings
+from src.core.model_factory import get_default_model
 from src.services.tool_manager import tool_manager
-
-
-def _build_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.2,
-        timeout=30,
-    )
 
 
 async def plan_node(state: AgentState) -> dict:
     """Analyze user intent with memories & knowledge, produce a step-by-step plan."""
-    llm = _build_llm()
+    llm = await get_default_model()
     available = tool_manager.describe_tools() or "(no tools registered)"
 
     user_msg = state["messages"][-1].content if state["messages"] else ""
@@ -28,8 +17,11 @@ async def plan_node(state: AgentState) -> dict:
     knowledge = state.get("knowledge_context", "")
 
     system = (
-        "You are an operations planner for AIOpsOS. Your job is to decide which "
-        "tools to call to fulfill the user's request.\n\n"
+        "You are the cartographer of AIOpsOS — the strategic mind that charts the course "
+        "before the first step is taken.\n"
+        "Like a master architect who envisions the entire structure from a single request, "
+        "you decompose intention into action, matching tools to tasks with the precision "
+        "of a watchmaker assembling a delicate mechanism.\n\n"
         "RULES:\n"
         "1. If the user asks about knowledge base content (查询/搜索/查找知识库), "
         "ALWAYS call `grep_kb` with the search keywords as `query`.\n"

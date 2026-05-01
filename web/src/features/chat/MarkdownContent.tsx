@@ -9,6 +9,7 @@ import type { Components } from 'react-markdown';
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const { token } = theme.useToken();
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -25,33 +26,41 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     <div
       className="chat-code-block"
       style={{
-        margin: '8px 0',
-        borderRadius: 8,
+        margin: '10px 0',
+        borderRadius: 10,
         overflow: 'hidden',
         border: `1px solid ${token.colorBorderSecondary}`,
         fontSize: 13,
+        boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
       }}
     >
       <div
         style={{
-          padding: '4px 12px',
+          padding: '6px 14px',
           fontSize: 11,
-          color: token.colorTextTertiary,
-          background: token.colorFillQuaternary,
+          color: token.colorTextSecondary,
+          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
           borderBottom: `1px solid ${token.colorBorderSecondary}`,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          fontWeight: 500,
         }}
       >
-        <span>{language || 'text'}</span>
+        <span>{language || 'code'}</span>
         <Button
           type="text"
           size="small"
-          icon={copied ? <CheckOutlined style={{ color: token.colorSuccess }} /> : <CopyOutlined />}
+          icon={
+            copied ? (
+              <CheckOutlined style={{ color: token.colorSuccess, fontSize: 12 }} />
+            ) : (
+              <CopyOutlined style={{ fontSize: 12 }} />
+            )
+          }
           onClick={handleCopy}
-          style={{ fontSize: 12, height: 22 }}
+          style={{ fontSize: 11, height: 22, color: token.colorTextTertiary }}
         >
           {copied ? '已复制' : '复制'}
         </Button>
@@ -59,9 +68,9 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       <pre
         style={{
           margin: 0,
-          padding: '12px 16px',
+          padding: '14px 16px',
           overflow: 'auto',
-          background: token.colorFillQuaternary,
+          background: isDark ? token.colorFillQuaternary : token.colorBgContainer,
           fontSize: 13,
           lineHeight: 1.55,
         }}
@@ -77,7 +86,52 @@ export default function MarkdownContent({ children }: { children: string }) {
   const mode = useThemeStore((s) => s.mode);
   const isDark = mode === 'dark';
 
+  const headingBase = {
+    margin: '16px 0 6px',
+    lineHeight: 1.35,
+    fontWeight: 600,
+    color: token.colorText,
+  } as const;
+
   const components: Components = {
+    h1({ children }) {
+      return (
+        <h1
+          style={{
+            ...headingBase,
+            fontSize: 18,
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            paddingBottom: 6,
+          }}
+        >
+          {children}
+        </h1>
+      );
+    },
+    h2({ children }) {
+      return <h2 style={{ ...headingBase, fontSize: 16 }}>{children}</h2>;
+    },
+    h3({ children }) {
+      return <h3 style={{ ...headingBase, fontSize: 15 }}>{children}</h3>;
+    },
+    h4({ children }) {
+      return <h4 style={{ ...headingBase, fontSize: 14 }}>{children}</h4>;
+    },
+    p({ children }) {
+      return <p style={{ margin: '4px 0', lineHeight: 1.68 }}>{children}</p>;
+    },
+    ul({ children }) {
+      return <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ul>;
+    },
+    ol({ children }) {
+      return <ol style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ol>;
+    },
+    li({ children }) {
+      return <li style={{ margin: '2px 0', lineHeight: 1.6 }}>{children}</li>;
+    },
+    strong({ children }) {
+      return <strong style={{ fontWeight: 600, color: token.colorText }}>{children}</strong>;
+    },
     code({ className, children, ...props }) {
       const match = /language-(\w+)/.exec(className ?? '');
       const code = String(children).replace(/\n$/, '');
@@ -87,12 +141,13 @@ export default function MarkdownContent({ children }: { children: string }) {
       return (
         <code
           style={{
-            background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-            padding: '1px 5px',
+            background: isDark ? 'rgba(255,255,255,0.1)' : token.colorFillSecondary,
+            padding: '2px 6px',
             borderRadius: 4,
-            fontSize: '0.9em',
+            fontSize: '0.88em',
             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
             wordBreak: 'break-word',
+            color: token.colorPrimaryActive,
           }}
           {...props}
         >
@@ -105,7 +160,7 @@ export default function MarkdownContent({ children }: { children: string }) {
     },
     table({ children }) {
       return (
-        <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+        <div style={{ overflowX: 'auto', margin: '8px 0' }} className="chat-table">
           <table
             style={{
               borderCollapse: 'collapse',

@@ -4,14 +4,6 @@ __pycache__/
 *.egg-info/
 dist/
 .venv/
-./server/.venv/
-./server/.env
-./*.json
-./server/data/knowledge
-*.txt
-./tmp
-./web/node_modules
-poetry.lock
 
 # Node
 node_modules/
@@ -22,6 +14,10 @@ pnpm-lock.yaml
 .vscode/
 *.swp
 
+# Build / Cache
+.vite/
+.ruff_cache/
+
 # Env
 .env
 *.env.local
@@ -29,10 +25,23 @@ pnpm-lock.yaml
 # Claude
 .claude/settings.local.json
 
-# Docker
+# Docker / Runtime data volumes
 db_data/
 redis_data/
 kafka_data/
 server_uploads/
 server_data/
 knowledge_data/
+
+# Server runtime data
+server/data/knowledge/
+server/data/logs/
+server/data/cron_output/
+server/data/skills/
+server/.env
+
+# Local test / tmp
+tmp/
+
+# Test artifacts
+server/text_*.json

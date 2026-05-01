@@ -48,10 +48,21 @@ class Agent(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     agent_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    viewable_roles: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    editable_roles: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    model_provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("model_providers.id", ondelete="SET NULL"), nullable=True
+    )
+    model_provider: Mapped["ModelProvider | None"] = relationship()
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
     scenarios: Mapped[list["Scenario"]] = relationship(
         secondary="scenario_agents", back_populates="agents"
@@ -83,6 +94,9 @@ class MCPServer(Base, TimestampMixin):
     args: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class Tool(Base, TimestampMixin):
@@ -100,6 +114,10 @@ class Tool(Base, TimestampMixin):
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
     mcp_server: Mapped[MCPServer | None] = relationship()
     scenarios: Mapped[list["Scenario"]] = relationship(
@@ -134,6 +152,7 @@ class AgentVersion(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_name: Mapped[str] = mapped_column(String(128), nullable=False)
     agent_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -150,6 +169,9 @@ class Scenario(Base, TimestampMixin):
     trigger_command: Mapped[str] = mapped_column(String(128), nullable=False)
     params_schema: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
     tools: Mapped[list["Tool"]] = relationship(
         secondary="scenario_tools", back_populates="scenarios"

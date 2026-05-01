@@ -20,6 +20,8 @@ import {
   Divider,
   Row,
   Col,
+  Tabs,
+  Progress,
 } from 'antd';
 import {
   PlusOutlined,
@@ -35,10 +37,16 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   MinusCircleOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
+  InfoCircleOutlined,
+  ReloadOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import MDEditor from '@uiw/react-md-editor';
 import type { ICommand } from '@uiw/react-md-editor';
 import api from '@/services/api';
+import WikiBrowser from './WikiBrowser';
 
 interface Document {
   id: string;
@@ -88,9 +96,44 @@ interface ProcessAllResultData {
   results: ProcessResultItem[];
 }
 
+interface LintIssue {
+  check_id: string;
+  severity: 'error' | 'warning' | 'info';
+  page: string;
+  message: string;
+  fix_action: string;
+  fix_description: string;
+}
+
+interface LintReportData {
+  health_score: number;
+  total_issues: number;
+  errors: number;
+  warnings: number;
+  info: number;
+  issues: LintIssue[];
+  checked_at: string;
+}
+
 export default function KnowledgePage() {
   const { token } = theme.useToken();
   const { message: msg } = App.useApp();
+
+  // ── Tab state ─────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('docs');
+  const [wikiInitialPage, setWikiInitialPage] = useState<string | undefined>(undefined);
+
+  // Check URL for wiki page deep-link
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page) {
+      setActiveTab('wiki');
+      setWikiInitialPage(page);
+    }
+  }, []);
+
+  // ── Document state ────────────────────────────────────────
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -108,6 +151,8 @@ export default function KnowledgePage() {
   const [uploading, setUploading] = useState(false);
   const [convertMd, setConvertMd] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+
+  // ── Monitor state ─────────────────────────────────────────
   const [monitorStatus, setMonitorStatus] = useState<MonitorState | null>(null);
   const [monitorFiles, setMonitorFiles] = useState<WatchedFileItem[]>([]);
   const [processingAll, setProcessingAll] = useState(false);
@@ -115,6 +160,14 @@ export default function KnowledgePage() {
   const [processResult, setProcessResult] = useState<ProcessAllResultData | null>(null);
   const [processResultOpen, setProcessResultOpen] = useState(false);
   const [watchedPanelOpen, setWatchedPanelOpen] = useState(false);
+
+  // ── Lint state ────────────────────────────────────────────
+  const [lintReport, setLintReport] = useState<LintReportData | null>(null);
+  const [lintLoading, setLintLoading] = useState(false);
+  const [fixingIssue, setFixingIssue] = useState<string | null>(null);
+  const [fixingAll, setFixingAll] = useState(false);
+
+  // ── Fetch documents ───────────────────────────────────────
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -163,6 +216,58 @@ export default function KnowledgePage() {
     const timer = setInterval(fetchMonitorData, 30000);
     return () => clearInterval(timer);
   }, [fetchMonitorData]);
+
+  // ── Lint data ──────────────────────────────────────────────
+
+  const fetchLintReport = useCallback(async () => {
+    setLintLoading(true);
+    try {
+      const res = await api.post('/knowledge/lint');
+      setLintReport(res.data);
+    } catch {
+      msg.error('加载 Lint 报告失败');
+    } finally {
+      setLintLoading(false);
+    }
+  }, [msg]);
+
+  useEffect(() => {
+    if (activeTab === 'monitor') {
+      fetchLintReport();
+    }
+  }, [activeTab, fetchLintReport]);
+
+  const handleFixIssue = async (issueId: string, page: string) => {
+    setFixingIssue(issueId);
+    try {
+      await api.post(`/knowledge/lint/fix/${encodeURIComponent(issueId)}`, null, {
+        params: { page },
+      });
+      msg.success('修复成功');
+      fetchLintReport();
+    } catch {
+      msg.error('修复失败');
+    } finally {
+      setFixingIssue(null);
+    }
+  };
+
+  const handleFixAll = async () => {
+    setFixingAll(true);
+    try {
+      const res = await api.post('/knowledge/lint/fix-all');
+      msg.success(
+        `修复完成: ${res.data.fixed} 项, 健康评分 ${res.data.health_before} → ${res.data.health_after}`,
+      );
+      fetchLintReport();
+    } catch {
+      msg.error('批量修复失败');
+    } finally {
+      setFixingAll(false);
+    }
+  };
+
+  // ── Process triggers ──────────────────────────────────────
 
   const handleTriggerProcessAll = async () => {
     setProcessingAll(true);
@@ -421,9 +526,518 @@ export default function KnowledgePage() {
     },
   ];
 
+  // ── Lint columns ─────────────────────────────────────────
+
+  const severityIcon = (s: string) => {
+    switch (s) {
+      case 'error':
+        return <CloseCircleOutlined style={{ color: token.colorError }} />;
+      case 'warning':
+        return <WarningOutlined style={{ color: token.colorWarning }} />;
+      case 'info':
+        return <InfoCircleOutlined style={{ color: token.colorPrimary }} />;
+      default:
+        return null;
+    }
+  };
+
+  const lintColumns = [
+    {
+      title: '级别',
+      dataIndex: 'severity',
+      key: 'severity',
+      width: 70,
+      render: (s: string) => (
+        <Tag
+          color={s === 'error' ? 'error' : s === 'warning' ? 'warning' : 'processing'}
+          style={{ borderRadius: 4 }}
+        >
+          {severityIcon(s)} {s === 'error' ? '错误' : s === 'warning' ? '警告' : '提示'}
+        </Tag>
+      ),
+    },
+    {
+      title: '检查项',
+      dataIndex: 'check_id',
+      key: 'check_id',
+      width: 140,
+      render: (v: string) => (
+        <Typography.Text code style={{ fontSize: 12 }}>
+          {v}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: '页面',
+      dataIndex: 'page',
+      key: 'page',
+      width: 180,
+      render: (v: string) =>
+        v ? (
+          <Typography.Text style={{ fontSize: 13 }}>{v}</Typography.Text>
+        ) : (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            -
+          </Typography.Text>
+        ),
+    },
+    {
+      title: '说明',
+      dataIndex: 'message',
+      key: 'message',
+      render: (v: string) => <Typography.Text style={{ fontSize: 13 }}>{v}</Typography.Text>,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 100,
+      render: (_: unknown, record: LintIssue) =>
+        record.fix_action ? (
+          <Button
+            size="small"
+            icon={<ToolOutlined />}
+            loading={fixingIssue === record.check_id}
+            onClick={() => handleFixIssue(record.check_id, record.page)}
+          >
+            修复
+          </Button>
+        ) : null,
+    },
+  ];
+
+  // ── Header actions ───────────────────────────────────────
+
+  const headerActions = (
+    <Space>
+      <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)}>
+        语义搜索
+      </Button>
+      <Button icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>
+        上传文档
+      </Button>
+      <Button
+        icon={<ThunderboltOutlined />}
+        onClick={handleTriggerProcessAll}
+        loading={processingAll}
+      >
+        触发知识更新
+      </Button>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+        添加文档
+      </Button>
+    </Space>
+  );
+
+  // ── Health score color ───────────────────────────────────
+
+  const healthColor = !lintReport
+    ? '#d9d9d9'
+    : lintReport.health_score >= 80
+      ? token.colorSuccess
+      : lintReport.health_score >= 50
+        ? token.colorWarning
+        : token.colorError;
+
+  // ── Tabs definition ──────────────────────────────────────
+
+  const tabItems = [
+    {
+      key: 'docs',
+      label: '文档管理',
+      children: (
+        <>
+          {/* Monitor Status Bar */}
+          <Card size="small" style={{ borderRadius: 12, marginBottom: 16 }}>
+            <Row gutter={[16, 8]} align="middle">
+              <Col>
+                <Space size={4}>
+                  <Badge status={monitorStatus?.running ? 'success' : 'default'} />
+                  <Typography.Text style={{ fontSize: 13 }}>
+                    {monitorStatus?.running ? '监控运行中' : '监控已停止'}
+                  </Typography.Text>
+                </Space>
+              </Col>
+              {monitorStatus && (
+                <>
+                  <Col>
+                    <Divider type="vertical" />
+                  </Col>
+                  <Col>
+                    <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                      监视 {monitorStatus.watched_files} 个文件
+                    </Typography.Text>
+                  </Col>
+                  <Col>
+                    <Divider type="vertical" />
+                  </Col>
+                  <Col>
+                    <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                      上次检查: {formatTime(monitorStatus.last_check)}
+                    </Typography.Text>
+                  </Col>
+                </>
+              )}
+            </Row>
+          </Card>
+
+          {/* Document list */}
+          <Card style={{ borderRadius: 12 }} styles={{ body: { padding: 0 } }}>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: 60 }}>
+                <Spin />
+              </div>
+            ) : docs.length === 0 ? (
+              <Empty
+                description="暂无知识文档"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ padding: 60 }}
+              >
+                <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                  添加文档
+                </Button>
+              </Empty>
+            ) : (
+              <Table
+                dataSource={docs}
+                columns={columns}
+                rowKey="id"
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                size="middle"
+              />
+            )}
+          </Card>
+        </>
+      ),
+    },
+    {
+      key: 'wiki',
+      label: 'Wiki 浏览',
+      children:
+        activeTab === 'wiki' ? (
+          <WikiBrowser initialPage={wikiInitialPage} />
+        ) : (
+          <div style={{ minHeight: 500 }} />
+        ),
+    },
+    {
+      key: 'monitor',
+      label: '编译监控',
+      children:
+        activeTab === 'monitor' ? (
+          <div>
+            {/* Monitor status bar */}
+            <Card size="small" style={{ borderRadius: 12, marginBottom: 16 }}>
+              <Row gutter={[16, 8]} align="middle">
+                <Col>
+                  <Space size={4}>
+                    <Badge status={monitorStatus?.running ? 'success' : 'default'} />
+                    <Typography.Text style={{ fontSize: 13 }}>
+                      {monitorStatus?.running ? '监控运行中' : '监控已停止'}
+                    </Typography.Text>
+                  </Space>
+                </Col>
+                {monitorStatus && (
+                  <>
+                    <Col>
+                      <Divider type="vertical" />
+                    </Col>
+                    <Col>
+                      <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                        监视 {monitorStatus.watched_files} 个文件 · 轮询间隔{' '}
+                        {monitorStatus.poll_interval_seconds}s
+                      </Typography.Text>
+                    </Col>
+                    <Col>
+                      <Divider type="vertical" />
+                    </Col>
+                    <Col>
+                      <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                        上次检查: {formatTime(monitorStatus.last_check)}
+                      </Typography.Text>
+                    </Col>
+                    <Col flex="auto" />
+                    <Col>
+                      <Space size={8}>
+                        <Badge count={changedCount} size="small" offset={[4, 0]}>
+                          <Button
+                            size="small"
+                            onClick={() => setWatchedPanelOpen(!watchedPanelOpen)}
+                          >
+                            {watchedPanelOpen ? '收起文件列表 ▲' : '展开文件列表 ▼'}
+                          </Button>
+                        </Badge>
+                        <Button
+                          type="primary"
+                          size="small"
+                          icon={<ThunderboltOutlined />}
+                          loading={processingAll}
+                          onClick={handleTriggerProcessAll}
+                        >
+                          全部处理
+                        </Button>
+                      </Space>
+                    </Col>
+                  </>
+                )}
+              </Row>
+            </Card>
+
+            {/* Watched Files Panel */}
+            {watchedPanelOpen && monitorFiles.length > 0 && (
+              <Card
+                size="small"
+                style={{ borderRadius: 12, marginBottom: 16 }}
+                title={
+                  <Space>
+                    <Typography.Text strong style={{ fontSize: 14 }}>
+                      监视文件列表
+                    </Typography.Text>
+                    {changedCount > 0 && (
+                      <Tag color="orange" style={{ borderRadius: 4 }}>
+                        {changedCount} 个变更
+                      </Tag>
+                    )}
+                  </Space>
+                }
+              >
+                <Table
+                  dataSource={monitorFiles}
+                  rowKey="path"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    {
+                      title: '文件路径',
+                      dataIndex: 'path',
+                      render: (v: string) => (
+                        <Tooltip title={v}>
+                          <Space>
+                            <FileTextOutlined style={{ color: token.colorPrimary }} />
+                            <Typography.Text style={{ fontSize: 13, maxWidth: 320 }} ellipsis>
+                              {v}
+                            </Typography.Text>
+                          </Space>
+                        </Tooltip>
+                      ),
+                    },
+                    {
+                      title: '状态',
+                      dataIndex: 'status',
+                      width: 90,
+                      render: (s: string) => {
+                        const map: Record<string, { color: string; label: string }> = {
+                          unchanged: { color: 'default', label: '未变更' },
+                          changed: { color: 'orange', label: '已变更' },
+                          new: { color: 'green', label: '新增' },
+                          deleted: { color: 'red', label: '已删除' },
+                        };
+                        const cfg = map[s] || { color: 'default', label: s };
+                        return (
+                          <Tag color={cfg.color} style={{ borderRadius: 4, fontSize: 11 }}>
+                            {cfg.label}
+                          </Tag>
+                        );
+                      },
+                    },
+                    {
+                      title: '大小',
+                      dataIndex: 'size',
+                      width: 80,
+                      render: (v: number) => (
+                        <Typography.Text style={{ fontSize: 12 }}>{formatSize(v)}</Typography.Text>
+                      ),
+                    },
+                    {
+                      title: '修改时间',
+                      dataIndex: 'last_modified',
+                      width: 160,
+                      render: (v: string | null) => (v ? new Date(v).toLocaleString('zh-CN') : '-'),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 80,
+                      render: (_: unknown, record: WatchedFileItem) =>
+                        record.status === 'changed' || record.status === 'new' ? (
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<ThunderboltOutlined />}
+                            loading={processingFilePath === record.path}
+                            onClick={() => handleTriggerProcessFile(record.path)}
+                          >
+                            处理
+                          </Button>
+                        ) : null,
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+
+            {/* Lint Report */}
+            <Card
+              size="small"
+              style={{ borderRadius: 12 }}
+              title={
+                <Space>
+                  <Typography.Text strong style={{ fontSize: 14 }}>
+                    Lint 体检报告
+                  </Typography.Text>
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    loading={lintLoading}
+                    onClick={fetchLintReport}
+                  >
+                    刷新
+                  </Button>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<ToolOutlined />}
+                    loading={fixingAll}
+                    onClick={handleFixAll}
+                  >
+                    全部修复
+                  </Button>
+                </Space>
+              }
+            >
+              {lintLoading ? (
+                <div style={{ textAlign: 'center', padding: 40 }}>
+                  <Spin />
+                </div>
+              ) : !lintReport ? (
+                <Empty
+                  description="点击刷新加载 Lint 报告"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  style={{ padding: 32 }}
+                />
+              ) : (
+                <>
+                  <Row gutter={16} style={{ marginBottom: 20 }}>
+                    <Col span={6}>
+                      <Card size="small" style={{ borderRadius: 10, textAlign: 'center' }}>
+                        <Progress
+                          type="circle"
+                          percent={lintReport.health_score}
+                          size={100}
+                          strokeColor={healthColor}
+                          format={(p) => (
+                            <span style={{ fontSize: 24, fontWeight: 700, color: healthColor }}>
+                              {p}
+                            </span>
+                          )}
+                        />
+                        <div style={{ marginTop: 8 }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            健康评分
+                          </Typography.Text>
+                        </div>
+                      </Card>
+                    </Col>
+                    <Col span={6}>
+                      <Card
+                        size="small"
+                        style={{
+                          borderRadius: 10,
+                          textAlign: 'center',
+                          borderColor: token.colorError,
+                        }}
+                      >
+                        <Typography.Title level={3} style={{ margin: 0, color: token.colorError }}>
+                          {lintReport.errors}
+                        </Typography.Title>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          <ExclamationCircleOutlined style={{ marginRight: 4 }} />
+                          错误
+                        </Typography.Text>
+                      </Card>
+                    </Col>
+                    <Col span={6}>
+                      <Card
+                        size="small"
+                        style={{
+                          borderRadius: 10,
+                          textAlign: 'center',
+                          borderColor: token.colorWarning,
+                        }}
+                      >
+                        <Typography.Title
+                          level={3}
+                          style={{ margin: 0, color: token.colorWarning }}
+                        >
+                          {lintReport.warnings}
+                        </Typography.Title>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          <WarningOutlined style={{ marginRight: 4 }} />
+                          警告
+                        </Typography.Text>
+                      </Card>
+                    </Col>
+                    <Col span={6}>
+                      <Card
+                        size="small"
+                        style={{
+                          borderRadius: 10,
+                          textAlign: 'center',
+                          borderColor: token.colorPrimary,
+                        }}
+                      >
+                        <Typography.Title
+                          level={3}
+                          style={{ margin: 0, color: token.colorPrimary }}
+                        >
+                          {lintReport.info}
+                        </Typography.Title>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          <InfoCircleOutlined style={{ marginRight: 4 }} />
+                          提示
+                        </Typography.Text>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  {lintReport.checked_at && (
+                    <Typography.Text
+                      type="secondary"
+                      style={{ fontSize: 12, marginBottom: 12, display: 'block' }}
+                    >
+                      检查时间: {new Date(lintReport.checked_at).toLocaleString('zh-CN')}
+                    </Typography.Text>
+                  )}
+
+                  {lintReport.issues.length === 0 ? (
+                    <Empty
+                      description="所有检查通过"
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      style={{ padding: 24 }}
+                    />
+                  ) : (
+                    <Table
+                      dataSource={lintReport.issues}
+                      columns={lintColumns}
+                      rowKey="check_id"
+                      pagination={{ pageSize: 15, showSizeChanger: false }}
+                      size="small"
+                    />
+                  )}
+                </>
+              )}
+            </Card>
+          </div>
+        ) : (
+          <div style={{ minHeight: 500 }} />
+        ),
+    },
+  ];
+
+  // ── Render ───────────────────────────────────────────────
+
   return (
     <div>
-      {/* ── Header ─────────────────────────────────────── */}
+      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -435,206 +1049,21 @@ export default function KnowledgePage() {
         <Typography.Title level={4} style={{ margin: 0, fontWeight: 600 }}>
           知识库
         </Typography.Title>
-        <Space>
-          <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)}>
-            语义搜索
-          </Button>
-          <Button icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>
-            上传文档
-          </Button>
-          <Button
-            icon={<ThunderboltOutlined />}
-            onClick={handleTriggerProcessAll}
-            loading={processingAll}
-          >
-            触发知识更新
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            添加文档
-          </Button>
-        </Space>
+        {headerActions}
       </div>
 
-      {/* ── Monitor Status Bar ─────────────────────────── */}
-      <Card size="small" style={{ borderRadius: 12, marginBottom: 16 }}>
-        <Row gutter={[16, 8]} align="middle">
-          <Col>
-            <Space size={4}>
-              <Badge status={monitorStatus?.running ? 'success' : 'default'} />
-              <Typography.Text style={{ fontSize: 13 }}>
-                {monitorStatus?.running ? '监控运行中' : '监控已停止'}
-              </Typography.Text>
-            </Space>
-          </Col>
-          {monitorStatus && (
-            <>
-              <Col>
-                <Divider type="vertical" />
-              </Col>
-              <Col>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  监视 {monitorStatus.watched_files} 个文件
-                </Typography.Text>
-              </Col>
-              <Col>
-                <Divider type="vertical" />
-              </Col>
-              <Col>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                  上次检查: {formatTime(monitorStatus.last_check)}
-                </Typography.Text>
-              </Col>
-              <Col>
-                <Badge count={changedCount} size="small" offset={[4, 0]}>
-                  <Button
-                    type="link"
-                    size="small"
-                    style={{ padding: 0, fontSize: 13 }}
-                    onClick={() => setWatchedPanelOpen(!watchedPanelOpen)}
-                  >
-                    {watchedPanelOpen ? '收起 ▲' : '展开文件列表 ▼'}
-                  </Button>
-                </Badge>
-              </Col>
-            </>
-          )}
-        </Row>
-      </Card>
-
-      {/* ── Watched Files Panel ─────────────────────────── */}
-      {watchedPanelOpen && monitorFiles.length > 0 && (
-        <Card
-          size="small"
-          style={{ borderRadius: 12, marginBottom: 16 }}
-          title={
-            <Space>
-              <Typography.Text strong style={{ fontSize: 14 }}>
-                监视文件列表
-              </Typography.Text>
-              {changedCount > 0 && (
-                <Tag color="orange" style={{ borderRadius: 4 }}>
-                  {changedCount} 个变更
-                </Tag>
-              )}
-            </Space>
+      {/* Tabs */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          if (key !== 'wiki') {
+            setWikiInitialPage(undefined);
           }
-          extra={
-            <Button
-              type="primary"
-              size="small"
-              icon={<ThunderboltOutlined />}
-              loading={processingAll}
-              onClick={handleTriggerProcessAll}
-            >
-              全部处理
-            </Button>
-          }
-        >
-          {monitorFiles.length === 0 ? (
-            <Empty description="暂无监视文件" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          ) : (
-            <Table
-              dataSource={monitorFiles}
-              rowKey="path"
-              pagination={false}
-              size="small"
-              columns={[
-                {
-                  title: '文件路径',
-                  dataIndex: 'path',
-                  render: (v: string) => (
-                    <Tooltip title={v}>
-                      <Space>
-                        <FileTextOutlined style={{ color: token.colorPrimary }} />
-                        <Typography.Text style={{ fontSize: 13, maxWidth: 320 }} ellipsis>
-                          {v}
-                        </Typography.Text>
-                      </Space>
-                    </Tooltip>
-                  ),
-                },
-                {
-                  title: '状态',
-                  dataIndex: 'status',
-                  width: 90,
-                  render: (s: string) => {
-                    const map: Record<string, { color: string; label: string }> = {
-                      unchanged: { color: 'default', label: '未变更' },
-                      changed: { color: 'orange', label: '已变更' },
-                      new: { color: 'green', label: '新增' },
-                      deleted: { color: 'red', label: '已删除' },
-                    };
-                    const cfg = map[s] || { color: 'default', label: s };
-                    return (
-                      <Tag color={cfg.color} style={{ borderRadius: 4, fontSize: 11 }}>
-                        {cfg.label}
-                      </Tag>
-                    );
-                  },
-                },
-                {
-                  title: '大小',
-                  dataIndex: 'size',
-                  width: 80,
-                  render: (v: number) => (
-                    <Typography.Text style={{ fontSize: 12 }}>{formatSize(v)}</Typography.Text>
-                  ),
-                },
-                {
-                  title: '修改时间',
-                  dataIndex: 'last_modified',
-                  width: 160,
-                  render: (v: string | null) => (v ? new Date(v).toLocaleString('zh-CN') : '-'),
-                },
-                {
-                  title: '操作',
-                  key: 'action',
-                  width: 80,
-                  render: (_: unknown, record: WatchedFileItem) =>
-                    record.status === 'changed' || record.status === 'new' ? (
-                      <Button
-                        type="link"
-                        size="small"
-                        icon={<ThunderboltOutlined />}
-                        loading={processingFilePath === record.path}
-                        onClick={() => handleTriggerProcessFile(record.path)}
-                      >
-                        处理
-                      </Button>
-                    ) : null,
-                },
-              ]}
-            />
-          )}
-        </Card>
-      )}
-
-      {/* ── Document list ──────────────────────────────── */}
-      <Card style={{ borderRadius: 12 }} styles={{ body: { padding: 0 } }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60 }}>
-            <Spin />
-          </div>
-        ) : docs.length === 0 ? (
-          <Empty
-            description="暂无知识文档"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            style={{ padding: 60 }}
-          >
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              添加文档
-            </Button>
-          </Empty>
-        ) : (
-          <Table
-            dataSource={docs}
-            columns={columns}
-            rowKey="id"
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            size="middle"
-          />
-        )}
-      </Card>
+        }}
+        items={tabItems}
+        style={{ minHeight: 500 }}
+      />
 
       {/* ── Create / Edit modal (markdown editor) ─────── */}
       <Modal

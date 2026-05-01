@@ -11,7 +11,6 @@ import re
 from datetime import datetime, timezone
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from src.config import settings
 
@@ -43,7 +42,11 @@ def _compute_sha256(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-SUMMARIZE_SYSTEM = """You are a knowledge base curator following the LLM-Wiki standard.
+SUMMARIZE_SYSTEM = """You are a knowledge curator — an alchemist who transforms raw documents
+into structured gold. Like a cartographer mapping uncharted terrain, you read the
+contours of a source text and chart it into the elegant, interconnected geography
+of the LLM-Wiki standard.
+
 Your task: read a raw source document and produce one or more wiki pages.
 
 ## Rules
@@ -90,14 +93,8 @@ async def summarize_raw_file(
         for p in existing_pages:
             existing_ctx += f"- [[{p}]]\n"
 
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model=model_name,
-        temperature=0.3,
-        timeout=120,
-        max_retries=1,
-    )
+    from src.core.model_factory import get_default_model
+    llm = await get_default_model()
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     user_msg = (
@@ -217,6 +214,128 @@ def add_raw_frontmatter(filepath: str, source_url: str = "") -> str:
     )
     _write_file(filepath, fm + body)
     return content_hash
+
+
+async def compile_pipeline(filepath: str) -> dict:
+    """Formal 5-stage compile pipeline: ingest → summarize → crossref → finalize → index."""
+    import json as _json
+
+    result: dict = {
+        "filepath": filepath,
+        "ok": False,
+        "stages": {},
+        "wiki_pages_created": 0,
+        "error": "",
+    }
+
+    try:
+        # Stage 1: Ingest
+        sha = add_raw_frontmatter(filepath)
+        result["stages"]["ingest"] = {"sha256": sha}
+
+        # Stage 2: Summarize
+        existing = []
+        wp = os.path.join(_wiki_dir(), "wiki")
+        if os.path.isdir(wp):
+            existing = sorted(p.stem for p in Path(wp).glob("*.md"))
+        pages = await summarize_raw_file(filepath, existing_pages=existing)
+        if not pages:
+            result["error"] = "LLM generated no pages"
+            return result
+        result["stages"]["summarize"] = {"pages": [p.get("filename", "") for p in pages]}
+
+        # Stage 3: Crossref — inject links_to into frontmatter
+        from src.services.kb_crossref import parse_wikilinks as _parse_wl
+
+        for page in pages:
+            content = page.get("content", "")
+            links = _parse_wl(content)
+            if links:
+                links_line = "links_to: [" + ", ".join(links) + "]\n"
+                if "links_to:" in content:
+                    content = re.sub(r"links_to:.*\n", links_line, content)
+                elif content.count("---") >= 2:
+                    content = content.replace("---\n", "---\n" + links_line, 1)
+            page["content"] = content
+        result["stages"]["crossref"] = {"processed": len(pages)}
+
+        # Stage 4: Finalize
+        written = finalize_wiki_pages(pages, filepath)
+        result["stages"]["finalize"] = {"written": [os.path.basename(w) for w in written]}
+        result["wiki_pages_created"] = len(written)
+
+        # Stage 5: Index
+        update_index(pages)
+        append_log("compile", os.path.basename(filepath), written)
+        result["stages"]["index"] = {"updated": True}
+
+        result["ok"] = True
+        _record_compile_meta(os.path.basename(filepath), result)
+
+    except Exception as exc:
+        logger.exception("Compile pipeline failed: %s", exc)
+        result["error"] = str(exc)
+
+    return result
+
+
+def _record_compile_meta(source_name: str, result: dict) -> None:
+    """Write compilation history to meta/ (per-source JSON + history.jsonl)."""
+    import json as _json
+
+    meta_dir = os.path.join(_wiki_dir(), "meta")
+    os.makedirs(meta_dir, exist_ok=True)
+
+    record = {
+        "source": source_name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ok": result["ok"],
+        "stages": result.get("stages", {}),
+        "wiki_pages_created": result.get("wiki_pages_created", 0),
+        "error": result.get("error", ""),
+    }
+
+    stem = os.path.splitext(source_name)[0]
+    meta_path = os.path.join(meta_dir, f"{stem}.json")
+    try:
+        with open(meta_path, "w", encoding="utf-8") as f:
+            _json.dump(record, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        logger.warning("Failed to write compile meta: %s", e)
+
+    history_path = os.path.join(meta_dir, "history.jsonl")
+    try:
+        with open(history_path, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        logger.warning("Failed to append compile history: %s", e)
+
+
+def get_compile_history(source_name: str = "") -> list[dict]:
+    """Read compilation history from meta/history.jsonl. Optionally filter by source."""
+    import json as _json
+
+    meta_dir = os.path.join(_wiki_dir(), "meta")
+    history_path = os.path.join(meta_dir, "history.jsonl")
+    if not os.path.isfile(history_path):
+        return []
+
+    records = []
+    try:
+        with open(history_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = _json.loads(line)
+                    if not source_name or r.get("source") == source_name:
+                        records.append(r)
+                except _json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+    return records
 
 
 def _parse_page_list(text: str) -> list[dict]:

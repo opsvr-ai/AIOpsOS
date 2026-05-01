@@ -15,6 +15,8 @@
     "@ant-design/icons": "^5.4.0",
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@monaco-editor/react": "^4.6.0",
     "@tanstack/react-query": "^5.50.0",
     "@uiw/react-md-editor": "^4.1.0",

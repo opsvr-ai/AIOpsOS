@@ -1,0 +1,99 @@
+<h2>智能体页面 — 卡片布局方案</h2>
+<p class="subtitle">已选定现代 SaaS 风格。接下来确定智能体卡片的展示方式。</p>
+
+<div class="options">
+  <div class="option" data-choice="stat-cards" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>统计卡片 + 列表</h3>
+      <p>顶部统计概览（总数/启用/停用/内置），下方为带封面的卡片网格。卡片展示头像、名称、类型徽章、模型、工具数等关键信息，hover 时浮起。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="compact-table" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>紧凑表格视图</h3>
+      <p>可排序表格，列：名称/类型/模型/工具数/状态/操作。适合大量智能体时快速浏览和批量操作，类似 Notion 数据库视图。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both-views" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>卡片 + 表格切换</h3>
+      <p>默认卡片网格，提供切换按钮可切换到表格视图。顶部保留统计概览，两种视图共享筛选和批量操作栏。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>预览对比</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">A: 统计卡片 + 列表</div>
+      <div class="mockup-body">
+        <div style="background: #f8fafc; padding: 12px; border-radius: 8px;">
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <div style="flex:1; padding: 10px; background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-align: center;">
+              <div style="font-size: 20px; font-weight: 700; color: #1e293b;">6</div>
+              <div style="font-size: 10px; color: #94a3b8;">智能体总数</div>
+            </div>
+            <div style="flex:1; padding: 10px; background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-align: center;">
+              <div style="font-size: 20px; font-weight: 700; color: #22c55e;">5</div>
+              <div style="font-size: 10px; color: #94a3b8;">已启用</div>
+            </div>
+            <div style="flex:1; padding: 10px; background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-align: center;">
+              <div style="font-size: 20px; font-weight: 700; color: #f59e0b;">4</div>
+              <div style="font-size: 10px; color: #94a3b8;">内置</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div style="width: 160px; padding: 14px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #667eea, #764ba2);"></div>
+                <div>
+                  <div style="font-weight: 600; font-size: 11px;">主智能体</div>
+                  <div style="font-size: 9px; color: #94a3b8;">deepseek-v4</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 3px;">
+                <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+                <span style="background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 10px; font-size: 9px;">5 工具</span>
+              </div>
+            </div>
+            <div style="width: 160px; padding: 14px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #f093fb, #f5576c);"></div>
+                <div>
+                  <div style="font-weight: 600; font-size: 11px;">知识库子智能体</div>
+                  <div style="font-size: 9px; color: #94a3b8;">deepseek-v4</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 3px;">
+                <span style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 9px;">内置</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">B: 紧凑表格</div>
+      <div class="mockup-body">
+        <div style="background: #f8fafc; padding: 12px; border-radius: 8px; font-size: 10px;">
+          <div style="display: flex; padding: 6px 8px; background: #f1f5f9; border-radius: 6px; font-weight: 600; color: #64748b; margin-bottom: 4px;">
+            <div style="width: 140px;">名称</div><div style="width: 60px;">类型</div><div style="width: 90px;">模型</div><div style="width: 40px;">工具</div><div style="width: 50px;">状态</div>
+          </div>
+          <div style="display: flex; padding: 8px; border-bottom: 1px solid #f1f5f9; align-items: center;">
+            <div style="width: 140px; font-weight: 600;">主智能体</div><div style="width: 60px;"><span style="background: #fef3c7; padding:1px 6px; border-radius: 4px;">主</span></div><div style="width: 90px; color:#64748b;">deepseek-v4</div><div style="width: 40px;">5</div><div style="width: 50px;"><span style="color:#22c55e;">启用</span></div>
+          </div>
+          <div style="display: flex; padding: 8px; border-bottom: 1px solid #f1f5f9; align-items: center;">
+            <div style="width: 140px; font-weight: 600;">知识库子智能体</div><div style="width: 60px;"><span style="background: #dcfce7; padding:1px 6px; border-radius: 4px;">子</span></div><div style="width: 90px; color:#64748b;">deepseek-v4</div><div style="width: 40px;">2</div><div style="width: 50px;"><span style="color:#22c55e;">启用</span></div>
+          </div>
+          <div style="display: flex; padding: 8px; align-items: center;">
+            <div style="width: 140px; font-weight: 600;">监控子智能体</div><div style="width: 60px;"><span style="background: #dcfce7; padding:1px 6px; border-radius: 4px;">子</span></div><div style="width: 90px; color:#64748b;">deepseek-v4</div><div style="width: 40px;">3</div><div style="width: 50px;"><span style="color:#ef4444;">停用</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

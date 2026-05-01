@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import BinaryIO
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from sqlalchemy import func, select, text
 
 from src.config import settings
@@ -231,12 +230,13 @@ class KnowledgeBaseService:
             await db.commit()
             return True
 
-    async def list_documents(self) -> list[KnowledgeDocument]:
-        """List all documents."""
+    async def list_documents(self, space_id: str | None = None) -> list[KnowledgeDocument]:
+        """List all documents, optionally filtered by space."""
         async with async_session_factory() as db:
-            result = await db.execute(
-                select(KnowledgeDocument).order_by(KnowledgeDocument.created_at.desc())
-            )
+            query = select(KnowledgeDocument)
+            if space_id:
+                query = query.where(KnowledgeDocument.space_id == space_id)
+            result = await db.execute(query.order_by(KnowledgeDocument.created_at.desc()))
             return list(result.scalars().all())
 
     async def get_document(self, document_id: str) -> KnowledgeDocument | None:
@@ -251,12 +251,8 @@ class KnowledgeBaseService:
 
     async def _rewrite_queries(self, user_query: str) -> list[str]:
         """Generate 2-4 search queries from the user's original query."""
-        llm = ChatOpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-            model="deepseek-v4-flash",
-            temperature=0.3,
-        )
+        from src.core.model_factory import get_default_model
+        llm = await get_default_model()
         system = (
             "You are a search query rewriter. Given a user question, generate 2-4 "
             "distinct search queries that would help find relevant information in a "

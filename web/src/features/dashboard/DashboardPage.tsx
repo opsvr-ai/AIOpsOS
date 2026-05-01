@@ -1,6 +1,29 @@
-import { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Typography, Table, Tag, Spin, theme } from 'antd';
-import { AlertOutlined, MessageOutlined, BookOutlined, RobotOutlined } from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import {
+  Card,
+  Col,
+  Row,
+  Statistic,
+  Typography,
+  Table,
+  Tag,
+  Spin,
+  theme,
+  Timeline,
+  Button,
+} from 'antd';
+import {
+  AlertOutlined,
+  MessageOutlined,
+  BookOutlined,
+  RobotOutlined,
+  ClockCircleOutlined,
+  SendOutlined,
+  HeartOutlined,
+  ThunderboltOutlined,
+  ArrowRightOutlined,
+} from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import api from '@/services/api';
 
 interface AlertItem {
@@ -12,19 +35,21 @@ interface AlertItem {
   source: string;
 }
 
-interface AgentItem {
-  id: string;
-  name: string;
-  type: string;
-  is_active: boolean;
-}
-
 export default function DashboardPage() {
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ alerts: 0, sessions: 0, knowledge: 0, agents: 0 });
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    alerts: 0,
+    sessions: 0,
+    knowledge: 0,
+    agents: 0,
+    onlineAgents: 0,
+    cronJobs: 0,
+    channels: 0,
+    health: 100,
+  });
   const [recentAlerts, setRecentAlerts] = useState<AlertItem[]>([]);
-  const [agents, setAgents] = useState<AgentItem[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -32,22 +57,33 @@ export default function DashboardPage() {
       api.get('/sessions'),
       api.get('/knowledge/documents'),
       api.get('/agents'),
+      api.get('/agent-profiles'),
+      api.get('/cron/jobs'),
+      api.get('/channels'),
     ])
-      .then(([alertsRes, sessionsRes, knowledgeRes, agentsRes]) => {
-        const allAlerts: AlertItem[] = alertsRes.data ?? [];
-        const allSessions = sessionsRes.data ?? [];
-        const allKnowledge = knowledgeRes.data ?? [];
-        const allAgents: AgentItem[] = agentsRes.data ?? [];
+      .then(
+        ([alertsRes, sessionsRes, knowledgeRes, agentsRes, profilesRes, cronRes, channelsRes]) => {
+          const allAlerts: AlertItem[] = alertsRes.data ?? [];
+          const allSessions = sessionsRes.data ?? [];
+          const allKnowledge = knowledgeRes.data ?? [];
+          const allAgents: any[] = agentsRes.data ?? [];
+          const allProfiles: any[] = profilesRes.data ?? [];
+          const allCron: any[] = cronRes.data ?? [];
+          const allChannels: any[] = channelsRes.data ?? [];
 
-        setStats({
-          alerts: allAlerts.length,
-          sessions: allSessions.length,
-          knowledge: allKnowledge.length,
-          agents: allAgents.length,
-        });
-        setRecentAlerts(allAlerts.slice(0, 5));
-        setAgents(allAgents);
-      })
+          setStats({
+            alerts: allAlerts.length,
+            sessions: allSessions.length,
+            knowledge: allKnowledge.length,
+            agents: allAgents.length,
+            onlineAgents: allProfiles.filter((p: any) => p.online).length,
+            cronJobs: allCron.length,
+            channels: allChannels.length,
+            health: 100,
+          });
+          setRecentAlerts(allAlerts.slice(0, 5));
+        },
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -113,60 +149,89 @@ export default function DashboardPage() {
         运维总览
       </Typography.Title>
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }} hoverable>
-            <Statistic
-              title={
-                <span style={{ fontSize: 13, color: token.colorTextSecondary }}>告警总数</span>
-              }
-              value={stats.alerts}
-              prefix={<AlertOutlined style={{ color: '#DC2626', fontSize: 20 }} />}
-              valueStyle={{ color: token.colorText, fontWeight: 600, fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }} hoverable>
-            <Statistic
-              title={
-                <span style={{ fontSize: 13, color: token.colorTextSecondary }}>活跃会话</span>
-              }
-              value={stats.sessions}
-              prefix={<MessageOutlined style={{ color: '#3B82F6', fontSize: 20 }} />}
-              valueStyle={{ color: token.colorText, fontWeight: 600, fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }} hoverable>
-            <Statistic
-              title={
-                <span style={{ fontSize: 13, color: token.colorTextSecondary }}>知识条目</span>
-              }
-              value={stats.knowledge}
-              prefix={<BookOutlined style={{ color: '#059669', fontSize: 20 }} />}
-              valueStyle={{ color: token.colorText, fontWeight: 600, fontSize: 28 }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card style={{ borderRadius: 12 }} hoverable>
-            <Statistic
-              title={<span style={{ fontSize: 13, color: token.colorTextSecondary }}>智能体</span>}
-              value={stats.agents}
-              prefix={<RobotOutlined style={{ color: '#7C3AED', fontSize: 20 }} />}
-              valueStyle={{ color: token.colorText, fontWeight: 600, fontSize: 28 }}
-            />
-          </Card>
-        </Col>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        {[
+          {
+            span: 6,
+            label: '告警总数',
+            value: stats.alerts,
+            icon: <AlertOutlined />,
+            color: '#DC2626',
+          },
+          {
+            span: 6,
+            label: '活跃会话',
+            value: stats.sessions,
+            icon: <MessageOutlined />,
+            color: '#3B82F6',
+          },
+          {
+            span: 6,
+            label: '知识条目',
+            value: stats.knowledge,
+            icon: <BookOutlined />,
+            color: '#059669',
+          },
+          {
+            span: 6,
+            label: '智能体数量',
+            value: stats.agents,
+            icon: <RobotOutlined />,
+            color: '#7C3AED',
+          },
+          {
+            span: 6,
+            label: '在线 Agent',
+            value: stats.onlineAgents,
+            icon: <ThunderboltOutlined />,
+            color: '#0891B2',
+          },
+          {
+            span: 6,
+            label: '定时任务',
+            value: stats.cronJobs,
+            icon: <ClockCircleOutlined />,
+            color: '#D97706',
+          },
+          {
+            span: 6,
+            label: '通知渠道',
+            value: stats.channels,
+            icon: <SendOutlined />,
+            color: '#059669',
+          },
+          {
+            span: 6,
+            label: '健康评分',
+            value: stats.health,
+            suffix: '%',
+            icon: <HeartOutlined />,
+            color: '#DC2626',
+          },
+        ].map((s) => (
+          <Col xs={12} sm={12} md={6} key={s.label}>
+            <Card style={{ borderRadius: 12 }} hoverable size="small">
+              <Statistic
+                title={
+                  <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{s.label}</span>
+                }
+                value={s.value}
+                suffix={s.suffix as any}
+                prefix={React.cloneElement(s.icon as any, {
+                  style: { color: s.color, fontSize: 18 },
+                })}
+                valueStyle={{ color: token.colorText, fontWeight: 600, fontSize: 24 }}
+              />
+            </Card>
+          </Col>
+        ))}
       </Row>
 
       <Row gutter={16}>
-        <Col span={16}>
+        <Col xs={24} lg={16}>
           <Card
             title={<span style={{ fontSize: 14, fontWeight: 600 }}>最新告警</span>}
-            style={{ borderRadius: 12 }}
+            style={{ borderRadius: 12, marginBottom: 16 }}
             styles={{ body: { padding: 0 } }}
           >
             <Table
@@ -179,48 +244,53 @@ export default function DashboardPage() {
           </Card>
         </Col>
 
-        <Col span={8}>
+        <Col xs={24} lg={8}>
           <Card
-            title={<span style={{ fontSize: 14, fontWeight: 600 }}>智能体状态</span>}
-            style={{ borderRadius: 12 }}
-            styles={{ body: { padding: 0 } }}
+            title={<span style={{ fontSize: 14, fontWeight: 600 }}>最近活动</span>}
+            style={{ borderRadius: 12, marginBottom: 16 }}
           >
-            {agents.length === 0 ? (
-              <div
-                style={{
-                  padding: 40,
-                  textAlign: 'center',
-                  color: token.colorTextTertiary,
-                  fontSize: 13,
-                }}
-              >
-                暂无智能体
-              </div>
-            ) : (
-              agents.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <RobotOutlined style={{ color: token.colorPrimary, fontSize: 16 }} />
-                    <span style={{ fontSize: 13, color: token.colorText }}>{a.name}</span>
-                  </div>
-                  <Tag
-                    color={a.is_active ? 'success' : 'default'}
-                    style={{ borderRadius: 4, fontSize: 11 }}
+            <Timeline
+              items={[
+                { children: '系统启动完成', color: 'green' },
+                ...recentAlerts.slice(0, 3).map((a) => ({
+                  children: `告警: ${a.title}`,
+                  color:
+                    a.severity === 'critical'
+                      ? 'red'
+                      : a.severity === 'warning'
+                        ? 'orange'
+                        : 'blue',
+                })),
+                { children: `共 ${stats.agents} 个智能体在线`, color: 'blue' },
+              ]}
+            />
+          </Card>
+
+          <Card
+            title={<span style={{ fontSize: 14, fontWeight: 600 }}>快速入口</span>}
+            style={{ borderRadius: 12 }}
+            size="small"
+          >
+            <Row gutter={[8, 8]}>
+              {[
+                { label: '新对话', path: '/ops/chat', icon: <MessageOutlined /> },
+                { label: '告警中心', path: '/ops/alerts', icon: <AlertOutlined /> },
+                { label: '知识库', path: '/ai/knowledge', icon: <BookOutlined /> },
+                { label: '智能体', path: '/ai/agents', icon: <RobotOutlined /> },
+              ].map((q) => (
+                <Col span={12} key={q.path}>
+                  <Button
+                    block
+                    icon={q.icon}
+                    onClick={() => navigate(q.path)}
+                    style={{ borderRadius: 8, height: 40 }}
                   >
-                    {a.is_active ? '在线' : '离线'}
-                  </Tag>
-                </div>
-              ))
-            )}
+                    {q.label}
+                    <ArrowRightOutlined style={{ marginLeft: 'auto', fontSize: 10 }} />
+                  </Button>
+                </Col>
+              ))}
+            </Row>
           </Card>
         </Col>
       </Row>

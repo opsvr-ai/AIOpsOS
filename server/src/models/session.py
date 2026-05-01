@@ -32,6 +32,18 @@ class Session(Base, TimestampMixin):
     last_active_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
     )
+    turn_count: Mapped[int] = mapped_column(
+        default=0, server_default="0"
+    )
+    skill_review_due: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
+    model_provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("model_providers.id", ondelete="SET NULL"), nullable=True
+    )
 
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 
@@ -52,6 +64,20 @@ class Message(Base):
     )
 
     session: Mapped["Session"] = relationship(back_populates="messages")
+
+
+class SessionFile(Base, TimestampMixin):
+    __tablename__ = "session_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE")
+    )
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_size: Mapped[int] = mapped_column(nullable=False, default=0)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=True)
+    content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Memory(Base):

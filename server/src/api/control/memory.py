@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 
-from src.api.deps import get_current_user
+from src.api.deps import get_current_user, get_optional_space_id
 from src.models.session import Session
 from src.services.memory_service import memory_service
 
@@ -19,6 +19,7 @@ async def list_memories(
     scope: str = Query("all", description="personal, team, or all"),
     q: str = Query("", description="Search query"),
     session_id: str = Query("", description="Filter by session"),
+    space_id: str | None = Depends(get_optional_space_id),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     tags: str = Query("", description="Comma-separated tag filter"),
@@ -28,28 +29,37 @@ async def list_memories(
     """List memories with scope, search, pagination, and session filters."""
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
 
-    results = await memory_service.retrieve(
-        query=q,
-        user_id=str(user.id),
-        scope=scope,
-        session_id=session_id,
-        top_k=limit,
-        offset=offset,
-        tags=tag_list,
-        sort_by=sort_by,
-    )
+    try:
+        results = await memory_service.retrieve(
+            query=q,
+            user_id=str(user.id),
+            scope=scope,
+            session_id=session_id,
+            space_id=space_id,
+            top_k=limit,
+            offset=offset,
+            tags=tag_list,
+            sort_by=sort_by,
+        )
+    except Exception:
+        logger.exception("Failed to retrieve memories")
+        return []
 
     session_titles: dict[str, str] = {}
     if results:
         sids = {r["session_id"] for r in results if r.get("session_id")}
-        from src.models.base import async_session_factory
+        if sids:
+            try:
+                from src.models.base import async_session_factory
 
-        async with async_session_factory() as db:
-            for sid in sids:
-                row = await db.execute(select(Session).where(Session.id == sid))
-                s = row.scalar_one_or_none()
-                if s:
-                    session_titles[sid] = s.title or ""
+                async with async_session_factory() as db:
+                    for sid in sids:
+                        row = await db.execute(select(Session).where(Session.id == sid))
+                        s = row.scalar_one_or_none()
+                        if s:
+                            session_titles[sid] = s.title or ""
+            except Exception:
+                logger.exception("Failed to resolve session titles for memories")
 
     return [
         {
@@ -278,15 +288,8 @@ async def summarize_session(
     user=Depends(get_current_user),
 ):
     """Trigger LLM-based session summarization into personal + team memories."""
-    from langchain_openai import ChatOpenAI
-    from src.config import settings
-
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.3,
-    )
+    from src.core.model_factory import get_default_model
+    llm = await get_default_model()
     result = await memory_service.summarize_session(session_id, str(user.id), llm)
     return {"ok": True, **result}
 
@@ -319,12 +322,8 @@ async def backfill_memories(
     if not sessions:
         return {"ok": True, "sessions_processed": 0, "personal": 0, "team": 0}
 
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.3,
-    )
+    from src.core.model_factory import get_default_model
+    llm = await get_default_model()
 
     total_personal = 0
     total_team = 0

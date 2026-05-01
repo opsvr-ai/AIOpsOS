@@ -1,469 +1,262 @@
-import { useState, useCallback } from 'react';
-import { Typography, Tag, theme, Button, Drawer, App } from 'antd';
-import {
-  RobotOutlined,
-  CodeOutlined,
-  ApiOutlined,
-  ThunderboltOutlined,
-  ToolOutlined,
-  LoadingOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  CaretRightOutlined,
-  CopyOutlined,
-  CheckOutlined,
-} from '@ant-design/icons';
+import { theme } from 'antd';
+import { useThemeStore } from '@/stores/themeStore';
 import type { ExecutionStep } from '@/stores/chatStore';
 
-const TYPE_KEYS: Record<string, { icon: React.ReactNode; label: string }> = {
-  sub_agent: { icon: <RobotOutlined />, label: '子智能体' },
-  skill: { icon: <CodeOutlined />, label: 'Skill' },
-  mcp: { icon: <ApiOutlined />, label: 'MCP工具' },
-  builtin: { icon: <ThunderboltOutlined />, label: '内置工具' },
-  tool: { icon: <ToolOutlined />, label: '工具' },
-  retrieval: { icon: <CodeOutlined />, label: '检索' },
+const TYPE_LABELS: Record<string, string> = {
+  sub_agent: '子智能体',
+  skill: 'Skill',
+  mcp: 'MCP工具',
+  builtin: '内置工具',
+  tool: '工具',
+  retrieval: '检索',
 };
+
+// Design-spec colours from screen-2-preview.html §4 (light theme)
+const SPEC = {
+  light: {
+    done: {
+      rowBg: '#f6ffed',
+      rowBorder: '#b7eb8f',
+      tagBg: '#f6ffed',
+      tagText: '#52c41a',
+      tagBorder: '#b7eb8f',
+    },
+    running: {
+      rowBg: '#e6f4ff',
+      rowBorder: '#91caff',
+      tagBg: '#e6f4ff',
+      tagText: '#1677ff',
+      tagBorder: '#91caff',
+    },
+    error: {
+      rowBg: '#fff2f0',
+      rowBorder: '#ffccc7',
+      tagBg: '#fff2f0',
+      tagText: '#ff4d4f',
+      tagBorder: '#ffccc7',
+    },
+    pending: {
+      rowBg: '#fafafa',
+      rowBorder: '#e8e8e8',
+      tagBg: '#f5f5f5',
+      tagText: '#999',
+      tagBorder: '#e8e8e8',
+    },
+  },
+  dark: {
+    done: {
+      rowBg: 'rgba(82,196,26,0.12)',
+      rowBorder: 'rgba(82,196,26,0.28)',
+      tagBg: 'rgba(82,196,26,0.18)',
+      tagText: '#52c41a',
+      tagBorder: 'rgba(82,196,26,0.35)',
+    },
+    running: {
+      rowBg: 'rgba(22,119,255,0.14)',
+      rowBorder: 'rgba(22,119,255,0.32)',
+      tagBg: 'rgba(22,119,255,0.2)',
+      tagText: '#4096ff',
+      tagBorder: 'rgba(22,119,255,0.4)',
+    },
+    error: {
+      rowBg: 'rgba(255,77,79,0.12)',
+      rowBorder: 'rgba(255,77,79,0.28)',
+      tagBg: 'rgba(255,77,79,0.18)',
+      tagText: '#ff7875',
+      tagBorder: 'rgba(255,77,79,0.35)',
+    },
+    pending: {
+      rowBg: 'rgba(255,255,255,0.04)',
+      rowBorder: 'rgba(255,255,255,0.08)',
+      tagBg: 'rgba(255,255,255,0.06)',
+      tagText: '#999',
+      tagBorder: 'rgba(255,255,255,0.1)',
+    },
+  },
+} as const;
+
+function palette(isDark: boolean) {
+  return isDark ? SPEC.dark : SPEC.light;
+}
 
 export default function ExecutionTimeline({ steps }: { steps: ExecutionStep[] }) {
   const { token } = theme.useToken();
-  const { message } = App.useApp();
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerContent, setDrawerContent] = useState<{ title: string; content: string }>({
-    title: '',
-    content: '',
-  });
-  const [copiedIds, setCopiedIds] = useState<Set<string>>(new Set());
+  const isDark = useThemeStore((s) => s.mode) === 'dark';
 
   if (!steps || steps.length === 0) return null;
 
-  const typeColorMap: Record<string, string> = {
-    sub_agent: token.colorPrimary,
-    skill: token.purple || '#7C3AED',
-    mcp: token.colorWarning,
-    builtin: token.colorInfo,
-    tool: token.colorSuccess,
-    retrieval: token.gold || '#FAAD14',
+  const doneCount = steps.filter((s) => s.status === 'done' || s.status === 'error').length;
+  const allDone = doneCount === steps.length;
+  const pal = palette(isDark);
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
   };
 
-  const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const rowColors = (status: string) => {
+    if (status === 'done') return pal.done;
+    if (status === 'error') return pal.error;
+    if (status === 'running') return pal.running;
+    return pal.pending;
   };
 
-  const openDrawer = (title: string, content: string) => {
-    setDrawerContent({ title, content });
-    setDrawerOpen(true);
+  const statusLabel = (status: string) => {
+    if (status === 'running') return '执行中';
+    if (status === 'error') return '失败';
+    return '等待中';
   };
-
-  const handleCopyStep = useCallback(
-    async (e: React.MouseEvent, stepId: string, text: string) => {
-      e.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopiedIds((prev) => {
-          const next = new Set(prev);
-          next.add(stepId);
-          return next;
-        });
-        setTimeout(() => {
-          setCopiedIds((prev) => {
-            const next = new Set(prev);
-            next.delete(stepId);
-            return next;
-          });
-        }, 2000);
-        message.success('已复制');
-      } catch {
-        /* ignore */
-      }
-    },
-    [message],
-  );
 
   return (
     <>
       <style>{`
-        @keyframes execSlideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
+        @keyframes execStepIn {
+          from { opacity: 0; transform: translateX(-4px); }
+          to   { opacity: 1; transform: translateX(0); }
         }
         .exec-step-enter {
-          animation: execSlideDown 0.25s ease-out both;
+          animation: execStepIn 0.2s ease-out both;
         }
         @keyframes execPulse {
-          0%, 100% { box-shadow: 0 0 0 0 currentColor; }
-          50%      { box-shadow: 0 0 4px 2px transparent; }
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+        .exec-pulse {
+          animation: execPulse 1.2s infinite;
         }
       `}</style>
-      <div style={{ width: '100%' }}>
-        {steps.map((step, i) => {
-          const cfg = TYPE_KEYS[step.type] || TYPE_KEYS.tool;
-          const cfgColor = typeColorMap[step.type] || token.colorSuccess;
-          const isLast = i === steps.length - 1;
-          const isExpanded = expandedIds.has(step.id);
-          const hasDetail = step.input || step.output;
-          const isRunning = step.status === 'running';
 
-          // Icon color based on status
-          const iconBg = isRunning ? token.colorPrimary : cfgColor;
+      <div style={{ width: '100%' }}>
+        {/* Progress bar row */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 8,
+            fontSize: 11,
+            color: token.colorTextTertiary,
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: 3,
+              background: token.colorFillSecondary,
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${steps.length > 0 ? (doneCount / steps.length) * 100 : 0}%`,
+                height: '100%',
+                background: allDone ? token.colorSuccess : token.colorPrimary,
+                borderRadius: 2,
+                transition: 'width 0.4s ease',
+              }}
+            />
+          </div>
+          <span>
+            {doneCount}/{steps.length} 步骤
+          </span>
+        </div>
+
+        {/* Step rows */}
+        {steps.map((step, i) => {
+          const status = step.status;
+          const isRunning = status === 'running';
+          const c = rowColors(status);
+          const label = TYPE_LABELS[step.type] || '工具';
 
           return (
             <div
               key={step.id}
               className="exec-step-enter"
               style={{
-                position: 'relative',
-                paddingLeft: 28,
-                marginBottom: isLast ? 0 : 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '7px 10px',
+                borderRadius: 7,
+                fontSize: 12,
+                marginBottom: i === steps.length - 1 ? 0 : 4,
+                background: c.rowBg,
+                border: `1px solid ${c.rowBorder}`,
+                transition: 'all 0.2s ease',
                 animationDelay: `${i * 40}ms`,
               }}
             >
-              {/* Timeline connector with arrow */}
-              {!isLast && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 5,
-                    top: 18,
-                    bottom: -6,
-                    width: 0,
-                    borderLeft: `2px solid ${token.colorBorderSecondary}`,
-                  }}
-                />
-              )}
-              {!isLast && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 'calc(100% - 12px)',
-                    width: 0,
-                    height: 0,
-                    borderLeft: '5px solid transparent',
-                    borderRight: '5px solid transparent',
-                    borderTop: `6px solid ${token.colorBorderSecondary}`,
-                  }}
-                />
-              )}
-
-              {/* Icon circle */}
-              <div
+              {/* Status indicator — exact emojis from design spec */}
+              <span
                 style={{
-                  position: 'absolute',
-                  left: -6,
-                  top: 2,
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: iconBg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 7,
-                  color: '#fff',
-                  zIndex: 1,
-                  animation: isRunning ? 'avatarFastPulse 0.8s ease-in-out infinite' : undefined,
+                  fontSize: 14,
+                  flexShrink: 0,
+                  width: 18,
+                  textAlign: 'center',
+                  lineHeight: 1,
                 }}
               >
                 {isRunning ? (
-                  <LoadingOutlined spin style={{ fontSize: 8, color: '#fff' }} />
-                ) : step.status === 'error' ? (
-                  <CloseCircleOutlined style={{ fontSize: 8 }} />
+                  <span className="exec-pulse" style={{ display: 'inline-block' }}>
+                    ⚙
+                  </span>
+                ) : status === 'error' ? (
+                  <span style={{ color: c.tagText }}>✗</span>
+                ) : status === 'done' ? (
+                  <span style={{ color: c.tagText }}>✓</span>
                 ) : (
-                  cfg.icon
+                  <span style={{ color: token.colorTextQuaternary }}>○</span>
                 )}
-              </div>
+              </span>
 
-              <div
+              {/* Type tag */}
+              <span
                 style={{
-                  marginBottom: isLast ? 0 : 12,
-                  padding: '8px 12px',
-                  borderRadius: 10,
-                  background: token.colorBgElevated ?? token.colorBgContainer,
-                  border: `1px solid ${token.colorBorderSecondary}`,
-                  cursor: hasDetail ? 'pointer' : 'default',
+                  fontSize: 10,
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                  background: c.tagBg,
+                  color: c.tagText,
+                  border: `1px solid ${c.tagBorder}`,
                 }}
-                onClick={() => hasDetail && toggleExpand(step.id)}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      minWidth: 0,
-                      flex: 1,
-                    }}
-                  >
-                    <StatusIcon status={step.status} token={token} />
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: '#fff',
-                        background: cfgColor,
-                        borderRadius: 4,
-                        padding: '0 5px',
-                        lineHeight: '18px',
-                        flexShrink: 0,
-                        minWidth: 18,
-                        textAlign: 'center',
-                      }}
-                    >
-                      {step.stepNumber ?? i + 1}
-                    </span>
-                    <Tag
-                      color={cfgColor}
-                      style={{ borderRadius: 4, margin: 0, fontSize: 10, flexShrink: 0 }}
-                    >
-                      {cfg.label}
-                    </Tag>
-                    <Typography.Text
-                      strong
-                      style={{
-                        fontSize: 13,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {step.name}
-                    </Typography.Text>
-                  </div>
+                {label}
+              </span>
 
-                  <div
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {/* Copy entire step */}
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={
-                        copiedIds.has(`step-${step.id}`) ? (
-                          <CheckOutlined style={{ color: token.colorSuccess }} />
-                        ) : (
-                          <CopyOutlined />
-                        )
-                      }
-                      onClick={(e) =>
-                        handleCopyStep(
-                          e,
-                          `step-${step.id}`,
-                          `[步骤 ${step.stepNumber ?? i + 1}] ${step.name} (${step.status === 'done' ? '完成' : step.status === 'error' ? '失败' : '执行中'})\n输入: ${step.input || '(无)'}\n输出: ${step.output || '(无)'}`,
-                        )
-                      }
-                      style={{ color: token.colorTextTertiary, fontSize: 11 }}
-                    />
-                    {hasDetail && (
-                      <CaretRightOutlined
-                        style={{
-                          fontSize: 10,
-                          color: token.colorTextTertiary,
-                          transition: 'transform 0.2s',
-                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
+              {/* Tool name */}
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: status === 'running' ? pal.running.tagText : token.colorText,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {step.name}
+              </span>
 
-                {/* Quick peek at input/output when collapsed */}
-                {!isExpanded && hasDetail && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 11,
-                      color: token.colorTextTertiary,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {step.output
-                      ? `输出: ${step.output.slice(0, 80)}${step.output.length > 80 ? '...' : ''}`
-                      : step.input
-                        ? `输入: ${step.input.slice(0, 80)}${step.input.length > 80 ? '...' : ''}`
-                        : ''}
-                  </div>
-                )}
-
-                {isExpanded && hasDetail && (
-                  <div style={{ marginTop: 8 }}>
-                    {step.input && (
-                      <div style={{ marginBottom: 6 }}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginBottom: 2,
-                          }}
-                        >
-                          <Typography.Text type="secondary" style={{ fontSize: 10 }}>
-                            输入
-                          </Typography.Text>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={
-                              copiedIds.has(`in-${step.id}`) ? (
-                                <CheckOutlined
-                                  style={{ color: token.colorSuccess, fontSize: 10 }}
-                                />
-                              ) : (
-                                <CopyOutlined style={{ fontSize: 10 }} />
-                              )
-                            }
-                            onClick={(e) => handleCopyStep(e, `in-${step.id}`, step.input)}
-                            style={{
-                              color: token.colorTextTertiary,
-                              fontSize: 10,
-                              padding: '0 4px',
-                              height: 20,
-                            }}
-                          />
-                        </div>
-                        <div
-                          onClick={() => openDrawer(`${step.name} - 输入`, step.input)}
-                          style={{
-                            padding: '6px 8px',
-                            borderRadius: 6,
-                            background: token.colorFillSecondary,
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-all',
-                            maxHeight: 120,
-                            overflowY: 'auto',
-                            color: token.colorTextSecondary,
-                            cursor: 'pointer',
-                            transition: 'background 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = token.colorFillTertiary;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = token.colorFillSecondary;
-                          }}
-                        >
-                          {step.input}
-                        </div>
-                      </div>
-                    )}
-                    {step.output && (
-                      <div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginBottom: 2,
-                          }}
-                        >
-                          <Typography.Text type="secondary" style={{ fontSize: 10 }}>
-                            输出
-                          </Typography.Text>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={
-                              copiedIds.has(`out-${step.id}`) ? (
-                                <CheckOutlined
-                                  style={{ color: token.colorSuccess, fontSize: 10 }}
-                                />
-                              ) : (
-                                <CopyOutlined style={{ fontSize: 10 }} />
-                              )
-                            }
-                            onClick={(e) => handleCopyStep(e, `out-${step.id}`, step.output)}
-                            style={{
-                              color: token.colorTextTertiary,
-                              fontSize: 10,
-                              padding: '0 4px',
-                              height: 20,
-                            }}
-                          />
-                        </div>
-                        <div
-                          onClick={() => openDrawer(`${step.name} - 输出`, step.output)}
-                          style={{
-                            padding: '6px 8px',
-                            borderRadius: 6,
-                            background: token.colorFillSecondary,
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-all',
-                            maxHeight: 120,
-                            overflowY: 'auto',
-                            color: token.colorTextSecondary,
-                            cursor: 'pointer',
-                            transition: 'background 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = token.colorFillTertiary;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = token.colorFillSecondary;
-                          }}
-                        >
-                          {step.output}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* Timestamp / status text */}
+              <span
+                style={{
+                  fontSize: 10,
+                  color: status === 'running' ? pal.running.tagText : token.colorTextTertiary,
+                  flexShrink: 0,
+                  marginLeft: 'auto',
+                  fontWeight: status === 'running' ? 500 : 400,
+                }}
+              >
+                {step.timestamp ? formatTime(step.timestamp) : statusLabel(status)}
+              </span>
             </div>
           );
         })}
       </div>
-
-      {/* Detail drawer */}
-      <Drawer
-        title={drawerContent.title}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={520}
-        styles={{
-          body: {
-            padding: '16px',
-            fontFamily: 'monospace',
-            fontSize: 13,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-          },
-        }}
-      >
-        {drawerContent.content}
-      </Drawer>
     </>
   );
-}
-
-function StatusIcon({
-  status,
-  token,
-}: {
-  status: string;
-  token: ReturnType<typeof theme.useToken>['token'];
-}) {
-  if (status === 'running')
-    return <LoadingOutlined style={{ color: token.colorPrimary, fontSize: 13 }} spin />;
-  if (status === 'error')
-    return <CloseCircleOutlined style={{ color: token.colorError, fontSize: 13 }} />;
-  return <CheckCircleOutlined style={{ color: token.colorSuccess, fontSize: 13 }} />;
 }

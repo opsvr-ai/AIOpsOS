@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_openai import ChatOpenAI
 
 from src.config import settings
 from src.services.tool_manager import tool_manager
@@ -47,13 +46,8 @@ async def execute_skill(
         The skill agent's final response text.
     """
     tools = {t.name: t for t in _resolve_tools(tool_names)}
-    model = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=temperature,
-        timeout=60,
-    )
+    from src.core.model_factory import get_default_model
+    model = await get_default_model()
 
     logger.info("Executing skill '%s' with %d tool(s): task=%.80s", skill_name, len(tools), task)
 
@@ -153,6 +147,9 @@ async def execute_db_skill(
     if not prompt:
         return f"[{tool_name}] No skill prompt configured"
 
+    # Tier 3 progressive disclosure: append linked file inventory
+    prompt = _append_file_inventory(tool_name, prompt)
+
     if tool_names is None and config:
         tool_names = config.get("tool_names")
 
@@ -163,6 +160,42 @@ async def execute_db_skill(
         tool_names=tool_names,
         temperature=config.get("temperature", 0.3) if config else 0.3,
     )
+
+
+def _append_file_inventory(skill_name: str, prompt: str) -> str:
+    """Append Tier 3 linked-file inventory to the skill prompt.
+
+    Lists files in references/, templates/, and scripts/ subdirectories
+    so the agent knows what auxiliary files are available and can read
+    them with standard file tools.
+    """
+    from src.services.skill_sync import SKILLS_DIR
+
+    skill_dir = SKILLS_DIR / skill_name
+    if not skill_dir.is_dir():
+        return prompt
+
+    linked: list[str] = []
+    for sub in ("references", "templates", "scripts"):
+        subdir = skill_dir / sub
+        if not subdir.is_dir():
+            continue
+        files = sorted(
+            f.name for f in subdir.iterdir()
+            if f.is_file() and not f.name.startswith(".")
+        )
+        if files:
+            linked.append(f"  {sub}/: {', '.join(files)}")
+
+    if not linked:
+        return prompt
+
+    inventory = (
+        "\n\n## 辅助文件 (Tier 3)\n"
+        "以下参考文件可通过标准文件工具（read_file）读取：\n"
+        + "\n".join(linked)
+    )
+    return prompt + inventory
 
 
 def _resolve_tools(tool_names: list[str] | None) -> list:

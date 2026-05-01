@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对话页面优化 — 优先级选择</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #1a1a1a;
+    --text2: #666;
+    --border: #e8e8e8;
+    --blue: #1677ff;
+    --blue-bg: #e6f4ff;
+    --green: #52c41a;
+    --orange: #fa8c16;
+    --red: #ff4d4f;
+    --radius: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 24px; line-height: 1.6; }
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  .subtitle { color: var(--text2); margin-bottom: 24px; font-size: 14px; }
+  .section { margin-bottom: 28px; }
+  .section-title { font-size: 14px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--card); border: 2px solid var(--border); border-radius: var(--radius);
+    padding: 20px; cursor: pointer; transition: all 0.2s; position: relative;
+  }
+  .card:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(22,119,255,0.1); }
+  .card.selected { border-color: var(--blue); background: var(--blue-bg); }
+  .card.selected::after {
+    content: '✓'; position: absolute; top: 12px; right: 16px;
+    width: 24px; height: 24px; background: var(--blue); color: #fff;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .card h3 { font-size: 15px; margin-bottom: 6px; }
+  .card p { font-size: 13px; color: var(--text2); }
+  .card .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 8px; font-weight: 600; }
+  .badge.easy { background: #f6ffed; color: var(--green); border: 1px solid #b7eb8f; }
+  .badge.medium { background: #fff7e6; color: var(--orange); border: 1px solid #ffd591; }
+  .badge.hard { background: #fff2f0; color: var(--red); border: 1px solid #ffccc7; }
+
+  .action-bar {
+    margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 12px; align-items: center;
+  }
+  button {
+    padding: 10px 24px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 14px; font-weight: 600; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: #4096ff; }
+  .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+  .selected-count { font-size: 14px; color: var(--text2); }
+  .selected-count strong { color: var(--blue); }
+</style>
+</head>
+<body>
+<h1>对话页面优化</h1>
+<p class="subtitle">基于当前已实现的功能，选择你想要优化的方向（可多选，默认已预选核心体验区三项）</p>
+
+<div class="section">
+  <div class="section-title">核心体验区</div>
+  <div class="cards" id="areaCards">
+    <div class="card selected" data-area="message-bubbles" data-effort="medium">
+      <h3>消息气泡样式 <span class="badge medium">中等</span></h3>
+      <p>用户/AI 消息气泡的视觉层次、间距、头像样式、时间戳显示。当前气泡风格偏基础，可升级为更现代的聊天 UI。</p>
+    </div>
+    <div class="card selected" data-area="streaming" data-effort="medium">
+      <h3>流式输出体验 <span class="badge medium">中等</span></h3>
+      <p>AI 回复逐字/逐 token 出现的动画效果、光标闪烁、自动滚动行为，让等待感更自然。</p>
+    </div>
+    <div class="card selected" data-area="tool-execution" data-effort="hard">
+      <h3>工具执行可视化 <span class="badge hard">复杂</span></h3>
+      <p>ExecutionTimeline 组件的样式、展开/折叠动画、工具状态实时更新、子智能体调用链展示。</p>
+    </div>
+    <div class="card" data-area="input-area" data-effort="medium">
+      <h3>输入区域 <span class="badge medium">中等</span></h3>
+      <p>底部输入框的布局、快捷操作按钮、附件上传、模型选择器等交互优化。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">交互与功能</div>
+  <div class="cards" id="interactionCards">
+    <div class="card" data-area="interrupt-approval" data-effort="medium">
+      <h3>审批/中断交互 <span class="badge medium">中等</span></h3>
+      <p>工具审批、表单确认等 interrupt 消息的 UI 优化，让确认操作更直观清晰。</p>
+    </div>
+    <div class="card" data-area="markdown-render" data-effort="easy">
+      <h3>Markdown 渲染 <span class="badge easy">简单</span></h3>
+      <p>代码块样式、表格渲染、链接展示、图片预览等富文本内容的显示效果提升。</p>
+    </div>
+    <div class="card" data-area="session-management" data-effort="medium">
+      <h3>会话管理 <span class="badge medium">中等</span></h3>
+      <p>会话列表侧边栏、新建/切换/删除/重命名会话的交互流程优化。</p>
+    </div>
+    <div class="card" data-area="message-actions" data-effort="easy">
+      <h3>消息操作 <span class="badge easy">简单</span></h3>
+      <p>消息的复制、重新生成、引用回复等快捷操作按钮的显示和交互。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">页面布局</div>
+  <div class="cards" id="layoutCards">
+    <div class="card" data-area="empty-state" data-effort="easy">
+      <h3>空状态引导 <span class="badge easy">简单</span></h3>
+      <p>新对话、无消息时的引导页面，展示能力介绍、快捷入口、示例问题。</p>
+    </div>
+    <div class="card" data-area="loading-skeleton" data-effort="easy">
+      <h3>加载骨架屏 <span class="badge easy">简单</span></h3>
+      <p>页面数据加载时的骨架屏/加载动画，减少白屏等待的焦虑感。</p>
+    </div>
+    <div class="card" data-area="responsive-layout" data-effort="medium">
+      <h3>响应式布局 <span class="badge medium">中等</span></h3>
+      <p>不同屏幕尺寸下的布局适配，侧边栏折叠、消息区域宽度等。</p>
+    </div>
+  </div>
+</div>
+
+<div class="action-bar">
+  <span class="selected-count">已选择 <strong id="count">3</strong> 个方向</span>
+  <button class="btn-secondary" onclick="resetAll()">重置</button>
+  <button class="btn-primary" onclick="submitSelection()">确认选择，查看效果预览</button>
+</div>
+
+<script>
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => {
+      card.classList.toggle('selected');
+      updateCount();
+    });
+  });
+
+  function updateCount() {
+    document.getElementById('count').textContent = document.querySelectorAll('.card.selected').length;
+  }
+
+  function resetAll() {
+    document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+    updateCount();
+  }
+
+  function submitSelection() {
+    var selected = Array.from(document.querySelectorAll('.card.selected')).map(function(c) { return c.dataset.area; });
+    if (selected.length === 0) {
+      alert('请至少选择一个优化方向');
+      return;
+    }
+    var params = new URLSearchParams();
+    selected.forEach(function(a) { params.append('areas', a); });
+    window.location.href = '/screen-2-preview?' + params.toString();
+  }
+</script>
+</body>
+</html>

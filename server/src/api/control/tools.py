@@ -8,14 +8,14 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select
 
-from src.api.deps import DbSession, get_current_user, require_perm
-from src.config import settings
+from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
 from src.models.agent import MCPServer, SkillVersion, Tool
 from src.schemas.agent import (
     BatchConsistencyOut,
+    BatchDeleteRequest,
     BatchStatusRequest,
     ConsistencySummary,
     MCPServerCreate,
@@ -36,12 +36,14 @@ from src.schemas.agent import (
     SyncDiffItem,
     ToolConsistencyOut,
     ToolCreate,
+    ToolListOut,
     ToolOut,
     ToolSearchParams,
     ToolUpdate,
 )
 from src.services.tool_manager import tool_manager
 from src.services.skill_sync import (
+    SKILLS_DIR,
     check_tool_consistency,
     compute_content_hash,
     create_default_skill_dirs,
@@ -58,7 +60,6 @@ from src.services.skill_sync import (
     write_skill_file,
     write_skill_file_content,
 )
-from src.services.hermes_skill_scanner import scan_all_hermes_skills
 
 logger = logging.getLogger(__name__)
 
@@ -83,25 +84,69 @@ def _merge_skill_config(body: ToolCreate) -> dict:
     return cfg
 
 
-@router.get("/tools", response_model=list[ToolOut])
-async def list_tools(db: DbSession, params: ToolSearchParams = Depends(), _=Depends(get_current_user)):  # noqa: B008
-    query = select(Tool)
+@router.get("/tools", response_model=ToolListOut)
+async def list_tools(
+    db: DbSession,
+    params: ToolSearchParams = Depends(),  # noqa: B008
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    from sqlalchemy import or_
+
+    base_query = select(Tool)
     if params.type:
-        query = query.where(Tool.type == params.type)
+        base_query = base_query.where(Tool.type == params.type)
     if params.name:
-        query = query.where(Tool.name.ilike(f"%{params.name}%"))
+        base_query = base_query.where(Tool.name.ilike(f"%{params.name}%"))
     if params.description:
-        query = query.where(Tool.description.ilike(f"%{params.description}%"))
+        base_query = base_query.where(Tool.description.ilike(f"%{params.description}%"))
     if params.category:
-        query = query.where(Tool.category == params.category)
+        base_query = base_query.where(Tool.category == params.category)
+    if params.space_id:
+        base_query = base_query.where(Tool.space_id == params.space_id)
+    elif space_id:
+        base_query = base_query.where(
+            or_(Tool.space_id == space_id, Tool.space_id.is_(None))
+        )
     if params.status == "active":
-        query = query.where(Tool.is_active == True)
+        base_query = base_query.where(Tool.is_active == True)
     elif params.status == "inactive":
-        query = query.where(Tool.is_active == False)
-    query = query.order_by(Tool.created_at.desc())
+        base_query = base_query.where(Tool.is_active == False)
+
+    from sqlalchemy import func
+
+    # health=invalid requires filesystem checks — fetch all skill tools, filter in memory
+    if params.health == "invalid":
+        base_query = base_query.where(Tool.type == "skill")
+        result = await db.execute(base_query.order_by(Tool.created_at.desc()))
+        all_tools = list(result.scalars().all())
+        for t in all_tools:
+            vr = validate_skill_protocol(t.name)
+            t.is_valid = vr["valid"]
+        invalid_tools = [t for t in all_tools if t.is_valid is False]
+        total = len(invalid_tools)
+        start = (params.page - 1) * params.page_size
+        tools = invalid_tools[start:start + params.page_size]
+        return ToolListOut(items=tools, total=total)
+
+    # Normal path: paginate in DB
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    query = base_query.order_by(Tool.created_at.desc())
     query = query.offset((params.page - 1) * params.page_size).limit(params.page_size)
     result = await db.execute(query)
-    return result.scalars().all()
+    tools = list(result.scalars().all())
+
+    # Compute is_valid for skill tools (for UI badges)
+    for t in tools:
+        if t.type == "skill":
+            vr = validate_skill_protocol(t.name)
+            t.is_valid = vr["valid"]
+        else:
+            t.is_valid = None
+
+    return ToolListOut(items=tools, total=total)
 
 
 @router.post("/tools", response_model=ToolOut)
@@ -125,14 +170,12 @@ async def create_tool(
 
 @router.get("/tools/consistency-summary", response_model=ConsistencySummary)
 async def consistency_summary(db: DbSession, _=Depends(get_current_user)):
-    """Return a lightweight count of inconsistent skill tools."""
+    """Return a lightweight count of inconsistent skill tools (uses batch filesystem scan)."""
+    from src.services.skill_sync import batch_inconsistency_count
+
     result = await db.execute(select(Tool).where(Tool.type == "skill"))
-    tools = result.scalars().all()
-    count = 0
-    for t in tools:
-        info = check_tool_consistency(t)
-        if info["is_consistent"] is False:
-            count += 1
+    tools = list(result.scalars().all())
+    count = batch_inconsistency_count(tools)
     return ConsistencySummary(inconsistent_count=count)
 
 
@@ -239,6 +282,13 @@ async def update_tool(
     if tool is None:
         raise HTTPException(status_code=404, detail="Tool not found")
 
+    if tool.is_builtin:
+        data = body.model_dump(exclude_unset=True)
+        if data.get("is_active") is False:
+            raise HTTPException(status_code=403, detail="Built-in tools cannot be deactivated")
+        if any(k in data for k in ("name", "description", "config")):
+            raise HTTPException(status_code=403, detail="Built-in tools cannot be modified")
+
     # Validate before enabling a skill
     if tool.type == "skill" and body.is_active is True and not tool.is_active:
         vr = validate_skill_protocol(tool.name)
@@ -277,6 +327,8 @@ async def delete_tool(
     tool = result.scalar_one_or_none()
     if tool is None:
         raise HTTPException(status_code=404, detail="Tool not found")
+    if tool.is_builtin:
+        raise HTTPException(status_code=403, detail="Built-in tools cannot be deleted")
     tool_name = tool.name
     is_skill = tool.type == "skill"
     source_path = tool.source_path
@@ -286,10 +338,68 @@ async def delete_tool(
         remove_skill_file(tool_name)
         if source_path:
             sp = Path(source_path)
-            if sp.exists() and "hermes-agent" in str(sp):
+            if sp.exists() and sp.is_relative_to(SKILLS_DIR):
                 shutil.rmtree(sp)
-                logger.info("Removed hermes skill source directory: %s", sp)
+                logger.info("Removed skill source directory: %s", sp)
     return {"detail": "deleted"}
+
+
+@router.post("/tools/{tool_id}/install")
+async def install_tool(
+    tool_id: str,
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    """Install a global/available tool into the current space."""
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalar_one_or_none()
+    if tool is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    if not space_id:
+        raise HTTPException(status_code=400, detail="No space context; select a space first")
+    if tool.space_id == space_id:
+        return {"detail": "already installed", "tool_id": str(tool.id)}
+    installed = Tool(
+        name=tool.name,
+        type=tool.type,
+        description=tool.description,
+        mcp_server_id=tool.mcp_server_id,
+        category=tool.category,
+        source_path=tool.source_path,
+        config=tool.config,
+        is_approved=tool.is_approved,
+        is_active=True,
+        space_id=space_id,
+    )
+    db.add(installed)
+    await db.commit()
+    await db.refresh(installed)
+    return {"detail": "installed", "tool_id": str(installed.id)}
+
+
+@router.post("/tools/{tool_id}/uninstall")
+async def uninstall_tool(
+    tool_id: str,
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    """Uninstall a space-scoped tool (delete or unlink from space)."""
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalar_one_or_none()
+    if tool is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    if not space_id or tool.space_id != space_id:
+        raise HTTPException(status_code=403, detail="Can only uninstall tools in your current space")
+    if tool.type == "skill" and tool.source_path:
+        remove_skill_file(tool.name)
+        sp = Path(tool.source_path)
+        if sp.exists() and sp.is_relative_to(SKILLS_DIR):
+            shutil.rmtree(sp)
+    await db.delete(tool)
+    await db.commit()
+    return {"detail": "uninstalled"}
 
 
 @router.post("/tools/reload")
@@ -480,16 +590,30 @@ async def batch_set_status(
     result = await db.execute(select(Tool).where(Tool.id.in_(body.tool_ids)))
     tools = result.scalars().all()
 
-    # Validate skill tools before enabling
+    skipped: list[str] = []
+
+    # Skip built-in tools when deactivating
+    if not body.is_active:
+        non_builtin: list = []
+        for t in tools:
+            if t.is_builtin:
+                skipped.append(t.name)
+            else:
+                non_builtin.append(t)
+        tools = non_builtin
+
+    # Validate skill tools before enabling — skip invalid ones gracefully
     if body.is_active:
+        valid_tools: list = []
         for t in tools:
             if t.type == "skill" and not t.is_active:
                 vr = validate_skill_protocol(t.name)
                 if not vr["valid"]:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"Validation failed for {t.name}: {'; '.join(vr['errors'])}",
-                    )
+                    logger.warning("Skipping invalid skill %s: %s", t.name, "; ".join(vr["errors"]))
+                    skipped.append(t.name)
+                    continue
+            valid_tools.append(t)
+        tools = valid_tools
 
     # Save version snapshots for skill tools before status change
     for t in tools:
@@ -511,7 +635,38 @@ async def batch_set_status(
                 if t.config:
                     t.config.pop("_file_hash", None)
     await db.commit()
-    return {"detail": "ok", "count": len(tools)}
+    result_detail = {"detail": "ok", "count": len(tools)}
+    if skipped:
+        result_detail["skipped"] = skipped
+    return result_detail
+
+
+@router.post("/tools/batch-delete")
+async def batch_delete(
+    body: BatchDeleteRequest, db: DbSession,
+    _=Depends(require_perm("tools", "delete")),
+):
+    """Batch delete tools by IDs."""
+    result = await db.execute(select(Tool).where(Tool.id.in_(body.tool_ids)))
+    tools = result.scalars().all()
+    deleted = 0
+    for t in tools:
+        if t.is_builtin:
+            continue
+        tool_name = t.name
+        is_skill = t.type == "skill"
+        source_path = t.source_path
+        await db.delete(t)
+        if is_skill:
+            remove_skill_file(tool_name)
+            if source_path:
+                sp = Path(source_path)
+                if sp.exists() and sp.is_relative_to(SKILLS_DIR):
+                    shutil.rmtree(sp)
+                    logger.info("Removed skill source directory: %s", sp)
+        deleted += 1
+    await db.commit()
+    return {"detail": "ok", "count": deleted}
 
 
 @router.post("/tools/{tool_id}/sync-from-filesystem", response_model=ToolOut)
@@ -790,7 +945,6 @@ async def ai_generate_skill(
     body: SkillGenerateRequest, _=Depends(require_perm("tools", "create")),
 ):
     """Generate a complete SKILL.md using AI based on name and description."""
-    from langchain_openai import ChatOpenAI
     from langchain_core.messages import SystemMessage, HumanMessage
 
     prompt = AI_SKILL_GEN_PROMPT.format(
@@ -798,12 +952,8 @@ async def ai_generate_skill(
         description=body.description,
         language="zh" if body.language == "zh" else "en",
     )
-    llm = ChatOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        model="deepseek-v4-flash",
-        temperature=0.3,
-    )
+    from src.core.model_factory import get_default_model
+    llm = await get_default_model()
 
     max_attempts = 2
     last_content = ""
@@ -893,47 +1043,36 @@ def _validate_generated_skill(content: str) -> list[str]:
 
 
 def _scan_all_filesystem_skills() -> dict[str, dict]:
-    """Scan all filesystem skill sources and return {name: metadata} dict.
+    """Scan data/skills/ recursively and return {name: metadata} dict.
 
-    Sources: data/skills/, tmp/hermes-agent/skills/, tmp/hermes-agent/optional-skills/
+    Sources: data/skills/ (flat user-created + nested standard/extended classified).
+    Each entry includes version, category, source_path, source_label.
     """
     fs_skills: dict[str, dict] = {}
 
-    # 1. data/skills/ (already registered or uploaded)
     from src.services.skill_sync import list_filesystem_skills
     for s in list_filesystem_skills():
         fs_skills[s["name"]] = {
             "name": s["name"],
             "description": s.get("description", ""),
             "version": s.get("version"),
-            "category": None,
+            "category": s.get("category"),
             "source_path": s.get("_dir", ""),
+            "source_label": s.get("source_label"),
         }
-
-    # 2. Hermes agent skills (merge, hermes source wins on metadata)
-    for s in scan_all_hermes_skills():
-        if s["name"] in fs_skills:
-            # Merge: hermes provides category + tags
-            existing = fs_skills[s["name"]]
-            if s.get("category"):
-                existing["category"] = s["category"]
-            if s.get("source_path"):
-                existing["source_path"] = s["source_path"]
-        else:
-            fs_skills[s["name"]] = {
-                "name": s["name"],
-                "description": s["description"],
-                "version": s.get("version"),
-                "category": s.get("category"),
-                "source_path": s.get("source_path"),
-            }
 
     return fs_skills
 
 
 @router.post("/tools/sync/scan", response_model=SyncScanOut)
 async def sync_scan(db: DbSession, _=Depends(get_current_user)):
-    """Scan filesystem and DB, return a full diff of inconsistencies."""
+    """Scan filesystem and DB, return a version-based diff.
+
+    - only_in_fs: skill exists on disk but not in DB
+    - only_in_db: skill exists in DB but not on disk
+    - modified: skill exists in both, but FS version differs from DB version
+    - consistent: skill exists in both with matching versions
+    """
     fs_skills = _scan_all_filesystem_skills()
 
     result = await db.execute(select(Tool).where(Tool.type == "skill"))
@@ -952,15 +1091,18 @@ async def sync_scan(db: DbSession, _=Depends(get_current_user)):
         only_in_fs.append(SyncDiffItem(
             name=name, status="only_in_fs",
             category=sk.get("category"), fs_category=sk.get("category"),
-            fs_description=sk.get("description"), source_path=sk.get("source_path"),
+            fs_description=sk.get("description"), fs_version=sk.get("version"),
+            source_path=sk.get("source_path"), source_label=sk.get("source_label"),
         ))
 
     for name in sorted(db_names - fs_names):
         t = db_tools[name]
+        db_cfg = t.config or {}
         only_in_db.append(SyncDiffItem(
             name=name, status="only_in_db",
             category=t.category, db_id=str(t.id),
-            db_description=t.description, is_active=t.is_active,
+            db_description=t.description, db_version=db_cfg.get("version"),
+            is_active=t.is_active,
         ))
 
     for name in sorted(fs_names & db_names):
@@ -970,18 +1112,15 @@ async def sync_scan(db: DbSession, _=Depends(get_current_user)):
         db_ver = db_cfg.get("version")
         fs_ver = sk.get("version")
 
-        # Check if category differs
-        category_changed = sk.get("category") and sk["category"] != t.category
-        # Check if version changed
-        version_changed = fs_ver and fs_ver != db_ver
-
-        if category_changed or version_changed:
+        # Version-driven: modified only when FS version differs from DB version
+        if fs_ver and fs_ver != db_ver:
             modified.append(SyncDiffItem(
                 name=name, status="modified",
                 category=t.category, db_id=str(t.id),
-                db_description=t.description, fs_description=sk.get("description"),
+                db_description=t.description, db_version=db_ver,
+                fs_description=sk.get("description"), fs_version=fs_ver,
                 fs_category=sk.get("category"), source_path=sk.get("source_path"),
-                is_active=t.is_active,
+                source_label=sk.get("source_label"), is_active=t.is_active,
             ))
         else:
             consistent += 1
@@ -1067,7 +1206,7 @@ async def sync_execute(
                 remove_skill_file(action.name)
                 if sp:
                     sp_path = Path(sp)
-                    if sp_path.exists() and "hermes-agent" in str(sp_path):
+                    if sp_path.exists() and sp_path.is_relative_to(SKILLS_DIR):
                         shutil.rmtree(sp_path)
                 deleted += 1
 
@@ -1086,8 +1225,15 @@ async def sync_execute(
 # ── MCP Servers ───────────────────────────────────────────
 
 @router.get("/mcp-servers", response_model=list[MCPServerOut])
-async def list_mcp_servers(db: DbSession, _=Depends(get_current_user)):
-    result = await db.execute(select(MCPServer).order_by(MCPServer.created_at.desc()))
+async def list_mcp_servers(
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    query = select(MCPServer)
+    if space_id:
+        query = query.where(MCPServer.space_id == space_id)
+    result = await db.execute(query.order_by(MCPServer.created_at.desc()))
     return result.scalars().all()
 
 

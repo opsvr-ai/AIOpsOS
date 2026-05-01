@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_logging("DEBUG")
-    logger.info("AIOpsOS control plane starting (debug logging)")
+    setup_logging()
+    logger.info("AIOpsOS control plane starting")
     yield
     logger.info("AIOpsOS control plane shutting down")
 

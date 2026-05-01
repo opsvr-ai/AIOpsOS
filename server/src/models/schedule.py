@@ -19,6 +19,10 @@ class Schedule(Base, TimestampMixin):
     )
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
 
     executions: Mapped[list["ScheduleExecution"]] = relationship(back_populates="schedule")
 
@@ -52,4 +56,7 @@ class SceneTrigger(Base, TimestampMixin):
     frequency_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     time_window_start: Mapped[datetime | None] = mapped_column(Time, nullable=True)
     time_window_end: Mapped[datetime | None] = mapped_column(Time, nullable=True)
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
