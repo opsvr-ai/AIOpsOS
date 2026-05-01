@@ -56,7 +56,7 @@ web/src/
 
 - **Agent tools creating DB records**: Use `get_current_space()` from `src.agent.context` to inherit the active `space_id` — otherwise records get `space_id=NULL` and won't appear when the frontend sends `X-Space-Id` header.
 - **FastAPI route ordering**: Literal paths must be defined before parameterized paths (e.g. `/sessions/recommendations` before `/sessions/{session_id}`).
-- **Backend server restart**: The running server process caches bytecode. After editing server code, kill and restart `run_server.py` for changes to take effect.
+- **Backend server restart**: The running server process caches bytecode. After editing server code, kill and restart `run_server.py` for changes to take effect. Verify with `ps aux | grep run_server` that old PIDs are gone and the new process bound the port — stale processes can silently hold port 8000.
 - **Ant Design Segmented**: `Segmented` option labels must be plain strings — `Tooltip`/`QuestionCircleOutlined` wrappers break rendering. Use the `title` attribute for descriptions.
 - **Multiple Vite instances**: Only one Vite dev server should run at a time. Duplicate instances cause "Failed to fetch dynamically imported module" errors.
 - **Memory retrieval needs `system_prompt_block()` called**: `MemoryManager.system_prompt_block()` fetches recent memories for agent context but is NOT called automatically — both `/chat` and `/chat/stream` endpoints must call it and inject the result into agent messages.

@@ -43,5 +43,8 @@ server/.env
 # Local test / tmp
 tmp/
 
+# Brainstorming artifacts
+.superpowers/
+
 # Test artifacts
 server/text_*.json
