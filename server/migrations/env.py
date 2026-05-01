@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import settings
 from src.models.base import Base
+import src.models  # noqa: F401 — ensure all model tables are registered on Base.metadata
 
 config = context.config
 if config.config_file_name is not None:
