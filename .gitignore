@@ -1,4 +1,6 @@
-# Python
+# Root design docs (not part of project)
+/*.txt
+AIOpsOS.md
 __pycache__/
 *.py[cod]
 *.egg-info/

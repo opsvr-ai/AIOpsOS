@@ -153,15 +153,19 @@ AIOpsOS/
 - [x] LangGraph 智能体对话（流式 + WebSocket）
 - [x] 工具管理器（Skill + MCP）
 - [x] 知识库 LLM-Wiki + 文件监控自动同步
-- [x] 告警中心（6状态流转 + 触发引擎 + LLM 分析）
-- [x] 数据接入（Webhook/API/Kafka + 事件表映射）
-- [x] 定时任务调度（Cron + RedBeat）
+- [x] 告警中心（6状态流转 + 触发引擎 + LLM 分析 + 知识库闭环）
+- [x] 数据接入（Webhook/API/Kafka + 归一化去重 + 动态事件表）
+- [x] 事件接入（自定义表结构映射 + 原始事件持久化查询）
+- [x] 场景运维（预设任务模板 + 工具智能体组合）
+- [x] 自动化（Celery Beat 定时任务 + SceneTrigger 条件触发）
 - [x] 通知渠道（钉钉/企微/Webhook）
-- [x] 两层级记忆系统 + 记忆图谱
+- [x] 两层级记忆系统 + 记忆图谱可视化
 - [x] 睡眠管理 + 自动记忆沉淀
 - [x] 模型供应商管理（OpenAI/Anthropic/本地部署）
 - [x] 多空间管理
+- [x] 文档中心
 - [x] 操作审计日志
+- [x] 用户反馈收集
 - [x] Docker Compose 部署
 - [x] 深色/浅色主题
 - [x] 接入引导向导
@@ -171,9 +175,6 @@ AIOpsOS/
 - [ ] ITSM 流程接入 — API Poller request_chain + 告警关联
 - [ ] CMDB 配置接入 — 属性图 + LLM 发现 + 规则执行
 - [ ] CmdbIngestionAgent 智能体 — 自动映射规则生成 + 三层校验
-- [x] Kafka 告警消费与去重
-- [x] 触发规则引擎
-- [x] 告警→知识库自动闭环
 - [ ] 告警时间线视图
 - [ ] 告警聚合分组
 
