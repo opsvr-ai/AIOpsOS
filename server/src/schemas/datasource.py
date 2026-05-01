@@ -52,10 +52,46 @@ class ApiConfig(BaseModel):
     retry_delay_seconds: int = 5
 
 
+class LogConfig(BaseModel):
+    """Configuration for log-type DataSource."""
+    source: Literal["filebeat", "kafka", "vector"] = "filebeat"
+    filebeat_input: str | None = None
+    kafka_topic: str | None = None
+    kafka_bootstrap_servers: str | None = None
+    batch_size: int = 500
+    batch_flush_ms: int = 500
+    retention_minutes: int = 30
+    partition_interval: Literal["hourly", "daily"] = "hourly"
+    index_mappings: dict[str, str] | None = None
+
+
+class ItsmConfig(BaseModel):
+    """Configuration for itsm-type DataSource."""
+    itsm_system: Literal["servicenow", "jira", "zendesk", "custom"] = "custom"
+    ticket_types: list[str] = ["incident", "change", "problem", "request"]
+    request_chain: list[dict] | None = None
+    poll_interval_seconds: int = 300
+    webhook_secret: str | None = None
+    alert_link_window_minutes: int = 30
+    field_mapping: dict[str, str] | None = None
+
+
+class CmdbConfig(BaseModel):
+    """Configuration for cmdb-type DataSource."""
+    cmdb_system: Literal["itop", "servicenow", "custom"] = "custom"
+    api_base_url: str = ""
+    sync_schedule: str = "0 * * * *"
+    topology_sync_interval_hours: int = 1
+    host_sync_interval_hours: int = 24
+    mapping_rule_path: str | None = None
+    default_mode: Literal["discover", "incremental", "full"] = "incremental"
+    validation_sample_rate: float = 0.1
+
+
 class DataSourceCreate(BaseModel):
     name: str
     description: str | None = None
-    source_type: Literal["kafka", "webhook", "api"]
+    source_type: Literal["kafka", "webhook", "api", "log", "itsm", "cmdb"]
     config: dict = {}
     normalization_rules: dict = {}
     table_mapping: dict | None = None
