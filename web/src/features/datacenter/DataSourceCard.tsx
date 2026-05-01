@@ -3,6 +3,9 @@ import {
   ApiOutlined,
   LinkOutlined,
   ClusterOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+  DatabaseOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
@@ -46,6 +49,9 @@ const TYPE_CONFIG: Record<string, { icon: React.ReactNode; label: string; color:
   kafka: { icon: <ClusterOutlined />, label: 'Kafka', color: '#b37feb' },
   webhook: { icon: <LinkOutlined />, label: 'Webhook', color: '#5cdbd3' },
   api: { icon: <ApiOutlined />, label: 'API', color: '#597ef7' },
+  log: { icon: <FileTextOutlined />, label: '日志', color: '#fa8c16' },
+  itsm: { icon: <MessageOutlined />, label: 'ITSM', color: '#13c2c2' },
+  cmdb: { icon: <DatabaseOutlined />, label: 'CMDB', color: '#2f54eb' },
 };
 
 const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {

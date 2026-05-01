@@ -231,6 +231,9 @@ export default function DataSourcePage() {
               { label: 'Webhook', value: 'webhook' },
               { label: 'API', value: 'api' },
               { label: 'Kafka', value: 'kafka' },
+              { label: '日志', value: 'log' },
+              { label: 'ITSM', value: 'itsm' },
+              { label: 'CMDB', value: 'cmdb' },
             ]}
           />
           <Select

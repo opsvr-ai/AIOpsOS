@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import {
   ApiOutlined, LinkOutlined, ClusterOutlined, CopyOutlined,
+  FileTextOutlined, MessageOutlined, DatabaseOutlined,
 } from '@ant-design/icons';
 import ApiRequestStepEditor from './ApiRequestStepEditor';
 
@@ -120,6 +121,9 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
               { label: <span><LinkOutlined /> Webhook</span>, value: 'webhook' },
               { label: <span><ApiOutlined /> API</span>, value: 'api' },
               { label: <span><ClusterOutlined /> Kafka</span>, value: 'kafka' },
+              { label: <span><FileTextOutlined /> 日志</span>, value: 'log' },
+              { label: <span><MessageOutlined /> ITSM</span>, value: 'itsm' },
+              { label: <span><DatabaseOutlined /> CMDB</span>, value: 'cmdb' },
             ]}
           />
         </Form.Item>
@@ -273,6 +277,97 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
                 },
               ]}
             />
+          </>
+        )}
+
+        {/* --- Log config --- */}
+        {sourceType === 'log' && (
+          <>
+            <Form.Item name={['config', 'source']} label="采集来源">
+              <Select
+                options={[
+                  { value: 'filebeat', label: 'Filebeat' },
+                  { value: 'kafka', label: 'Kafka' },
+                  { value: 'vector', label: 'Vector' },
+                ]}
+              />
+            </Form.Item>
+            <Space size={12} style={{ display: 'flex' }}>
+              <Form.Item name={['config', 'batch_size']} label="批量大小" style={{ flex: 1 }}>
+                <InputNumber min={100} max={5000} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name={['config', 'retention_minutes']} label="保留(分钟)" style={{ flex: 1 }}>
+                <InputNumber min={5} max={1440} style={{ width: '100%' }} />
+              </Form.Item>
+            </Space>
+          </>
+        )}
+
+        {/* --- ITSM config --- */}
+        {sourceType === 'itsm' && (
+          <>
+            <Form.Item name={['config', 'itsm_system']} label="ITSM系统">
+              <Select
+                options={[
+                  { value: 'servicenow', label: 'ServiceNow' },
+                  { value: 'jira', label: 'Jira' },
+                  { value: 'zendesk', label: 'Zendesk' },
+                  { value: 'custom', label: '自定义' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name={['config', 'api_base_url']} label="API地址">
+              <Input placeholder="https://itsm.example.com" />
+            </Form.Item>
+            <Space size={12} style={{ display: 'flex' }}>
+              <Form.Item name={['config', 'poll_interval_seconds']} label="轮询间隔(秒)" style={{ flex: 1 }}>
+                <InputNumber min={60} max={3600} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name={['config', 'alert_link_window_minutes']} label="告警关联窗口(分)" style={{ flex: 1 }}>
+                <InputNumber min={5} max={120} style={{ width: '100%' }} />
+              </Form.Item>
+            </Space>
+            <Form.Item name={['config', 'ticket_types']} label="工单类型">
+              <Select
+                mode="multiple"
+                options={[
+                  { value: 'incident', label: '事件单' },
+                  { value: 'change', label: '变更单' },
+                  { value: 'problem', label: '问题单' },
+                  { value: 'request', label: '服务请求' },
+                ]}
+              />
+            </Form.Item>
+          </>
+        )}
+
+        {/* --- CMDB config --- */}
+        {sourceType === 'cmdb' && (
+          <>
+            <Form.Item name={['config', 'cmdb_system']} label="CMDB系统">
+              <Select
+                options={[
+                  { value: 'itop', label: 'iTop' },
+                  { value: 'servicenow', label: 'ServiceNow' },
+                  { value: 'custom', label: '自定义' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name={['config', 'api_base_url']} label="API地址">
+              <Input placeholder="https://cmdb.example.com" />
+            </Form.Item>
+            <Form.Item name={['config', 'sync_schedule']} label="同步计划(Cron)">
+              <Input placeholder="0 * * * *" />
+            </Form.Item>
+            <Form.Item name={['config', 'default_mode']} label="默认同步模式">
+              <Select
+                options={[
+                  { value: 'discover', label: '发现模式(首次)' },
+                  { value: 'incremental', label: '增量同步' },
+                  { value: 'full', label: '全量同步' },
+                ]}
+              />
+            </Form.Item>
           </>
         )}
 
