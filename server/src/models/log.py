@@ -36,7 +36,7 @@ class LogEvent(Base):
     service: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     host: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     level: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
-    trace_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     datasource_id: Mapped[uuid.UUID | None] = mapped_column(
