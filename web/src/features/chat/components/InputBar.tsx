@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Input, Button, theme, Popover, Upload } from 'antd';
+import { Input, Button, theme, Popover } from 'antd';
 import {
   SendOutlined,
   StopOutlined,
@@ -60,12 +60,14 @@ export default function InputBar({
   loading,
   onSend,
   onStop,
+  onOpenContext,
 }: {
   input: string;
   setInput: (v: string) => void;
   loading: boolean;
   onSend: () => void;
   onStop: () => void;
+  onOpenContext?: () => void;
 }) {
   const { token } = theme.useToken();
   const mode = useThemeStore((s) => s.mode);
@@ -425,29 +427,22 @@ export default function InputBar({
             >
               @ 引用
             </Button>
-            <Upload
-              showUploadList={false}
-              beforeUpload={() => false}
-              onChange={(info) => {
-                if (info.file) setInput(input + ` [已附加文件: ${info.file.name}]`);
+            <Button
+              type="text"
+              size="small"
+              icon={<PaperClipOutlined style={{ fontSize: 12 }} />}
+              disabled={loading}
+              onClick={onOpenContext}
+              style={{
+                fontSize: 11,
+                color: token.colorTextTertiary,
+                padding: '0 8px',
+                height: 28,
+                borderRadius: 6,
               }}
             >
-              <Button
-                type="text"
-                size="small"
-                icon={<PaperClipOutlined style={{ fontSize: 12 }} />}
-                disabled={loading}
-                style={{
-                  fontSize: 11,
-                  color: token.colorTextTertiary,
-                  padding: '0 8px',
-                  height: 28,
-                  borderRadius: 6,
-                }}
-              >
-                附件
-              </Button>
-            </Upload>
+              附件
+            </Button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, color: token.colorTextQuaternary }}>

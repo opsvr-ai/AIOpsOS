@@ -45,6 +45,7 @@ const baseMenuItems = [
       { key: '/ops/cmdb', icon: <HddOutlined />, label: 'CMDB' },
       { key: '/ops/logs', icon: <FileTextOutlined />, label: '日志检索' },
       { key: '/ops/itsm', icon: <MessageOutlined />, label: 'ITSM' },
+      { key: '/ops/reports', icon: <FileTextOutlined />, label: '报告' },
     ],
   },
   {

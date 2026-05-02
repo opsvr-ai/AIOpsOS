@@ -71,7 +71,16 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type: 'text' | 'intent' | 'plan' | 'exec' | 'final' | 'interactive_form' | 'interrupt' | 'a2ui';
+  type:
+    | 'text'
+    | 'intent'
+    | 'plan'
+    | 'exec'
+    | 'final'
+    | 'interactive_form'
+    | 'interrupt'
+    | 'a2ui'
+    | 'report';
   timestamp: number;
   planSteps?: PlanStep[];
   execResults?: ToolResult[];
@@ -91,6 +100,10 @@ export interface ChatMessage {
   a2uiSurfaceId?: string;
   /** Whether the A2UI surface is ready for rendering */
   a2uiReady?: boolean;
+  /** Report URL for report-type messages */
+  reportUrl?: string;
+  /** Report title for report-type messages */
+  reportTitle?: string;
 }
 
 export interface SessionInfo {

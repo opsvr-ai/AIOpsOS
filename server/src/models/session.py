@@ -78,6 +78,9 @@ class SessionFile(Base, TimestampMixin):
     file_size: Mapped[int] = mapped_column(nullable=False, default=0)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=True)
     content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    folder_path: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="/", server_default="/"
+    )
 
 
 class Memory(Base):

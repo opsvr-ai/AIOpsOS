@@ -8,33 +8,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.api.control.router import router as control_router
-from src.api.execution.router import router as execution_router
-from src.api.execution.datasources import router as datasource_router
-from src.api.execution.webhooks import router as webhook_router
-from src.api.execution.notifications import router as notification_router
 from src.api.execution.callbacks import router as callback_router
-from src.api.execution.tasks import router as tasks_router
-from src.api.execution.log_search import log_search_router
+from src.api.execution.datasources import router as datasource_router
 from src.api.execution.itsm_search import itsm_search_router
+from src.api.execution.log_search import log_search_router
+from src.api.execution.notifications import router as notification_router
+from src.api.execution.router import router as execution_router
+from src.api.execution.tasks import router as tasks_router
+from src.api.execution.webhooks import router as webhook_router
+from src.api.public import router as public_router
 from src.config import settings
 from src.core.logging import setup_logging
-from src.models.base import engine, Base
+from src.models.base import Base, engine
 
 logger = logging.getLogger(__name__)
 
 
 async def _auto_seed_agents() -> None:
     """Ensure main agent + sub-agents + tool associations exist."""
-    from sqlalchemy import select, delete
+    from sqlalchemy import delete, select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
-    from src.models.base import async_session_factory
-    from src.models.agent import Agent, Tool, agent_sub_agents, agent_tools
+
     from src.agent.deep_agent import (
-        AI_OPS_SYSTEM_PROMPT, KNOWLEDGE_SYSTEM_PROMPT,
-        MONITOR_SYSTEM_PROMPT, OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
-        MEMORY_SYSTEM_PROMPT, CMDB_SYSTEM_PROMPT, A2UI_GENERATOR_SYSTEM_PROMPT,
-        SUBAGENTS, KNOWLEDGE_TOOLS, MEMORY_TOOLS,
+        A2UI_GENERATOR_SYSTEM_PROMPT,
+        AI_OPS_SYSTEM_PROMPT,
+        ANALYSIS_SYSTEM_PROMPT,
+        CMDB_SYSTEM_PROMPT,
+        KNOWLEDGE_SYSTEM_PROMPT,
+        KNOWLEDGE_TOOLS,
+        MEMORY_SYSTEM_PROMPT,
+        MEMORY_TOOLS,
+        MONITOR_SYSTEM_PROMPT,
+        OPS_SYSTEM_PROMPT,
+        SUBAGENTS,
     )
+    from src.models.agent import Agent, Tool, agent_sub_agents, agent_tools
+    from src.models.base import async_session_factory
 
     async with async_session_factory() as db:
         stale = (await db.execute(
@@ -332,6 +341,7 @@ app.include_router(notification_router)
 app.include_router(tasks_router)
 app.include_router(log_search_router)
 app.include_router(itsm_search_router)
+app.include_router(public_router)
 
 
 @app.get("/health")

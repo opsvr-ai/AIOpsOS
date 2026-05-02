@@ -1,11 +1,12 @@
 import secrets
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUser, DbSession
+from src.config import settings
 from src.core.security import (
     create_access_token,
     create_refresh_token,
@@ -172,7 +173,7 @@ async def register(body: UserCreate, db: DbSession):
 # ── Login ─────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: UserLogin, db: DbSession):
+async def login(body: UserLogin, response: Response, db: DbSession):
     # LDAP authentication
     if body.login_type == "ldap":
         ldap_config = await _get_ldap_config(db)
@@ -227,6 +228,10 @@ async def login(body: UserLogin, db: DbSession):
         role_names = [r.name for r in user.roles]
         token = create_access_token(data={"sub": str(user.id), "username": user.username, "roles": role_names})
         refresh = create_refresh_token(data={"sub": str(user.id)})
+        response.set_cookie(
+            key="access_token", value=token, httponly=True, samesite="lax",
+            max_age=settings.access_token_expire_minutes * 60, path="/",
+        )
         return TokenResponse(access_token=token, refresh_token=refresh)
 
     # Local authentication
@@ -245,13 +250,17 @@ async def login(body: UserLogin, db: DbSession):
     role_names = [r.name for r in user.roles]
     token = create_access_token(data={"sub": str(user.id), "username": user.username, "roles": role_names})
     refresh = create_refresh_token(data={"sub": str(user.id)})
+    response.set_cookie(
+        key="access_token", value=token, httponly=True, samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60, path="/",
+    )
     return TokenResponse(access_token=token, refresh_token=refresh)
 
 
 # ── Token refresh ─────────────────────────────────────────────────────
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(body: RefreshRequest, db: DbSession):
+async def refresh_token(body: RefreshRequest, response: Response, db: DbSession):
     try:
         payload = decode_refresh_token(body.refresh_token)
     except Exception:
@@ -266,6 +275,10 @@ async def refresh_token(body: RefreshRequest, db: DbSession):
     role_names = [r.name for r in user.roles]
     access = create_access_token(data={"sub": str(user.id), "username": user.username, "roles": role_names})
     refresh = create_refresh_token(data={"sub": str(user.id)})
+    response.set_cookie(
+        key="access_token", value=access, httponly=True, samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60, path="/",
+    )
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -351,7 +364,7 @@ async def get_invitation(token: str, db: DbSession):
 
 
 @router.post("/accept-invitation/{token}", response_model=TokenResponse)
-async def accept_invitation(token: str, body: UserCreate, db: DbSession):
+async def accept_invitation(token: str, body: UserCreate, response: Response, db: DbSession):
     result = await db.execute(
         select(UserInvitation).where(UserInvitation.token == token)
     )
@@ -412,4 +425,8 @@ async def accept_invitation(token: str, body: UserCreate, db: DbSession):
     role_names = [r.name for r in user.roles]
     token_jwt = create_access_token(data={"sub": str(user.id), "username": user.username, "roles": role_names})
     refresh = create_refresh_token(data={"sub": str(user.id)})
+    response.set_cookie(
+        key="access_token", value=token_jwt, httponly=True, samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60, path="/",
+    )
     return TokenResponse(access_token=token_jwt, refresh_token=refresh)

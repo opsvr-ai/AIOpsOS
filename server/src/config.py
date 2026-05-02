@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     log_format: str = "text"
     log_retention_days: int = 30
 
+    # Public-facing base URL for generating shareable links (no trailing slash)
+    public_url: str = "http://localhost:8000"
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="")
 
 

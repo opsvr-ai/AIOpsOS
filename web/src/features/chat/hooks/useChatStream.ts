@@ -88,7 +88,19 @@ async function streamChat(opts: {
         try {
           const data = JSON.parse(line.slice(6));
 
-          if (currentEvent === 'a2ui_batch') {
+          if (currentEvent === 'report_progress') {
+            if (data.status === 'completed' && data.url) {
+              store.addMessage({
+                id: uuid(),
+                role: 'assistant',
+                type: 'report',
+                content: `Report ready: ${data.title || 'Untitled'}`,
+                timestamp: Date.now(),
+                reportUrl: data.url,
+                reportTitle: data.title,
+              });
+            }
+          } else if (currentEvent === 'a2ui_batch') {
             const proc = getSharedProcessor();
             proc.processMessages(data.messages);
 

@@ -26,6 +26,8 @@ const LogsPage = lazy(() => import('@/features/logs/LogsPage'));
 const CmdbPage = lazy(() => import('@/features/cmdb/CmdbPage'));
 const LogIngestionPage = lazy(() => import('@/features/logs/LogIngestionPage'));
 const ItsmPage = lazy(() => import('@/features/itsm/ItsmPage'));
+const ReportListPage = lazy(() => import('@/features/reports/ReportListPage'));
+const ReportViewerPage = lazy(() => import('@/features/reports/ReportViewerPage'));
 const ModelProvidersPage = lazy(() => import('@/features/model-providers/ModelProvidersPage'));
 const SpacesPage = lazy(() => import('@/features/spaces/SpacesPage'));
 const SpaceDetailPage = lazy(() => import('@/features/spaces/SpaceDetailPage'));
@@ -174,6 +176,22 @@ export const appRoutes = [
         element: (
           <Lazy>
             <ItsmPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/reports',
+        element: (
+          <Lazy>
+            <ReportListPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/reports/:reportId',
+        element: (
+          <Lazy>
+            <ReportViewerPage />
           </Lazy>
         ),
       },

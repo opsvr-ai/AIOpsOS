@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}}</title>
+<style>
+/* ═══════════════════════════════════════════════
+   AIOpsOS Report Template — CSS Component Library
+   Inspired by guizang-ppt-skill typography system.
+   Theme: {{THEME}}
+   ═══════════════════════════════════════════════ */
+
+/* ── CSS Variables ── */
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-secondary: #6b7280;
+  --fg-tertiary: #9ca3af;
+  --accent: #1e3a5f;
+  --accent-light: #e8edf3;
+  --border: #e5e7eb;
+  --card-bg: #f9fafb;
+  --critical: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
+  --info: #2563eb;
+  --font-heading: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --font-body: 'Noto Sans SC', 'Source Han Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+[data-theme="indigo"] {
+  --accent: #3730a3; --accent-light: #e0e7ff;
+  --card-bg: #f5f7ff;
+}
+[data-theme="forest"] {
+  --accent: #166534; --accent-light: #dcfce7;
+  --card-bg: #f5faf7;
+}
+[data-theme="kraft"] {
+  --bg: #fef7ed; --fg: #3e2f1c; --fg-secondary: #8b7355;
+  --accent: #92400e; --accent-light: #fef3c7;
+  --border: #e7d7c1; --card-bg: #fffbeb;
+}
+[data-theme="dune"] {
+  --bg: #fffbeb; --fg: #3e2f1c; --fg-secondary: #8b7355;
+  --accent: #b45309; --accent-light: #fef3c7;
+  --border: #e7d7c1; --card-bg: #fff7ed;
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  font-size: 15px; line-height: 1.75;
+  color: var(--fg); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.report-container { max-width: 960px; margin: 0 auto; padding: 48px 32px 64px; }
+
+/* ── Header ── */
+.report-header {
+  margin-bottom: 44px; padding-bottom: 28px;
+  border-bottom: 2px solid var(--border);
+}
+.report-header h1 {
+  font-family: var(--font-heading);
+  font-size: 30px; font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.3;
+  margin-bottom: 10px; color: var(--fg);
+}
+.report-header .meta {
+  font-size: 13px; color: var(--fg-secondary);
+  display: flex; align-items: center; gap: 12px;
+}
+.report-header .meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── Typography ── */
+h2 {
+  font-family: var(--font-heading);
+  font-size: 21px; font-weight: 600;
+  margin: 36px 0 16px; line-height: 1.4;
+}
+h3 {
+  font-family: var(--font-heading);
+  font-size: 17px; font-weight: 600;
+  margin: 28px 0 12px; line-height: 1.4;
+}
+h4 { font-size: 15px; font-weight: 600; margin: 24px 0 10px; }
+p { margin-bottom: 14px; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+a:hover { border-bottom-color: var(--accent); }
+ul, ol { margin: 12px 0 12px 24px; }
+li { margin-bottom: 6px; }
+blockquote {
+  border-left: 3px solid var(--accent-light);
+  padding: 8px 16px; margin: 16px 0;
+  color: var(--fg-secondary); font-style: italic;
+}
+
+/* ── Section Title ── */
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 20px; font-weight: 600;
+  padding-bottom: 10px; margin: 40px 0 20px;
+  border-bottom: 2px solid var(--accent);
+  display: flex; align-items: center; gap: 10px;
+  color: var(--accent);
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 22px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Stat Card ── */
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px; text-align: center;
+  box-shadow: var(--shadow);
+}
+.stat-card .n {
+  font-size: 34px; font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent); line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.stat-card .l {
+  font-size: 13px; color: var(--fg-secondary);
+  margin-top: 6px; line-height: 1.4;
+}
+.stat-card.critical .n { color: var(--critical); }
+.stat-card.warning .n { color: var(--warning); }
+.stat-card.success .n { color: var(--success); }
+.stat-card.info .n { color: var(--info); }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px; margin: 20px 0;
+}
+
+/* ── KPI Grid ── */
+.kpi-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+@media (max-width: 640px) {
+  .kpi-2, .kpi-3, .kpi-4, .stat-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── Pillar ── */
+.pillar {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+.pillar .ic { font-size: 28px; margin-bottom: 10px; line-height: 1; }
+.pillar .t { font-weight: 600; font-size: 15px; margin-bottom: 6px; color: var(--fg); }
+.pillar .d { font-size: 13px; color: var(--fg-secondary); line-height: 1.5; }
+.pillar-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px; margin: 20px 0;
+}
+
+/* ── Table ── */
+.table-wrapper {
+  overflow-x: auto; margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th {
+  background: var(--accent-light);
+  font-weight: 600; text-align: left;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--border);
+  font-size: 13px; color: var(--accent);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: var(--card-bg); }
+tbody tr:hover td { background: var(--accent-light); }
+
+/* ── Callout ── */
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-light);
+  padding: 14px 18px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 20px 0; font-size: 14px;
+  line-height: 1.6;
+}
+.callout.warning {
+  border-left-color: var(--warning);
+  background: #fef3c7;
+}
+.callout.critical {
+  border-left-color: var(--critical);
+  background: #fee2e2;
+}
+.callout.info {
+  border-left-color: var(--info);
+  background: #dbeafe;
+}
+.callout.success {
+  border-left-color: var(--success);
+  background: #dcfce7;
+}
+.callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Tag ── */
+.tag {
+  display: inline-block; padding: 3px 10px;
+  border-radius: 12px; font-size: 12px; font-weight: 500;
+  line-height: 1.5;
+}
+.tag.critical { background: #fee2e2; color: var(--critical); }
+.tag.warning { background: #fef3c7; color: var(--warning); }
+.tag.success { background: #dcfce7; color: var(--success); }
+.tag.info { background: #dbeafe; color: var(--info); }
+.tag.neutral { background: #f3f4f6; color: #6b7280; }
+
+/* ── Timeline ── */
+.timeline {
+  margin: 20px 0; padding-left: 24px;
+  border-left: 2px solid var(--border);
+}
+.timeline-item {
+  position: relative; margin-bottom: 22px; padding-left: 24px;
+}
+.timeline-item::before {
+  content: '';
+  position: absolute; left: -31px; top: 4px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+.timeline-item .time {
+  font-size: 12px; color: var(--fg-tertiary);
+  font-family: var(--font-mono); margin-bottom: 2px;
+}
+.timeline-item .content { font-size: 14px; line-height: 1.6; }
+
+/* ── Code Block ── */
+.code-block {
+  background: #1e1e2e; color: #cdd6f4;
+  border-radius: var(--radius); padding: 18px 22px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px; line-height: 1.7;
+  margin: 18px 0;
+  box-shadow: var(--shadow);
+}
+
+/* ── Chart Placeholder ── */
+.chart-placeholder {
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 36px; text-align: center;
+  margin: 20px 0; color: var(--fg-tertiary);
+  font-size: 14px;
+}
+
+/* ── Progress Bar ── */
+.progress-bar {
+  width: 100%; height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden; margin: 8px 0;
+}
+.progress-bar .fill {
+  height: 100%; border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.progress-bar .fill.critical { background: var(--critical); }
+.progress-bar .fill.warning { background: var(--warning); }
+.progress-bar .fill.success { background: var(--success); }
+
+/* ── Separator ── */
+hr {
+  border: none; border-top: 1px solid var(--border);
+  margin: 32px 0;
+}
+
+/* ── Footer ── */
+.report-footer {
+  margin-top: 48px; padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12px; color: var(--fg-tertiary);
+}
+
+/* ── Utility ── */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-muted { color: var(--fg-secondary); font-size: 13px; }
+.mt-4 { margin-top: 16px; }
+.mb-4 { margin-bottom: 16px; }
+
+/* ── Print ── */
+@media print {
+  @page { margin: 2cm; size: A4; }
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .report-container { max-width: 100%; padding: 0; }
+  .stat-card, .pillar { break-inside: avoid; box-shadow: none; }
+  .code-block { background: #f5f5f5; color: #000; border: 1px solid #ddd; }
+  .timeline { border-left-color: #999; }
+  .report-footer { display: none; }
+}
+</style>
+</head>
+<body data-theme="{{THEME}}">
+<div class="report-container">
+
+  <div class="report-header">
+    <h1>{{TITLE}}</h1>
+    <div class="meta">
+      <span>{{GENERATED_AT}}</span>
+      <span>Generated by AIOpsOS</span>
+    </div>
+  </div>
+
+  <div class="report-body">
+    {{BODY_CONTENT}}
+  </div>
+
+  <div class="report-footer">
+    Generated by AIOpsOS Report Agent &mdash; {{GENERATED_AT}}
+  </div>
+
+</div>
+</body>
+</html>

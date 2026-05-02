@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_serializer, field_validator
 
 
 class MessageOut(BaseModel):
@@ -74,9 +74,15 @@ class SessionFileOut(BaseModel):
     file_size: int
     mime_type: str | None = None
     content_text: str | None = None
+    folder_path: str = "/"
     created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+    @field_validator("id", "session_id", mode="before")
+    @classmethod
+    def coerce_uuid_str(cls, v: UUID | str) -> str:
+        return str(v)
 
     @field_serializer("id", "session_id")
     @classmethod

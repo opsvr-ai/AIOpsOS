@@ -102,6 +102,63 @@ export default function TextBubble({
     );
   }
 
+  // Report card — clickable link to report viewer
+  if (msg.type === 'report' && msg.reportUrl) {
+    return (
+      <div className="msg-enter" style={{ padding: '4px 16px' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-start',
+            maxWidth: 900,
+            margin: '0 auto',
+            width: '100%',
+            paddingLeft: 46,
+          }}
+        >
+          <a
+            href={msg.reportUrl}
+            onClick={(e) => {
+              e.preventDefault();
+              window.open(msg.reportUrl, '_blank');
+            }}
+            style={{ textDecoration: 'none', width: '100%', maxWidth: 420 }}
+          >
+            <div
+              style={{
+                padding: '14px 18px',
+                borderRadius: 12,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                background: isDark ? token.colorFillQuaternary : token.colorBgElevated,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                cursor: 'pointer',
+                transition: 'box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            >
+              <span style={{ fontSize: 24 }}>📊</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: token.colorText }}>
+                  {msg.reportTitle || 'Report'}
+                </div>
+                <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2 }}>
+                  Click to view full report →
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="msg-enter" style={{ padding: '4px 16px' }}>
       <div

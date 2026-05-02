@@ -18,12 +18,16 @@ from src.api.control.feedback import router as feedback_router
 from src.api.control.spaces import router as spaces_router
 from src.api.control.tools import router as tools_router
 from src.api.control.events import router as events_router
+from src.api.control.reports import router as reports_router
 from src.api.control.cmdb import cmdb_router
+from src.api.control.dashboard import router as dashboard_router
 from src.api.control.users import router as users_router
 
 router = APIRouter(prefix="/api/v1")
+router.include_router(dashboard_router)
 router.include_router(cmdb_router)
 router.include_router(users_router)
+router.include_router(reports_router)
 router.include_router(events_router)
 router.include_router(agents_router)
 router.include_router(tools_router)

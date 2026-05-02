@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Depends, Header, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +67,28 @@ def require_perm(resource: str, action: str):
                     return user
         raise HTTPException(status_code=403, detail="Permission denied")
     return checker
+
+
+async def get_current_user_optional(
+    request: Request,
+    db: AsyncSession,
+) -> User | None:
+    """Return current user if authenticated, else None. Never raises 401."""
+    token = (
+        request.cookies.get("access_token")
+        or request.headers.get("Authorization", "").removeprefix("Bearer ")
+    )
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        result = await db.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+    except Exception:
+        return None
 
 
 async def get_optional_space_id(

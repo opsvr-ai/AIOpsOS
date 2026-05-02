@@ -910,6 +910,14 @@ async def chat_stream(
                         "session_id": session_id,
                     })
 
+                    # Report generation progress — tool start
+                    if name == "save_report":
+                        yield _sse_event("report_progress", {
+                            "session_id": session_id,
+                            "status": "saving",
+                            "message": "Report generated, saving...",
+                        })
+
                     # Collect for persistence
                     from datetime import UTC, datetime as _dt
                     collected_steps.append({
@@ -963,6 +971,22 @@ async def chat_stream(
                         "step": step,
                         "session_id": session_id,
                     })
+
+                    # Report generation progress — tool end
+                    if name == "save_report":
+                        progress_data: dict = {
+                            "session_id": session_id,
+                            "status": "completed",
+                        }
+                        try:
+                            result = json.loads(tool_output) if isinstance(tool_output, str) else tool_output
+                            if isinstance(result, dict):
+                                progress_data["report_id"] = result.get("report_id", "")
+                                progress_data["url"] = result.get("url", "")
+                                progress_data["title"] = result.get("title", "")
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        yield _sse_event("report_progress", progress_data)
 
                     # Emit sub_agent_end once (deduped)
                     if name == "task" and run_id in seen_task_ids:
@@ -1113,16 +1137,138 @@ async def list_session_files(session_id: str, db: AsyncSession = Depends(get_db)
     return result.scalars().all()
 
 
+@router.get("/sessions/{session_id}/files/tree")
+async def list_session_files_tree(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Return session files as a tree structure grouped by folder_path."""
+    result = await db.execute(
+        select(SessionFile)
+        .where(SessionFile.session_id == session_id)
+        .order_by(SessionFile.folder_path, SessionFile.filename)
+    )
+    files = result.scalars().all()
+
+    # Build folder tree from flat file list
+    folders: dict[str, dict] = {}
+    for sf in files:
+        fp = sf.folder_path or "/"
+        if fp not in folders:
+            folders[fp] = {"name": fp, "type": "folder", "children": []}
+        folders[fp]["children"].append({
+            "id": str(sf.id),
+            "name": sf.filename,
+            "type": "file",
+            "mime_type": sf.mime_type,
+            "file_size": sf.file_size,
+            "folder_path": fp,
+            "created_at": sf.created_at.isoformat() if sf.created_at else None,
+        })
+
+    # Build nested tree: group by top-level folder segments
+    tree_children = []
+    for fp, folder in sorted(folders.items()):
+        if fp == "/":
+            tree_children.extend(folder["children"])
+        else:
+            parts = [p for p in fp.strip("/").split("/") if p]
+            current = tree_children
+            for i, part in enumerate(parts):
+                found = next((c for c in current if c["type"] == "folder" and c["name"] == part), None)
+                if not found:
+                    found = {"name": part, "type": "folder", "children": []}
+                    current.append(found)
+                current = found["children"]
+                if i == len(parts) - 1:
+                    current.extend(folder["children"])
+
+    return {"name": "/", "type": "folder", "children": tree_children}
+
+
+@router.post("/sessions/{session_id}/folders")
+async def create_session_folder(session_id: str, folder_path: str = Query(...)):
+    """Validate folder path — actual folder is implicit via file uploads."""
+    if not folder_path.startswith("/"):
+        raise HTTPException(status_code=400, detail="folder_path must start with /")
+    return {"ok": True, "folder_path": folder_path}
+
+
+@router.patch("/sessions/{session_id}/files/{file_id}/move")
+async def move_session_file(
+    session_id: str,
+    file_id: str,
+    target_folder: str = Query(..., description="Target folder path"),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SessionFile).where(
+            SessionFile.id == file_id,
+            SessionFile.session_id == session_id,
+        )
+    )
+    sf = result.scalar_one_or_none()
+    if not sf:
+        raise HTTPException(status_code=404, detail="File not found")
+    sf.folder_path = target_folder
+    await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/sessions/{session_id}/files/{file_id}/rename")
+async def rename_session_file(
+    session_id: str,
+    file_id: str,
+    new_name: str = Query(..., description="New filename"),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SessionFile).where(
+            SessionFile.id == file_id,
+            SessionFile.session_id == session_id,
+        )
+    )
+    sf = result.scalar_one_or_none()
+    if not sf:
+        raise HTTPException(status_code=404, detail="File not found")
+    sf.filename = new_name
+    await db.commit()
+    return {"ok": True}
+
+
+_MAX_FILE_REF_CHARS = 8000
+
+
+def _save_md_companion(orig_path: str, text: str) -> None:
+    """Save markitdown output as a companion .md file alongside the original."""
+    md_path = orig_path + ".md"
+    md_content = text.encode("utf-8")
+    with open(md_path, "wb") as f:
+        f.write(md_content)
+
+
 @router.post("/sessions/{session_id}/files", response_model=SessionFileOut)
 async def upload_session_file(
     session_id: str,
     file: UploadFile,
+    folder_path: str = Query("/", description="Target folder path"),
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
-    # Verify session exists
+    from datetime import UTC, datetime as _datetime
+
+    # Auto-create session if it doesn't exist
     result = await db.execute(select(Session).where(Session.id == session_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = result.scalar_one_or_none()
+    if session is None:
+        session = Session(
+            id=session_id,
+            user_id=user.id,
+            title="未命名会话",
+            sleep_status="awake",
+            auto_consolidate=True,
+            memory_status="unconsolidated",
+            last_active_at=_datetime.now(UTC),
+        )
+        db.add(session)
+        await db.flush()
 
     # Save file to disk
     upload_dir = _os.path.join(_UPLOAD_ROOT, session_id)
@@ -1141,6 +1287,7 @@ async def upload_session_file(
         file_path=dest_path,
         file_size=len(contents),
         mime_type=file.content_type,
+        folder_path=folder_path,
     )
     db.add(session_file)
 
@@ -1152,11 +1299,13 @@ async def upload_session_file(
             text = await parse_document_async(dest_path, file.content_type)
             if text:
                 session_file.content_text = text
+                _save_md_companion(dest_path, text)
         else:
             # Large file: schedule background parse
             async def _bg_parse(sf_id: str, path: str, mime: str | None):
                 text = await parse_document_async(path, mime)
                 if text:
+                    _save_md_companion(path, text)
                     async with async_session_factory() as _db:
                         result = await _db.execute(select(SessionFile).where(SessionFile.id == sf_id))
                         sf = result.scalar_one_or_none()
@@ -1187,9 +1336,12 @@ async def delete_session_file(
     if not sf:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Remove from disk
+    # Remove from disk (including companion .md)
     if _os.path.exists(sf.file_path):
         _os.remove(sf.file_path)
+    md_path = sf.file_path + ".md"
+    if _os.path.exists(md_path):
+        _os.remove(md_path)
 
     await db.delete(sf)
     await db.commit()

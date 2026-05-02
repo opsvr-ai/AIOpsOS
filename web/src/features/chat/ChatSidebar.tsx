@@ -61,6 +61,7 @@ export default function ChatSidebar() {
   }, [fetchSessions, _refreshTick, currentSpaceId]);
 
   const handleNew = () => {
+    localStorage.removeItem('aiops_persisted_session_id');
     setSessionId(null);
     setMessages([]);
   };

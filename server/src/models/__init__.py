@@ -4,6 +4,7 @@ from src.models.assistant import PersonalAssistantConfig
 from src.models.base import Base
 from src.models.channel import AgentProfile, NotificationChannel, SystemConfig
 from src.models.model_provider import ModelProvider
+from src.models.report import Report
 from src.models.cron_job import CronJob
 from src.models.datasource import DataSource
 from src.models.feedback import Feedback
@@ -46,6 +47,7 @@ __all__ = [
     "Message",
     "Notification",
     "NotificationChannel",
+    "Report",
     "Permission",
     "PersonalAssistantConfig",
     "Role",
