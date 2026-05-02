@@ -42,6 +42,9 @@ const baseMenuItems = [
       { key: '/ops/datacenter', icon: <AppstoreOutlined />, label: '数据接入' },
       { key: '/ops/events', icon: <DatabaseOutlined />, label: '事件接入' },
       { key: '/ops/automation', icon: <ThunderboltOutlined />, label: '自动化' },
+      { key: '/ops/cmdb', icon: <HddOutlined />, label: 'CMDB' },
+      { key: '/ops/logs', icon: <FileTextOutlined />, label: '日志检索' },
+      { key: '/ops/itsm', icon: <MessageOutlined />, label: 'ITSM' },
     ],
   },
   {

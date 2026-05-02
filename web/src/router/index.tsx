@@ -23,6 +23,9 @@ const MemoryPage = lazy(() => import('@/features/memory/MemoryPage'));
 const DocsPage = lazy(() => import('@/features/docs/DocsPage'));
 const FeedbackPage = lazy(() => import('@/features/feedback/FeedbackPage'));
 const LogsPage = lazy(() => import('@/features/logs/LogsPage'));
+const CmdbPage = lazy(() => import('@/features/cmdb/CmdbPage'));
+const LogIngestionPage = lazy(() => import('@/features/logs/LogIngestionPage'));
+const ItsmPage = lazy(() => import('@/features/itsm/ItsmPage'));
 const ModelProvidersPage = lazy(() => import('@/features/model-providers/ModelProvidersPage'));
 const SpacesPage = lazy(() => import('@/features/spaces/SpacesPage'));
 const SpaceDetailPage = lazy(() => import('@/features/spaces/SpaceDetailPage'));
@@ -147,6 +150,54 @@ export const appRoutes = [
         element: (
           <Lazy>
             <AutomationPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/cmdb',
+        element: (
+          <Lazy>
+            <CmdbPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/logs',
+        element: (
+          <Lazy>
+            <LogIngestionPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/itsm',
+        element: (
+          <Lazy>
+            <ItsmPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/cmdb',
+        element: (
+          <Lazy>
+            <CmdbPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/logs',
+        element: (
+          <Lazy>
+            <LogIngestionPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: 'ops/itsm',
+        element: (
+          <Lazy>
+            <ItsmPage />
           </Lazy>
         ),
       },
