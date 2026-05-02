@@ -1,0 +1,27 @@
+# Build artifacts
+false/
+wheels/
+
+# Uploaded files (runtime)
+uploads/sessions/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local

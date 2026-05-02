@@ -14,6 +14,7 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { useChatStore, type SessionInfo, type ChatMessage } from '@/stores/chatStore';
+import { useSpaceStore } from '@/stores/spaceStore';
 import api from '@/services/api';
 
 function sessionIcon(title: string) {
@@ -36,6 +37,7 @@ function sessionIcon(title: string) {
 export default function ChatSidebar() {
   const { sessionId, setSessionId, sessions, setSessions, setMessages, isRunning, _refreshTick } =
     useChatStore();
+  const currentSpaceId = useSpaceStore((s) => s.currentSpace?.id);
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
@@ -47,8 +49,8 @@ export default function ChatSidebar() {
     try {
       const res = await api.get('/sessions');
       setSessions(res.data ?? []);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error('Failed to fetch sessions:', err);
     } finally {
       setLoading(false);
     }
@@ -56,7 +58,7 @@ export default function ChatSidebar() {
 
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions, _refreshTick]);
+  }, [fetchSessions, _refreshTick, currentSpaceId]);
 
   const handleNew = () => {
     setSessionId(null);

@@ -1,7 +1,5 @@
 import { useState, useCallback } from 'react';
-import {
-  Table, Button, Tag, Space, Typography, Input, Select,
-} from 'antd';
+import { Table, Button, Tag, Space, Typography, Input, Select } from 'antd';
 import { SearchOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -19,8 +17,12 @@ interface LogEntry {
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  ERROR: 'red', WARN: 'orange', WARNING: 'orange',
-  INFO: 'blue', DEBUG: 'default', TRACE: 'default',
+  ERROR: 'red',
+  WARN: 'orange',
+  WARNING: 'orange',
+  INFO: 'blue',
+  DEBUG: 'default',
+  TRACE: 'default',
 };
 
 export default function LogIngestionPage() {
@@ -67,27 +69,48 @@ export default function LogIngestionPage() {
 
   const columns = [
     {
-      title: '时间', dataIndex: 'timestamp', key: 'timestamp', width: 170,
-      render: (t: string | null) => t ? new Date(t).toLocaleString() : '-',
+      title: '时间',
+      dataIndex: 'timestamp',
+      key: 'timestamp',
+      width: 170,
+      render: (t: string | null) => (t ? new Date(t).toLocaleString() : '-'),
     },
     { title: '服务', dataIndex: 'service', key: 'service', width: 120 },
     { title: '主机', dataIndex: 'host', key: 'host', width: 120 },
     {
-      title: '级别', dataIndex: 'level', key: 'level', width: 80,
+      title: '级别',
+      dataIndex: 'level',
+      key: 'level',
+      width: 80,
       render: (l: string) => <Tag color={LEVEL_COLORS[l] || 'default'}>{l}</Tag>,
     },
     {
-      title: 'Trace ID', dataIndex: 'trace_id', key: 'trace_id', width: 140,
-      render: (t: string | null) => t ? (
-        <Typography.Text copyable style={{ fontSize: 12 }}>{t.slice(0, 12)}...</Typography.Text>
-      ) : '-',
+      title: 'Trace ID',
+      dataIndex: 'trace_id',
+      key: 'trace_id',
+      width: 140,
+      render: (t: string | null) =>
+        t ? (
+          <Typography.Text copyable style={{ fontSize: 12 }}>
+            {t.slice(0, 12)}...
+          </Typography.Text>
+        ) : (
+          '-'
+        ),
     },
     { title: '内容', dataIndex: 'message', key: 'message', ellipsis: true },
   ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+        }}
+      >
         <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
           <FileTextOutlined style={{ marginRight: 8 }} />
           日志检索

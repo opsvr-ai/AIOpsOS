@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func as sa_func, select, update
+from sqlalchemy import func as sa_func, or_, select, update
 
 from src.api.deps import get_current_user, get_optional_space_id
 from src.models.base import async_session_factory
@@ -26,7 +26,7 @@ async def list_sleep_sessions(
             .where(Session.user_id == user.id)
         )
         if space_id:
-            query = query.where(Session.space_id == space_id)
+            query = query.where(or_(Session.space_id == space_id, Session.space_id.is_(None)))
         result = await db.execute(
             query.order_by(Session.last_active_at.desc()).limit(50)
         )
@@ -58,7 +58,7 @@ async def get_sleep_stats(
         def _base():
             q = select(sa_func.count(Session.id)).where(Session.user_id == user.id)
             if space_id:
-                q = q.where(Session.space_id == space_id)
+                q = q.where(or_(Session.space_id == space_id, Session.space_id.is_(None)))
             return q
         total = await db.scalar(_base())
         sleeping = await db.scalar(_base().where(Session.sleep_status == "sleeping"))

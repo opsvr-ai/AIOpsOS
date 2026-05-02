@@ -99,7 +99,7 @@ class MemoryService:
                 params["session_id"] = session_id
 
             if space_id:
-                conditions.append("space_id = CAST(:space_id AS uuid)")
+                conditions.append("(space_id = CAST(:space_id AS uuid) OR space_id IS NULL)")
                 params["space_id"] = space_id
 
             if query:

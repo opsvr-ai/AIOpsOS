@@ -1,11 +1,25 @@
 import { useEffect } from 'react';
 import {
-  Modal, Form, Input, Select, InputNumber, Switch, Segmented,
-  Tabs, Typography, Alert, Space,
+  Modal,
+  Form,
+  Input,
+  Select,
+  InputNumber,
+  Switch,
+  Segmented,
+  Tabs,
+  Typography,
+  Alert,
+  Space,
 } from 'antd';
 import {
-  ApiOutlined, LinkOutlined, ClusterOutlined, CopyOutlined,
-  FileTextOutlined, MessageOutlined, DatabaseOutlined,
+  ApiOutlined,
+  LinkOutlined,
+  ClusterOutlined,
+  CopyOutlined,
+  FileTextOutlined,
+  MessageOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import ApiRequestStepEditor from './ApiRequestStepEditor';
 
@@ -79,7 +93,13 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
     const payload = {
       ...values,
       normalization_rules: values.normalization_rules
-        ? (() => { try { return JSON.parse(values.normalization_rules as string); } catch { return {}; } })()
+        ? (() => {
+            try {
+              return JSON.parse(values.normalization_rules as string);
+            } catch {
+              return {};
+            }
+          })()
         : {},
     };
     onSubmit(payload);
@@ -99,12 +119,17 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
       width={720}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical" onFinish={handleFinish} initialValues={{
-        source_type: 'webhook',
-        is_enabled: true,
-        status: 'active',
-        config: { auth: { type: 'none' }, request_chain: [] },
-      }}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleFinish}
+        initialValues={{
+          source_type: 'webhook',
+          is_enabled: true,
+          status: 'active',
+          config: { auth: { type: 'none' }, request_chain: [] },
+        }}
+      >
         <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
           <Input placeholder="数据源名称" />
         </Form.Item>
@@ -118,12 +143,54 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
             block
             disabled={isEditing}
             options={[
-              { label: <span><LinkOutlined /> Webhook</span>, value: 'webhook' },
-              { label: <span><ApiOutlined /> API</span>, value: 'api' },
-              { label: <span><ClusterOutlined /> Kafka</span>, value: 'kafka' },
-              { label: <span><FileTextOutlined /> 日志</span>, value: 'log' },
-              { label: <span><MessageOutlined /> ITSM</span>, value: 'itsm' },
-              { label: <span><DatabaseOutlined /> CMDB</span>, value: 'cmdb' },
+              {
+                label: (
+                  <span>
+                    <LinkOutlined /> Webhook
+                  </span>
+                ),
+                value: 'webhook',
+              },
+              {
+                label: (
+                  <span>
+                    <ApiOutlined /> API
+                  </span>
+                ),
+                value: 'api',
+              },
+              {
+                label: (
+                  <span>
+                    <ClusterOutlined /> Kafka
+                  </span>
+                ),
+                value: 'kafka',
+              },
+              {
+                label: (
+                  <span>
+                    <FileTextOutlined /> 日志
+                  </span>
+                ),
+                value: 'log',
+              },
+              {
+                label: (
+                  <span>
+                    <MessageOutlined /> ITSM
+                  </span>
+                ),
+                value: 'itsm',
+              },
+              {
+                label: (
+                  <span>
+                    <DatabaseOutlined /> CMDB
+                  </span>
+                ),
+                value: 'cmdb',
+              },
             ]}
           />
         </Form.Item>
@@ -136,7 +203,10 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
                 type="info"
                 message={
                   <Space>
-                    <Text copyable={{ text: webhookUrl, icon: <CopyOutlined /> }} style={{ fontSize: 12 }}>
+                    <Text
+                      copyable={{ text: webhookUrl, icon: <CopyOutlined /> }}
+                      style={{ fontSize: 12 }}
+                    >
                       {webhookUrl}
                     </Text>
                   </Space>
@@ -146,7 +216,9 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
             )}
             {isEditing && editing?.config?.secret && (
               <Form.Item label="密钥 (Secret)">
-                <Input.Password readOnly value={editing.config.secret as string}
+                <Input.Password
+                  readOnly
+                  value={editing.config.secret as string}
                   iconRender={(v) => (v ? <CopyOutlined /> : <CopyOutlined />)}
                 />
               </Form.Item>
@@ -167,7 +239,11 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
               <Input placeholder="https://api.example.com" />
             </Form.Item>
             <Space size={12} style={{ display: 'flex' }}>
-              <Form.Item name={['config', 'poll_interval_seconds']} label="轮询间隔 (秒)" style={{ flex: 1 }}>
+              <Form.Item
+                name={['config', 'poll_interval_seconds']}
+                label="轮询间隔 (秒)"
+                style={{ flex: 1 }}
+              >
                 <InputNumber min={10} max={86400} placeholder="60" style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item name={['config', 'timeout_seconds']} label="超时 (秒)" style={{ flex: 1 }}>
@@ -175,40 +251,66 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
               </Form.Item>
             </Space>
 
-            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>鉴权配置</Text>
+            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+              鉴权配置
+            </Text>
             <Form.Item name={['config', 'auth', 'type']} label="鉴权类型">
               <Select options={AUTH_TYPE_OPTIONS} />
             </Form.Item>
 
             {authType === 'basic' && (
               <Space size={12} style={{ display: 'flex' }}>
-                <Form.Item name={['config', 'auth', 'username']} label="用户名" style={{ flex: 1 }}
-                  rules={[{ required: true }]}>
+                <Form.Item
+                  name={['config', 'auth', 'username']}
+                  label="用户名"
+                  style={{ flex: 1 }}
+                  rules={[{ required: true }]}
+                >
                   <Input />
                 </Form.Item>
-                <Form.Item name={['config', 'auth', 'password']} label="密码" style={{ flex: 1 }}
-                  rules={[{ required: true }]}>
+                <Form.Item
+                  name={['config', 'auth', 'password']}
+                  label="密码"
+                  style={{ flex: 1 }}
+                  rules={[{ required: true }]}
+                >
                   <Input.Password />
                 </Form.Item>
               </Space>
             )}
 
             {authType === 'bearer' && (
-              <Form.Item name={['config', 'auth', 'token']} label="Token" rules={[{ required: true }]}>
+              <Form.Item
+                name={['config', 'auth', 'token']}
+                label="Token"
+                rules={[{ required: true }]}
+              >
                 <Input.Password placeholder="Bearer token" />
               </Form.Item>
             )}
 
             {authType === 'oauth2' && (
               <>
-                <Form.Item name={['config', 'auth', 'token_url']} label="Token URL" rules={[{ required: true }]}>
+                <Form.Item
+                  name={['config', 'auth', 'token_url']}
+                  label="Token URL"
+                  rules={[{ required: true }]}
+                >
                   <Input placeholder="https://auth.example.com/oauth/token" />
                 </Form.Item>
                 <Space size={12} style={{ display: 'flex' }}>
-                  <Form.Item name={['config', 'auth', 'client_id']} label="Client ID" style={{ flex: 1 }}>
+                  <Form.Item
+                    name={['config', 'auth', 'client_id']}
+                    label="Client ID"
+                    style={{ flex: 1 }}
+                  >
                     <Input />
                   </Form.Item>
-                  <Form.Item name={['config', 'auth', 'client_secret']} label="Client Secret" style={{ flex: 1 }}>
+                  <Form.Item
+                    name={['config', 'auth', 'client_secret']}
+                    label="Client Secret"
+                    style={{ flex: 1 }}
+                  >
                     <Input.Password />
                   </Form.Item>
                 </Space>
@@ -220,10 +322,18 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
 
             {authType === 'api_key' && (
               <Space size={12} style={{ display: 'flex' }}>
-                <Form.Item name={['config', 'auth', 'key_name']} label="Key 名称" style={{ flex: 1 }}>
+                <Form.Item
+                  name={['config', 'auth', 'key_name']}
+                  label="Key 名称"
+                  style={{ flex: 1 }}
+                >
                   <Input placeholder="X-API-Key" />
                 </Form.Item>
-                <Form.Item name={['config', 'auth', 'key_value']} label="Key 值" style={{ flex: 1 }}>
+                <Form.Item
+                  name={['config', 'auth', 'key_value']}
+                  label="Key 值"
+                  style={{ flex: 1 }}
+                >
                   <Input.Password placeholder="api-key-value" />
                 </Form.Item>
               </Space>
@@ -244,7 +354,11 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
             <Form.Item name={['config', 'topic']} label="Topic" rules={[{ required: true }]}>
               <Input placeholder="ops-events" />
             </Form.Item>
-            <Form.Item name={['config', 'bootstrap_servers']} label="Bootstrap Servers" rules={[{ required: true }]}>
+            <Form.Item
+              name={['config', 'bootstrap_servers']}
+              label="Bootstrap Servers"
+              rules={[{ required: true }]}
+            >
               <Input placeholder="localhost:9092" />
             </Form.Item>
             <Form.Item name={['config', 'consumer_group']} label="Consumer Group">
@@ -265,10 +379,18 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
                         </Select>
                       </Form.Item>
                       <Space size={12} style={{ display: 'flex' }}>
-                        <Form.Item name={['config', 'sasl_username']} label="Username" style={{ flex: 1 }}>
+                        <Form.Item
+                          name={['config', 'sasl_username']}
+                          label="Username"
+                          style={{ flex: 1 }}
+                        >
                           <Input />
                         </Form.Item>
-                        <Form.Item name={['config', 'sasl_password']} label="Password" style={{ flex: 1 }}>
+                        <Form.Item
+                          name={['config', 'sasl_password']}
+                          label="Password"
+                          style={{ flex: 1 }}
+                        >
                           <Input.Password />
                         </Form.Item>
                       </Space>
@@ -296,7 +418,11 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
               <Form.Item name={['config', 'batch_size']} label="批量大小" style={{ flex: 1 }}>
                 <InputNumber min={100} max={5000} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name={['config', 'retention_minutes']} label="保留(分钟)" style={{ flex: 1 }}>
+              <Form.Item
+                name={['config', 'retention_minutes']}
+                label="保留(分钟)"
+                style={{ flex: 1 }}
+              >
                 <InputNumber min={5} max={1440} style={{ width: '100%' }} />
               </Form.Item>
             </Space>
@@ -320,10 +446,18 @@ export default function DataSourceFormModal({ open, editing, onCancel, onSubmit 
               <Input placeholder="https://itsm.example.com" />
             </Form.Item>
             <Space size={12} style={{ display: 'flex' }}>
-              <Form.Item name={['config', 'poll_interval_seconds']} label="轮询间隔(秒)" style={{ flex: 1 }}>
+              <Form.Item
+                name={['config', 'poll_interval_seconds']}
+                label="轮询间隔(秒)"
+                style={{ flex: 1 }}
+              >
                 <InputNumber min={60} max={3600} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name={['config', 'alert_link_window_minutes']} label="告警关联窗口(分)" style={{ flex: 1 }}>
+              <Form.Item
+                name={['config', 'alert_link_window_minutes']}
+                label="告警关联窗口(分)"
+                style={{ flex: 1 }}
+              >
                 <InputNumber min={5} max={120} style={{ width: '100%' }} />
               </Form.Item>
             </Space>

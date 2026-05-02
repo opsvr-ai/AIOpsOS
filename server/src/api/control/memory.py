@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.api.deps import get_current_user, get_optional_space_id
 from src.models.session import Session
@@ -129,7 +129,7 @@ async def get_memory_graph(
                 | ((AgentMemory.scope == "personal") & (AgentMemory.user_id == user.id)),
             )
         if space_id:
-            query = query.where(AgentMemory.space_id == space_id)
+            query = query.where(or_(AgentMemory.space_id == space_id, AgentMemory.space_id.is_(None)))
         query = query.order_by(AgentMemory.created_at.desc()).limit(limit)
         result = await db.execute(query)
         memories = list(result.scalars().all())

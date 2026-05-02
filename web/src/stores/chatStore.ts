@@ -71,7 +71,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type: 'text' | 'intent' | 'plan' | 'exec' | 'final' | 'interactive_form' | 'interrupt';
+  type: 'text' | 'intent' | 'plan' | 'exec' | 'final' | 'interactive_form' | 'interrupt' | 'a2ui';
   timestamp: number;
   planSteps?: PlanStep[];
   execResults?: ToolResult[];
@@ -87,6 +87,10 @@ export interface ChatMessage {
   interruptData?: InterruptData;
   /** Whether the interrupt has been responded to */
   interruptResolved?: boolean;
+  /** A2UI surface ID for rendering interactive surfaces */
+  a2uiSurfaceId?: string;
+  /** Whether the A2UI surface is ready for rendering */
+  a2uiReady?: boolean;
 }
 
 export interface SessionInfo {

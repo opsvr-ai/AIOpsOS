@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id
 from src.models.cron_job import CronJob
@@ -17,7 +17,7 @@ async def list_cron_jobs(
 ):
     query = select(CronJob)
     if space_id:
-        query = query.where(CronJob.space_id == space_id)
+        query = query.where(or_(CronJob.space_id == space_id, CronJob.space_id.is_(None)))
     result = await db.execute(query.order_by(CronJob.created_at.desc()))
     return result.scalars().all()
 

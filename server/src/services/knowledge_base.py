@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import BinaryIO
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 
 from src.config import settings
 from src.models.base import async_session_factory
@@ -235,7 +235,7 @@ class KnowledgeBaseService:
         async with async_session_factory() as db:
             query = select(KnowledgeDocument)
             if space_id:
-                query = query.where(KnowledgeDocument.space_id == space_id)
+                query = query.where(or_(KnowledgeDocument.space_id == space_id, KnowledgeDocument.space_id.is_(None)))
             result = await db.execute(query.order_by(KnowledgeDocument.created_at.desc()))
             return list(result.scalars().all())
 

@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { theme } from 'antd';
 import { DownOutlined, RightOutlined } from '@ant-design/icons';
 import { useThemeStore } from '@/stores/themeStore';
 import type { ChatMessage } from '@/stores/chatStore';
+import { getSharedProcessor } from '../a2ui/sharedProcessor';
 import AgentAvatar from './AgentAvatar';
 import UserAvatar from './UserAvatar';
 import MessageActions from './MessageActions';
 import MarkdownContent from '../MarkdownContent';
 import ExecutionTimeline from '../ExecutionTimeline';
+import A2UISurface from './A2UISurface';
 
 export default function TextBubble({
   msg,
@@ -58,6 +60,47 @@ export default function TextBubble({
       ? 'none'
       : '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)';
   const us = isLatestUser ? userState : 'sleeping';
+
+  // Client-side A2UI fallback — extract JSON from content even if backend
+  // marker detection failed (e.g. markers split across streaming tokens)
+  const a2uiFallback = useMemo(() => {
+    if (msg.role !== 'assistant' || msg.streaming) return null;
+    const content = msg.content;
+    const sidx = content.indexOf('[A2UI_START]');
+    if (sidx === -1) return null;
+    const eidx = content.indexOf('[A2UI_END]', sidx + 13);
+    if (eidx === -1) return null;
+    const raw = content.slice(sidx + 13, eidx).trim();
+    try {
+      // Strip markdown code fences if present
+      let json = raw;
+      if (json.startsWith('```')) {
+        json = json
+          .replace(/^```[a-z]*\n?/, '')
+          .replace(/\n?```$/, '')
+          .trim();
+      }
+      const msgs = JSON.parse(json);
+      const proc = getSharedProcessor();
+      proc.processMessages(msgs);
+      const createMsg = msgs.find((m: any) => m.createSurface);
+      return createMsg?.createSurface?.surfaceId || 'msg-fallback';
+    } catch {
+      return null;
+    }
+  }, [msg.content, msg.role, msg.streaming]);
+
+  // A2UI interactive surface — render instead of markdown bubble
+  if ((msg.type === 'a2ui' && msg.a2uiSurfaceId) || a2uiFallback) {
+    const surfaceId = msg.a2uiSurfaceId || a2uiFallback || 'msg-fallback';
+    return (
+      <div className="msg-enter" style={{ padding: '4px 16px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', width: '100%' }}>
+          <A2UISurface surfaceId={surfaceId} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="msg-enter" style={{ padding: '4px 16px' }}>

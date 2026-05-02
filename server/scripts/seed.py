@@ -95,6 +95,13 @@ async def seed():
             db.add(admin_user)
             await db.flush()
             logger.info("Created admin user")
+            admin_user = (
+                await db.execute(
+                    select(User)
+                    .where(User.id == admin_user.id)
+                    .options(selectinload(User.roles))
+                )
+            ).scalar_one()
 
         admin_role_ids = {r.id for r in admin_user.roles}
         if admin_role.id not in admin_role_ids:

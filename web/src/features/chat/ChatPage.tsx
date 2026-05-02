@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useAuthStore } from '@/stores/authStore';
 import { useSpaceStore } from '@/stores/spaceStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useChatStream } from './hooks/useChatStream';
@@ -13,11 +12,12 @@ import ModelSwitcher from './components/ModelSwitcher';
 import ContextPanel from './components/ContextPanel';
 import TaskPanel from './components/TaskPanel';
 import { Button } from 'antd';
+import { A2UIProvider } from './a2ui';
+import type { A2UIClientEvent } from './a2ui/types';
 import { FolderOpenOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
 export default function ChatPage() {
   const { sessionId, messages } = useChatStore();
-  const authToken = useAuthStore((s) => s.token);
   const currentSpace = useSpaceStore((s) => s.currentSpace);
 
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export default function ChatPage() {
     lastUserIdx,
     agentState,
     getUserState,
-  } = useChatStream({ authToken: authToken || '', spaceId: currentSpace?.id });
+  } = useChatStream({ spaceId: currentSpace?.id });
 
   // Sync model provider ref in hook with local state
   useEffect(() => {
@@ -64,7 +64,13 @@ export default function ChatPage() {
     }
   }, [messages]);
 
+  const handleA2UIAction = (event: A2UIClientEvent) => {
+    const payload = { type: 'a2ui_action', surfaceId: event.surfaceId, actionName: event.name, context: event.context };
+    sendMessage(`[A2UI_ACTION]\n${JSON.stringify(payload)}`);
+  };
+
   return (
+    <A2UIProvider onAction={handleA2UIAction}>
     <div style={{ height: '100%', display: 'flex', overflow: 'hidden' }}>
       <ChatSidebar />
       <ContextPanel
@@ -191,5 +197,6 @@ export default function ChatPage() {
         </AnimatePresence>
       </div>
     </div>
+    </A2UIProvider>
   );
 }

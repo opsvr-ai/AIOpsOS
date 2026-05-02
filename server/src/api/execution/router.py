@@ -7,7 +7,7 @@ import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -230,7 +230,7 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
         messages.append(SystemMessage(content=recall_context))
     resolved_message = await _resolve_file_refs(body.message, str(session.id))
     messages.append(HumanMessage(content=resolved_message))
-    result = await agent.ainvoke({"messages": messages})
+    result = await agent.ainvoke({"messages": messages}, config={"recursion_limit": 150})
     reply = result["messages"][-1].content if result.get("messages") else "Agent produced no output."
 
     assistant_msg = Message(session_id=session.id, role="assistant", content=reply,
@@ -262,7 +262,7 @@ async def list_sessions(
 ):
     query = select(Session).where(Session.user_id == user.id)
     if space_id:
-        query = query.where(Session.space_id == space_id)
+        query = query.where(or_(Session.space_id == space_id, Session.space_id.is_(None)))
     result = await db.execute(query.order_by(Session.updated_at.desc()))
     return result.scalars().all()
 
@@ -285,7 +285,7 @@ async def get_recommendations(
             if space_id:
                 result = await db.execute(
                     select(Session.title)
-                    .where(Session.space_id == space_id, Session.title.isnot(None))
+                    .where(or_(Session.space_id == space_id, Session.space_id.is_(None)), Session.title.isnot(None))
                     .order_by(Session.last_active_at.desc())
                     .limit(5)
                 )
@@ -619,15 +619,45 @@ async def chat_stream(
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import UTC, datetime
+    import traceback as _setup_tb
 
-    space_id = body.space_id
+    try:
+        space_id = body.space_id
 
-    if body.session_id:
-        result = await db.execute(select(Session).where(Session.id == body.session_id))
-        session = result.scalar_one_or_none()
-        if session is None:
-            session = Session(id=body.session_id, user_id=user.id,
-                              title=_make_title(body.message),
+        # Validate space_id — browser may send stale space_id from localStorage
+        if space_id:
+            from src.models.space import Space
+            space_exists = await db.scalar(
+                select(Space.id).where(Space.id == space_id)
+            )
+            if not space_exists:
+                logger.warning("chat_stream: space_id %s not found, falling back to None", space_id)
+                space_id = None
+
+        if body.session_id:
+            result = await db.execute(select(Session).where(Session.id == body.session_id))
+            session = result.scalar_one_or_none()
+            if session is None:
+                session = Session(id=body.session_id, user_id=user.id,
+                                  title=_make_title(body.message),
+                                  space_id=space_id,
+                                  sleep_status="awake", auto_consolidate=True,
+                                  memory_status="unconsolidated",
+                                  last_active_at=datetime.now(UTC))
+                db.add(session)
+                await db.commit()
+                await db.refresh(session)
+            else:
+                was_sleeping = session.sleep_status == "sleeping"
+                session.sleep_status = "awake"
+                session.last_active_at = datetime.now(UTC)
+                if was_sleeping:
+                    session.memory_status = "unconsolidated"
+                if space_id and not session.space_id:
+                    session.space_id = space_id
+                await db.commit()
+        else:
+            session = Session(user_id=user.id, title=_make_title(body.message),
                               space_id=space_id,
                               sleep_status="awake", auto_consolidate=True,
                               memory_status="unconsolidated",
@@ -635,70 +665,55 @@ async def chat_stream(
             db.add(session)
             await db.commit()
             await db.refresh(session)
-        else:
-            was_sleeping = session.sleep_status == "sleeping"
-            session.sleep_status = "awake"
-            session.last_active_at = datetime.now(UTC)
-            if was_sleeping:
-                session.memory_status = "unconsolidated"
-            if space_id and not session.space_id:
-                session.space_id = space_id
-            await db.commit()
-    else:
-        session = Session(user_id=user.id, title=_make_title(body.message),
-                          space_id=space_id,
-                          sleep_status="awake", auto_consolidate=True,
-                          memory_status="unconsolidated",
-                          last_active_at=datetime.now(UTC))
-        db.add(session)
+
+        user_msg = Message(session_id=session.id, role="user", content=body.message)
+        db.add(user_msg)
+        session.turn_count = (session.turn_count or 0) + 1
         await db.commit()
-        await db.refresh(session)
 
-    user_msg = Message(session_id=session.id, role="user", content=body.message)
-    db.add(user_msg)
-    session.turn_count = (session.turn_count or 0) + 1
-    await db.commit()
-
-    # Propagate user context for memory tools
-    set_current_user(
-        user_id=str(user.id),
-        session_id=str(session.id),
-        username=user.username,
-        email=user.email,
-        roles=[r.name for r in (user.roles or [])],
-    )
-
-    await _resolve_space_context(str(user.id), space_id)
-
-    # Apply per-session model override if specified
-    model_provider_id = body.model_provider_id or (session.model_provider_id if session else None)
-    if model_provider_id:
-        from src.models.model_provider import ModelProvider
-        result = await db.execute(select(ModelProvider).where(ModelProvider.id == model_provider_id))
-        provider = result.scalar_one_or_none()
-        if provider:
-            session.model_provider_id = provider.id
-            await db.commit()
-            set_session_model(_build_model_from_provider(provider))
-
-    # Initialize memory providers for this session
-    mm = MemoryManager()
-    mm.initialize(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
-
-    # Load session message history for conversational context
-    history_messages: list = []
-    if body.session_id:
-        result = await db.execute(
-            select(Message)
-            .where(Message.session_id == session.id)
-            .order_by(Message.created_at.asc())
-            .limit(30)
+        # Propagate user context for memory tools
+        set_current_user(
+            user_id=str(user.id),
+            session_id=str(session.id),
+            username=user.username,
+            email=user.email,
+            roles=[r.name for r in (user.roles or [])],
         )
-        for m in result.scalars().all():
-            if m.role == "user":
-                history_messages.append(HumanMessage(content=m.content))
-            elif m.role == "assistant":
-                history_messages.append(AIMessage(content=m.content))
+
+        await _resolve_space_context(str(user.id), space_id)
+
+        # Apply per-session model override if specified
+        model_provider_id = body.model_provider_id or (session.model_provider_id if session else None)
+        if model_provider_id:
+            from src.models.model_provider import ModelProvider
+            result = await db.execute(select(ModelProvider).where(ModelProvider.id == model_provider_id))
+            provider = result.scalar_one_or_none()
+            if provider:
+                session.model_provider_id = provider.id
+                await db.commit()
+                set_session_model(_build_model_from_provider(provider))
+
+        # Initialize memory providers for this session
+        mm = MemoryManager()
+        mm.initialize(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
+
+        # Load session message history for conversational context
+        history_messages: list = []
+        if body.session_id:
+            result = await db.execute(
+                select(Message)
+                .where(Message.session_id == session.id)
+                .order_by(Message.created_at.asc())
+                .limit(30)
+            )
+            for m in result.scalars().all():
+                if m.role == "user":
+                    history_messages.append(HumanMessage(content=m.content))
+                elif m.role == "assistant":
+                    history_messages.append(AIMessage(content=m.content))
+    except Exception as _setup_exc:
+        logger.error("chat_stream setup error: %s\n%s", _setup_exc, _setup_tb.format_exc())
+        raise
 
     async def event_stream():
         session_id = str(session.id)
@@ -708,6 +723,26 @@ async def chat_stream(
         tool_step_map: dict[str, int] = {}  # run_id -> step number
         seen_task_ids: set[str] = set()  # dedupe sub-agent events
         collected_steps: list[dict] = []  # persisted to extra_metadata
+
+        # A2UI block buffering state
+        a2ui_buffer = ""
+        in_a2ui_block = False
+        A2UI_START = "[A2UI_START]"
+        A2UI_END = "[A2UI_END]"
+        # Rolling scanner buffer — accumulates tokens before A2UI to handle
+        # marker splitting across streaming token boundaries
+        pre_a2ui_buf = ""
+        A2UI_START_LEN = len(A2UI_START)
+
+        def _clean_a2ui_json(raw: str) -> str:
+            """Strip markdown code fences that LLMs sometimes wrap around JSON."""
+            s = raw.strip()
+            for fence in ("```json", "```"):
+                if s.startswith(fence):
+                    s = s[len(fence):].lstrip("\n")
+                if s.endswith("```"):
+                    s = s[:-3].rstrip("\n")
+            return s.strip()
 
         # ── Resume check: inject interrupt response if pending ──
         pending_interrupt = interrupt_manager.get_pending_for_session(session_id)
@@ -772,6 +807,7 @@ async def chat_stream(
             async for event in _agent.astream_events(
                 {"messages": agent_messages},
                 version="v2",
+                config={"recursion_limit": 150},
             ):
                 if await request.is_disconnected():
                     break
@@ -791,10 +827,63 @@ async def chat_stream(
                     if content:
                         pending_tokens.append(content)
                         final_answer += content
-                        yield _sse_event("token", {
-                            "content": content,
-                            "session_id": session_id,
-                        })
+
+                        # A2UI block detection — use rolling buffer to handle
+                        # markers split across streaming token boundaries
+                        if in_a2ui_block:
+                            a2ui_buffer += content
+                            if A2UI_END in a2ui_buffer:
+                                before, _, after = a2ui_buffer.partition(A2UI_END)
+                                try:
+                                    a2ui_messages = json.loads(_clean_a2ui_json(before))
+                                    yield _sse_event("a2ui_batch", {
+                                        "messages": a2ui_messages,
+                                        "session_id": session_id,
+                                    })
+                                except json.JSONDecodeError:
+                                    logger.warning("Invalid A2UI JSON in stream")
+                                in_a2ui_block = False
+                                a2ui_buffer = ""
+                                if after:
+                                    pre_a2ui_buf = after
+                        else:
+                            pre_a2ui_buf += content
+                            idx = pre_a2ui_buf.find(A2UI_START)
+                            if idx >= 0:
+                                before = pre_a2ui_buf[:idx]
+                                after = pre_a2ui_buf[idx + A2UI_START_LEN:]
+                                if before:
+                                    yield _sse_event("token", {
+                                        "content": before,
+                                        "session_id": session_id,
+                                    })
+                                pre_a2ui_buf = ""
+                                in_a2ui_block = True
+                                if A2UI_END in after:
+                                    a2ui_body, _, rest = after.partition(A2UI_END)
+                                    try:
+                                        a2ui_messages = json.loads(_clean_a2ui_json(a2ui_body))
+                                        yield _sse_event("a2ui_batch", {
+                                            "messages": a2ui_messages,
+                                            "session_id": session_id,
+                                        })
+                                    except json.JSONDecodeError:
+                                        logger.warning("Invalid A2UI JSON in stream")
+                                    in_a2ui_block = False
+                                    if rest:
+                                        pre_a2ui_buf = rest
+                                else:
+                                    a2ui_buffer = after
+                            else:
+                                # Only emit content that can't be part of
+                                # a partial A2UI_START marker at the boundary
+                                cutoff = max(0, len(pre_a2ui_buf) - A2UI_START_LEN + 1)
+                                if cutoff > 0:
+                                    yield _sse_event("token", {
+                                        "content": pre_a2ui_buf[:cutoff],
+                                        "session_id": session_id,
+                                    })
+                                    pre_a2ui_buf = pre_a2ui_buf[cutoff:]
 
                 elif etype == "on_tool_start":
                     step_counter += 1
@@ -921,6 +1010,31 @@ async def chat_stream(
                                 "interrupt_pending": True,
                             })
                             return  # end stream, wait for user response
+
+            # Flush any remaining pre-A2UI scanner buffer content
+            if pre_a2ui_buf:
+                final_answer += pre_a2ui_buf
+                yield _sse_event("token", {
+                    "content": pre_a2ui_buf,
+                    "session_id": session_id,
+                })
+                pre_a2ui_buf = ""
+
+            # Flush any remaining A2UI block (agent was interrupted mid-block)
+            if in_a2ui_block and a2ui_buffer:
+                try:
+                    a2ui_messages = json.loads(_clean_a2ui_json(a2ui_buffer))
+                    yield _sse_event("a2ui_batch", {
+                        "messages": a2ui_messages,
+                        "session_id": session_id,
+                    })
+                except json.JSONDecodeError:
+                    logger.warning("Incomplete A2UI JSON at stream end, emitting as text")
+                    final_answer += a2ui_buffer
+                    yield _sse_event("token", {
+                        "content": a2ui_buffer,
+                        "session_id": session_id,
+                    })
 
             # Flush any remaining tokens
             if pending_tokens:

@@ -326,6 +326,7 @@ async def seed_agents(db: DbSession, _=Depends(get_current_user)):
         AI_OPS_SYSTEM_PROMPT,
         KNOWLEDGE_SYSTEM_PROMPT, MONITOR_SYSTEM_PROMPT,
         OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
+        MEMORY_SYSTEM_PROMPT, CMDB_SYSTEM_PROMPT,
         SUBAGENTS, KNOWLEDGE_TOOLS,
     )
 
@@ -379,6 +380,8 @@ async def seed_agents(db: DbSession, _=Depends(get_current_user)):
         "monitor": MONITOR_SYSTEM_PROMPT,
         "ops": OPS_SYSTEM_PROMPT,
         "analysis": ANALYSIS_SYSTEM_PROMPT,
+        "memory": MEMORY_SYSTEM_PROMPT,
+        "cmdb_ingestion": CMDB_SYSTEM_PROMPT,
     }
     for sa in SUBAGENTS:
         sub = await _upsert_agent(

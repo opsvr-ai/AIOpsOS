@@ -14,7 +14,7 @@ from src.api.deps import DbSession, require_perm
 from src.models.cmdb import CmdbNode, CmdbEdge, CmdbSyncLog, CmdbMappingRule, CmdbReviewItem
 from src.agent.sub_agents.cmdb_ingestion_agent import CmdbIngestionAgent
 
-cmdb_router = APIRouter(prefix="/api/v1/cmdb", tags=["CMDB"])
+cmdb_router = APIRouter(prefix="/cmdb", tags=["CMDB"])
 
 
 class ReviewActionRequest(BaseModel):

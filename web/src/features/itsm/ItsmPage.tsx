@@ -1,7 +1,5 @@
 import { useState, useCallback } from 'react';
-import {
-  Table, Tag, Space, Typography, Input, Select, Button,
-} from 'antd';
+import { Table, Tag, Space, Typography, Input, Select, Button } from 'antd';
 import { SearchOutlined, MessageOutlined, ReloadOutlined } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -22,15 +20,24 @@ interface ItsmTicket {
 }
 
 const TICKET_TYPE_LABELS: Record<string, string> = {
-  incident: '事件单', change: '变更单', problem: '问题单', request: '服务请求',
+  incident: '事件单',
+  change: '变更单',
+  problem: '问题单',
+  request: '服务请求',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: 'red', high: 'orange', medium: 'blue', low: 'default',
+  critical: 'red',
+  high: 'orange',
+  medium: 'blue',
+  low: 'default',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: 'blue', in_progress: 'orange', resolved: 'green', closed: 'default',
+  open: 'blue',
+  in_progress: 'orange',
+  resolved: 'green',
+  closed: 'default',
 };
 
 export default function ItsmPage() {
@@ -67,37 +74,62 @@ export default function ItsmPage() {
 
   const columns = [
     {
-      title: '工单ID', dataIndex: 'external_id', key: 'external_id', width: 130,
+      title: '工单ID',
+      dataIndex: 'external_id',
+      key: 'external_id',
+      width: 130,
       render: (t: string | null) => t ?? '-',
     },
     {
-      title: '类型', dataIndex: 'ticket_type', key: 'ticket_type', width: 80,
+      title: '类型',
+      dataIndex: 'ticket_type',
+      key: 'ticket_type',
+      width: 80,
       render: (t: string) => <Tag>{TICKET_TYPE_LABELS[t] || t}</Tag>,
     },
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     {
-      title: '优先级', dataIndex: 'priority', key: 'priority', width: 80,
+      title: '优先级',
+      dataIndex: 'priority',
+      key: 'priority',
+      width: 80,
       render: (p: string) => <Tag color={PRIORITY_COLORS[p] || 'default'}>{p}</Tag>,
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 90,
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
       render: (s: string) => <Tag color={STATUS_COLORS[s] || 'default'}>{s}</Tag>,
     },
     { title: '影响服务', dataIndex: 'affected_service', key: 'affected_service', width: 110 },
     { title: '指派人', dataIndex: 'assigned_to', key: 'assigned_to', width: 90 },
     {
-      title: '关联告警', dataIndex: 'linked_alert_ids', key: 'linked_alert_ids', width: 90,
-      render: (ids: string[] | null) => (ids?.length ?? 0) > 0 ? `${ids!.length}条` : '-',
+      title: '关联告警',
+      dataIndex: 'linked_alert_ids',
+      key: 'linked_alert_ids',
+      width: 90,
+      render: (ids: string[] | null) => ((ids?.length ?? 0) > 0 ? `${ids!.length}条` : '-'),
     },
     {
-      title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 170,
-      render: (t: string | null) => t ? new Date(t).toLocaleString() : '-',
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 170,
+      render: (t: string | null) => (t ? new Date(t).toLocaleString() : '-'),
     },
   ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+        }}
+      >
         <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
           <MessageOutlined style={{ marginRight: 8 }} />
           ITSM 工单管理
@@ -163,7 +195,10 @@ export default function ItsmPage() {
           current: page,
           total,
           pageSize: 30,
-          onChange: (p) => { setPage(p); fetchTickets(); },
+          onChange: (p) => {
+            setPage(p);
+            fetchTickets();
+          },
           showSizeChanger: false,
         }}
       />

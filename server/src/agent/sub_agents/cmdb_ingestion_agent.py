@@ -134,7 +134,7 @@ class ApiCmdbFetcher(CmdbDataFetcher):
                 data = resp.json()
 
                 if isinstance(data, dict):
-                    items = data.get("items", data.get("data", data.get("results", []))
+                    items = data.get("items", data.get("data", data.get("results", [])))
                     next_cursor = data.get("next_cursor") or data.get("next")
                 elif isinstance(data, list):
                     items = data

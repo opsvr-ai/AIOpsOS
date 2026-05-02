@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useChatStore, type ExecutionStep, type FormDefinition } from '@/stores/chatStore';
+import { getSharedProcessor } from '../a2ui/sharedProcessor';
+import { useAuthStore } from '@/stores/authStore';
 
 function uuid() {
   return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -27,13 +29,15 @@ function parseFormFromContent(content: string): FormDefinition | null {
 /** SSE event handling logic extracted from ChatPage — keeps the page component lean. */
 async function streamChat(opts: {
   msgText: string;
-  authToken: string;
   spaceId?: string;
   modelProviderId?: string | null;
   signal: AbortSignal;
 }) {
-  const { msgText, authToken, spaceId, modelProviderId, signal } = opts;
+  const { msgText, spaceId, modelProviderId, signal } = opts;
   const store = useChatStore.getState();
+
+  // Always read the freshest token from the auth store (axios may have refreshed it)
+  const authToken = useAuthStore.getState().token || '';
 
   const sid = store.sessionId || uuid();
   if (!store.sessionId) store.setSessionId(sid);
@@ -84,7 +88,19 @@ async function streamChat(opts: {
         try {
           const data = JSON.parse(line.slice(6));
 
-          if (currentEvent === 'interrupt') {
+          if (currentEvent === 'a2ui_batch') {
+            const proc = getSharedProcessor();
+            proc.processMessages(data.messages);
+
+            const createMsg = data.messages.find((m: any) => m.createSurface);
+            const surfaceId = createMsg?.createSurface?.surfaceId || `msg-${msgId}`;
+
+            store.updateMessage(msgId, {
+              type: 'a2ui' as any,
+              a2uiSurfaceId: surfaceId,
+              a2uiReady: true,
+            });
+          } else if (currentEvent === 'interrupt') {
             useChatStore.getState().addMessage({
               id: uuid(),
               role: 'assistant',
@@ -223,8 +239,8 @@ async function streamChat(opts: {
   }
 }
 
-export function useChatStream(opts: { authToken: string; spaceId?: string }) {
-  const { authToken, spaceId } = opts;
+export function useChatStream(opts: { spaceId?: string }) {
+  const { spaceId } = opts;
   const modelProviderRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -279,7 +295,6 @@ export function useChatStream(opts: { authToken: string; spaceId?: string }) {
       try {
         await streamChat({
           msgText,
-          authToken,
           spaceId,
           modelProviderId: modelProviderRef.current,
           signal: abortRef.current.signal,
@@ -298,7 +313,7 @@ export function useChatStream(opts: { authToken: string; spaceId?: string }) {
         store.refreshSessions();
       }
     },
-    [input, isRunning, authToken, spaceId],
+    [input, isRunning, spaceId],
   );
 
   const stop = useCallback(() => {

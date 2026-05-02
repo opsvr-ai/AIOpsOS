@@ -32,7 +32,8 @@ async def _auto_seed_agents() -> None:
     from src.agent.deep_agent import (
         AI_OPS_SYSTEM_PROMPT, KNOWLEDGE_SYSTEM_PROMPT,
         MONITOR_SYSTEM_PROMPT, OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
-        MEMORY_SYSTEM_PROMPT, SUBAGENTS, KNOWLEDGE_TOOLS, MEMORY_TOOLS,
+        MEMORY_SYSTEM_PROMPT, CMDB_SYSTEM_PROMPT, A2UI_GENERATOR_SYSTEM_PROMPT,
+        SUBAGENTS, KNOWLEDGE_TOOLS, MEMORY_TOOLS,
     )
 
     async with async_session_factory() as db:
@@ -70,12 +71,17 @@ async def _auto_seed_agents() -> None:
             main.is_active = True
             main.is_builtin = True
             main.space_id = None
+            # Refresh system_prompt from code (handles updates to existing main agent)
+            if AI_OPS_SYSTEM_PROMPT != main.system_prompt:
+                main.system_prompt = AI_OPS_SYSTEM_PROMPT
+                logger.info("Updated system_prompt for main agent")
             await db.flush()
 
         prompt_map = {
             "knowledge": KNOWLEDGE_SYSTEM_PROMPT, "monitor": MONITOR_SYSTEM_PROMPT,
             "ops": OPS_SYSTEM_PROMPT, "analysis": ANALYSIS_SYSTEM_PROMPT,
-            "memory": MEMORY_SYSTEM_PROMPT,
+            "memory": MEMORY_SYSTEM_PROMPT, "cmdb_ingestion": CMDB_SYSTEM_PROMPT,
+            "a2ui_generator": A2UI_GENERATOR_SYSTEM_PROMPT,
         }
         sub_map: dict[str, Agent] = {}
         for sa in SUBAGENTS:
@@ -103,6 +109,11 @@ async def _auto_seed_agents() -> None:
                 sub.is_active = True
                 sub.is_builtin = True
                 sub.space_id = None
+                # Refresh system_prompt from code (handles updates to existing sub-agents)
+                refreshed = prompt_map.get(sa['name'])
+                if refreshed and refreshed != sub.system_prompt:
+                    sub.system_prompt = refreshed
+                    logger.info("Updated system_prompt for sub-agent: %s", sub_name)
                 await db.flush()
             sub_map[sa['name']] = sub
 
