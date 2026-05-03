@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 try:
     from croniter import croniter
@@ -14,11 +14,10 @@ except ImportError:
 
 from sqlalchemy import select
 
-from src.config import settings
+from src.models.agent import Scenario
 from src.models.base import async_session_factory
 from src.models.cron_job import CronJob
 from src.models.schedule import Schedule, ScheduleExecution
-from src.models.agent import Scenario
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ def _parse_duration(s: str) -> int:
 
 def compute_next_run(schedule: str, last_run: datetime | None = None) -> datetime | None:
     """Compute the next run time for a schedule string."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     schedule = schedule.strip()
 
     if schedule.lower() == "once":
@@ -103,7 +102,7 @@ async def _execute_job(job: CronJob) -> None:
                 output += m.content + "\n"
 
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         output_path = os.path.join(OUTPUT_DIR, f"{job.id}_{timestamp}.md")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(f"# {job.name}\n\n**Run:** {timestamp}\n\n{output}")
@@ -114,7 +113,7 @@ async def _execute_job(job: CronJob) -> None:
             result_row = await db.get(CronJob, job.id)
             if result_row:
                 result_row.last_output = output[:8192]
-                result_row.last_run = datetime.now(timezone.utc)
+                result_row.last_run = datetime.now(UTC)
                 result_row.next_run = compute_next_run(result_row.schedule, result_row.last_run)
                 if result_row.schedule.lower() == "once":
                     result_row.enabled = False
@@ -125,7 +124,7 @@ async def _execute_job(job: CronJob) -> None:
         async with async_session_factory() as db:
             result_row = await db.get(CronJob, job.id)
             if result_row:
-                result_row.last_run = datetime.now(timezone.utc)
+                result_row.last_run = datetime.now(UTC)
                 result_row.next_run = compute_next_run(result_row.schedule, result_row.last_run)
                 await db.commit()
 
@@ -176,17 +175,17 @@ async def _execute_schedule(sched: Schedule) -> None:
 
         logger.info("Schedule '%s' completed", sched.name)
 
-    except Exception:
+    except Exception as e:
         logger.exception("Schedule '%s' failed", sched.name)
         async with async_session_factory() as db:
             exec_row = await db.get(ScheduleExecution, execution.id)
             if exec_row:
                 exec_row.status = "failed"
-                exec_row.result = {"error": str(Exception)}
+                exec_row.result = {"error": str(e)}
                 await db.commit()
 
     finally:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         async with async_session_factory() as db:
             sched_row = await db.get(Schedule, sched.id)
             if sched_row:
@@ -226,14 +225,14 @@ class CronScheduler:
             await asyncio.sleep(POLL_INTERVAL)
 
     async def _tick(self) -> int:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         total = 0
 
         # Cron jobs
         async with async_session_factory() as db:
             job_result = await db.execute(
                 select(CronJob).where(
-                    CronJob.enabled == True,
+                    CronJob.enabled,
                     CronJob.next_run <= now,
                 )
             )
@@ -249,7 +248,7 @@ class CronScheduler:
         async with async_session_factory() as db:
             sched_result = await db.execute(
                 select(Schedule).where(
-                    Schedule.is_active == True,
+                    Schedule.is_active,
                     Schedule.next_run <= now,
                 )
             )

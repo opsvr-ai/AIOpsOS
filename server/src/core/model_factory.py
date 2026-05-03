@@ -1,4 +1,5 @@
 import logging
+import time as _time
 
 from langchain_openai import ChatOpenAI
 from sqlalchemy import select
@@ -7,6 +8,18 @@ from src.models.base import async_session_factory
 from src.models.model_provider import ModelProvider
 
 logger = logging.getLogger(__name__)
+
+# TTL cache for built model objects — avoids DB query + ChatModel construction per call
+_model_cache: dict[str, tuple[object, float]] = {}
+_MODEL_CACHE_TTL: float = 300.0
+
+
+def invalidate_model_cache(model_type: str | None = None) -> None:
+    """Invalidate cached models. If model_type is None, clear all."""
+    if model_type:
+        _model_cache.pop(model_type, None)
+    else:
+        _model_cache.clear()
 
 
 def _build_model_from_provider(provider: ModelProvider):
@@ -53,10 +66,17 @@ class NoModelProviderError(Exception):
 
 
 async def get_default_model(model_type: str = "llm"):
+    now = _time.time()
+    cached = _model_cache.get(model_type)
+    if cached:
+        model, expires = cached
+        if now < expires:
+            return model
+
     async with async_session_factory() as db:
         result = await db.execute(
             select(ModelProvider)
-            .where(ModelProvider.is_active == True, ModelProvider.model_type == model_type)
+            .where(ModelProvider.is_active, ModelProvider.model_type == model_type)
             .order_by(ModelProvider.is_default.desc(), ModelProvider.priority.asc())
             .limit(1)
         )
@@ -64,7 +84,9 @@ async def get_default_model(model_type: str = "llm"):
 
     if provider:
         logger.info("using model provider: %s (%s/%s)", provider.name, provider.provider_type, provider.model_name)
-        return _build_model_from_provider(provider)
+        model = _build_model_from_provider(provider)
+        _model_cache[model_type] = (model, now + _MODEL_CACHE_TTL)
+        return model
 
     raise NoModelProviderError(
         "未配置模型服务商。请在控制中心 > 模型配置中添加并激活一个模型服务商。"

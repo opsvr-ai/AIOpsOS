@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Input, Button, theme, Popover } from 'antd';
+import { Input, Button, Tag, theme, Popover } from 'antd';
 import {
   SendOutlined,
   StopOutlined,
@@ -10,10 +10,12 @@ import {
   BugOutlined,
   SettingOutlined,
   FileTextOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { useThemeStore } from '@/stores/themeStore';
 import { useChatStore } from '@/stores/chatStore';
 import api from '@/services/api';
+import type { AttachedFile } from '../hooks/useChatStream';
 
 const { TextArea } = Input;
 
@@ -61,6 +63,9 @@ export default function InputBar({
   onSend,
   onStop,
   onOpenContext,
+  attachedFiles = [],
+  onAttachFile,
+  onRemoveFile,
 }: {
   input: string;
   setInput: (v: string) => void;
@@ -68,6 +73,9 @@ export default function InputBar({
   onSend: () => void;
   onStop: () => void;
   onOpenContext?: () => void;
+  attachedFiles?: AttachedFile[];
+  onAttachFile?: (file: AttachedFile) => void;
+  onRemoveFile?: (id: string) => void;
 }) {
   const { token } = theme.useToken();
   const mode = useThemeStore((s) => s.mode);
@@ -133,14 +141,14 @@ export default function InputBar({
   );
 
   const handleMentionSelect = (file: { id: string; filename: string }) => {
-    // Replace @query with @[filename](ref:file_id)
+    // Remove the @query text from the input and add file as a locked chip
     const lastAt = input.lastIndexOf('@', textareaRef.current?.selectionStart ?? input.length);
     if (lastAt >= 0) {
       const before = input.slice(0, lastAt);
       const after = input.slice(textareaRef.current?.selectionStart ?? input.length);
-      const ref = `@[${file.filename}](ref:${file.id})`;
-      setInput(before + ref + after);
+      setInput((before + after).trimEnd() + '\n');
     }
+    onAttachFile?.(file);
     setMentionOpen(false);
     setMentionQuery('');
     setTimeout(() => textareaRef.current?.focus(), 50);
@@ -367,6 +375,52 @@ export default function InputBar({
                 {pill.label}
               </Button>
             ))}
+          </div>
+        )}
+
+        {/* Attached file chips — locked, non-editable */}
+        {attachedFiles.length > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              marginBottom: 8,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            {attachedFiles.map((f) => (
+              <Tag
+                key={f.id}
+                closable
+                onClose={(e) => {
+                  e.preventDefault();
+                  onRemoveFile?.(f.id);
+                }}
+                closeIcon={<CloseOutlined style={{ fontSize: 10 }} />}
+                icon={<FileTextOutlined style={{ marginRight: 2 }} />}
+                color="blue"
+                style={{
+                  margin: 0,
+                  padding: '2px 8px',
+                  fontSize: 12,
+                  borderRadius: 6,
+                  cursor: 'default',
+                  userSelect: 'none',
+                }}
+              >
+                {f.filename}
+              </Tag>
+            ))}
+            <span
+              style={{
+                fontSize: 11,
+                color: token.colorTextTertiary,
+                marginLeft: 4,
+              }}
+            >
+              已引用，请输入需求
+            </span>
           </div>
         )}
 

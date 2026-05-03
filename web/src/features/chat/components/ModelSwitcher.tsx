@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Select, Tag, Typography } from 'antd';
 import api from '@/services/api';
 
@@ -37,13 +37,20 @@ const TYPE_ORDER = ['llm', 'multimodal', 'voice', 'embedding', 'rerank'];
 
 export default function ModelSwitcher({ value, onChange }: Props) {
   const [models, setModels] = useState<ModelProvider[]>([]);
+  const autoSelected = useRef(false);
 
   useEffect(() => {
     api
       .get('/model-providers')
       .then((res) => {
         const data: ModelProvider[] = res.data || [];
-        setModels(data.filter((m) => m.is_active));
+        const active = data.filter((m) => m.is_active);
+        setModels(active);
+        if (!autoSelected.current && !value && active.length > 0) {
+          autoSelected.current = true;
+          const def = active.find((m) => m.is_default) || active[0];
+          onChange(def.id);
+        }
       })
       .catch(() => {});
   }, []);

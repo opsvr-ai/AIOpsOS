@@ -4,16 +4,16 @@ Revision ID: 003_memory_scope
 Revises: 002_knowledge_memory
 Create Date: 2026-04-26
 """
-from typing import Sequence, Union
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-
 revision: str = "003_memory_scope"
-down_revision: Union[str, None] = "002_knowledge_memory"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "002_knowledge_memory"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

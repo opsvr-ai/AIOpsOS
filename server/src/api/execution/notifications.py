@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, update
 
-from src.api.deps import DbSession, get_current_user, CurrentUser
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import func, not_, select, update
+
+from src.api.deps import CurrentUser, DbSession
 from src.models.notification import Notification
 from src.schemas.notification import NotificationOut
 
@@ -35,7 +36,7 @@ async def unread_count(db: DbSession, user: CurrentUser):
     result = await db.execute(
         select(func.count()).select_from(Notification).where(
             (Notification.user_id.is_(None)) | (Notification.user_id == user.id),
-            Notification.is_read == False,
+            not_(Notification.is_read),
         )
     )
     count = result.scalar() or 0
@@ -62,7 +63,7 @@ async def mark_all_read(db: DbSession, user: CurrentUser):
         update(Notification)
         .where(
             (Notification.user_id.is_(None)) | (Notification.user_id == user.id),
-            Notification.is_read == False,
+            not_(Notification.is_read),
         )
         .values(is_read=True, read_at=datetime.now(UTC))
     )

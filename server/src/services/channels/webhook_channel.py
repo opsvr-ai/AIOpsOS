@@ -1,7 +1,8 @@
 import hashlib
 import hmac
-import time
 import logging
+import time
+
 from src.services.channels.base import NotificationChannelBase, NotificationPayload
 
 logger = logging.getLogger(__name__)

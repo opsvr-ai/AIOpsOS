@@ -4,8 +4,8 @@ Add space_id to scoped resources. Add category to notifications. Add default_spa
 revision = "012_spaces"
 down_revision = "011_session_review_flags"
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 

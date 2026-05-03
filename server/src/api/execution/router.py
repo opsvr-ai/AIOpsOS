@@ -4,28 +4,40 @@ import logging
 import os as _os
 import time
 import uuid as _uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import delete as sa_delete, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agent.context import set_current_space, set_current_user
 from src.agent.deep_agent import get_deep_agent, set_session_model
-from src.core.model_factory import _build_model_from_provider
-from src.agent.human_interrupt import parse_interrupt_marker, INTERRUPT_MARKER
-from src.services.interrupt_manager import interrupt_manager
+from src.agent.human_interrupt import parse_interrupt_marker
 from src.api.deps import get_current_user, get_db, get_optional_space_id
+from src.core.model_factory import _build_model_from_provider
 from src.models.alert import Alert
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
 from src.models.space import Space, SpaceMember
-from src.schemas.alert import AlertActionRequest, AlertCreate, AlertListParams, AlertOut, BatchActionRequest
-from src.schemas.chat import ChatRequest, ChatResponse, ChatEvent, MessageOut, SessionDetailOut, SessionOut
+from src.schemas.alert import (
+    AlertActionRequest,
+    AlertCreate,
+    AlertListParams,
+    AlertOut,
+    BatchActionRequest,
+)
+from src.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    MessageOut,
+    SessionDetailOut,
+    SessionOut,
+)
+from src.services.interrupt_manager import interrupt_manager
 from src.services.memory_provider import get_memory_manager, invalidate_memory_manager
-from src.services.sleep_detector import sleep_detector
 from src.services.tool_manager import tool_manager
 
 logger = logging.getLogger(__name__)
@@ -131,6 +143,7 @@ router = APIRouter(prefix="/api/v1")
 async def _generate_title(user_msg: str, reply: str) -> str:
     """Use LLM to generate a concise session title."""
     from langchain_core.messages import HumanMessage, SystemMessage
+
     from src.core.model_factory import get_default_model
     llm = await get_default_model()
     resp = await llm.ainvoke([
@@ -232,16 +245,17 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
     user_ctx = _get_user_context()
     if user_ctx:
         messages.append(user_ctx)
-    # Inject recent memory context into agent messages
+    # Inject recent memory context into agent messages (parallel)
     mm = get_memory_manager(str(session.id), user_id=str(user.id), platform="web",
                             space_id=str(space_id) if space_id else "")
-    memory_block = await mm.system_prompt_block()
+
+    memory_block, recall_context = await asyncio.gather(
+        mm.system_prompt_block(),
+        mm.prefetch(body.message),
+    )
     if memory_block:
-        from langchain_core.messages import SystemMessage
         messages.append(SystemMessage(content=memory_block))
-    recall_context = await mm.prefetch(body.message)
     if recall_context:
-        from langchain_core.messages import SystemMessage
         messages.append(SystemMessage(content=recall_context))
     resolved_message = await _resolve_file_refs(body.message, str(session.id))
     messages.append(HumanMessage(content=resolved_message))
@@ -271,14 +285,24 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
 
 @router.get("/sessions", response_model=list[SessionOut])
 async def list_sessions(
+    response: Response,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     space_id: str | None = Depends(get_optional_space_id),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
 ):
-    query = select(Session).where(Session.user_id == user.id)
+    base_query = select(Session).where(Session.user_id == user.id)
     if space_id:
-        query = query.where(or_(Session.space_id == space_id, Session.space_id.is_(None)))
-    result = await db.execute(query.order_by(Session.updated_at.desc()))
+        base_query = base_query.where(or_(Session.space_id == space_id, Session.space_id.is_(None)))
+
+    count_q = select(func.count()).select_from(base_query.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+
+    result = await db.execute(
+        base_query.order_by(Session.updated_at.desc()).offset(offset).limit(limit)
+    )
+    response.headers["X-Total-Count"] = str(total)
     return result.scalars().all()
 
 
@@ -290,7 +314,7 @@ async def get_recommendations(
     user=Depends(get_current_user),
     space_id: str | None = Depends(get_optional_space_id),
 ):
-    from langchain_core.messages import SystemMessage, HumanMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     suggestions = []
 
@@ -481,7 +505,6 @@ async def create_alert(
     db: AsyncSession = Depends(get_db),
 ):
     """Ingest a new alert. Auto-analysis is triggered asynchronously."""
-    from datetime import UTC, datetime
 
     alert = Alert(
         event_id=body.event_id,
@@ -519,7 +542,7 @@ async def alert_action(
     alert_id: str, body: AlertActionRequest, user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from src.services.alert_state import validate_action, ACTION_TO_STATUS
+    from src.services.alert_state import ACTION_TO_STATUS, validate_action
 
     result = await db.execute(select(Alert).where(Alert.id == alert_id))
     alert = result.scalar_one_or_none()
@@ -563,9 +586,12 @@ async def batch_alert_action(
     updated = 0
     failed: list[str] = []
 
+    # Fetch all alerts in one query
+    result = await db.execute(select(Alert).where(Alert.id.in_(body.alert_ids)))
+    alerts_by_id = {str(a.id): a for a in result.scalars().all()}
+
     for alert_id in body.alert_ids:
-        result = await db.execute(select(Alert).where(Alert.id == alert_id))
-        alert = result.scalar_one_or_none()
+        alert = alerts_by_id.get(alert_id)
         if alert is None:
             failed.append(alert_id)
             continue
@@ -590,8 +616,8 @@ async def batch_alert_action(
 async def _auto_analyze_alert(alert_id: str) -> None:
     """Run trigger matching and agent-based auto-analysis for an alert."""
     from src.models.base import async_session_factory
-    from src.services.trigger_engine import match_triggers
     from src.services.alert_analyzer import analyze
+    from src.services.trigger_engine import match_triggers
 
     async with async_session_factory() as _db:
         result = await _db.execute(select(Alert).where(Alert.id == alert_id))
@@ -647,8 +673,8 @@ async def chat_stream(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from datetime import UTC, datetime
     import traceback as _setup_tb
+    from datetime import UTC, datetime
 
     try:
         space_id = body.space_id
@@ -794,7 +820,6 @@ async def chat_stream(
         yield _sse_event("status", {"message": "正在规划任务...", "session_id": session_id})
 
         try:
-            # Parallelize: memory prefetch + system prompt block + tool reload + agent init
             recall_context, memory_block, _, _agent = await asyncio.gather(
                 mm.prefetch(body.message),
                 mm.system_prompt_block(),
@@ -947,7 +972,8 @@ async def chat_stream(
                         })
 
                     # Collect for persistence
-                    from datetime import UTC, datetime as _dt
+                    from datetime import UTC
+                    from datetime import datetime as _dt
                     collected_steps.append({
                         "id": f"{name}-{run_id[:8] if run_id else step_counter}",
                         "type": tool_type,
@@ -1098,11 +1124,12 @@ async def chat_stream(
             if not final_answer:
                 final_answer = body.message
 
-            # Persist assistant reply with execution steps
+            # Persist assistant reply with execution steps (two-phase: pending → delivered)
             async with async_session_factory() as _db:
                 assistant_msg = Message(
                     session_id=session_id, role="assistant", content=final_answer,
                     extra_metadata={"execution_steps": collected_steps},
+                    delivery_status="pending",
                 )
                 _db.add(assistant_msg)
                 result = await _db.execute(select(Session).where(Session.id == session_id))
@@ -1127,6 +1154,16 @@ async def chat_stream(
                 "session_id": session_id,
                 "reply": final_answer,
             })
+
+            # Mark message as delivered after successful SSE yield
+            async with async_session_factory() as _db:
+                result = await _db.execute(
+                    select(Message).where(Message.id == assistant_msg.id)
+                )
+                msg = result.scalar_one_or_none()
+                if msg:
+                    msg.delivery_status = "delivered"
+                    await _db.commit()
 
         except Exception as exc:
             import traceback as _tb
@@ -1155,8 +1192,23 @@ from src.schemas.chat import SessionFileOut
 _UPLOAD_ROOT = "uploads/sessions"
 
 
+async def _verify_session_owner(session_id: str, user, db: AsyncSession) -> None:
+    """Raise 403 if the session does not belong to the current user."""
+    result = await db.execute(select(Session.user_id).where(Session.id == session_id))
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if str(row.user_id) != str(user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.get("/sessions/{session_id}/files", response_model=list[SessionFileOut])
-async def list_session_files(session_id: str, db: AsyncSession = Depends(get_db)):
+async def list_session_files(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile)
         .where(SessionFile.session_id == session_id)
@@ -1166,8 +1218,13 @@ async def list_session_files(session_id: str, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/sessions/{session_id}/files/tree")
-async def list_session_files_tree(session_id: str, db: AsyncSession = Depends(get_db)):
+async def list_session_files_tree(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
     """Return session files as a tree structure grouped by folder_path."""
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile)
         .where(SessionFile.session_id == session_id)
@@ -1280,7 +1337,12 @@ async def upload_session_file(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    from datetime import UTC, datetime as _datetime
+    from datetime import UTC
+    from datetime import datetime as _datetime
+
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    if file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
 
     # Auto-create session if it doesn't exist
     result = await db.execute(select(Session).where(Session.id == session_id))
@@ -1320,7 +1382,11 @@ async def upload_session_file(
     db.add(session_file)
 
     # Parse document content with markitdown
-    from src.services.document_parser import is_parsable, parse_document_async, SYNC_PARSE_SIZE_LIMIT
+    from src.services.document_parser import (
+        SYNC_PARSE_SIZE_LIMIT,
+        is_parsable,
+        parse_document_async,
+    )
 
     if is_parsable(file.content_type):
         if len(contents) <= SYNC_PARSE_SIZE_LIMIT:

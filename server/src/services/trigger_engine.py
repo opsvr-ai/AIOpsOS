@@ -103,7 +103,7 @@ async def match_triggers(
 
 async def _check_frequency(db: AsyncSession, trigger: SceneTrigger) -> bool:
     """Return True if trigger has not exceeded its frequency_limit in the last hour."""
-    from src.models.schedule import ScheduleExecution, Schedule
+    from src.models.schedule import Schedule, ScheduleExecution
 
     one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
     result = await db.execute(

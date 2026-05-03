@@ -39,12 +39,18 @@ async def _save_report(
     space = get_current_space()
     space_id = space.get("space_id", "")
 
+    def _safe_uuid(v: str) -> any:
+        try:
+            return uuid.UUID(v)
+        except (ValueError, TypeError, AttributeError):
+            return None
+
     async with async_session_factory() as db:
         report = Report(
             id=uuid.uuid4(),
-            user_id=uuid.UUID(user_id) if user_id else None,
-            space_id=uuid.UUID(space_id) if space_id else None,
-            session_id=uuid.UUID(session_id) if session_id else None,
+            user_id=_safe_uuid(user_id),
+            space_id=_safe_uuid(space_id),
+            session_id=_safe_uuid(session_id),
             title=title,
             description=description or "",
             html_content=html_content,

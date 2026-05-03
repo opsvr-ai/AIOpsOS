@@ -12,7 +12,7 @@ import ChatSidebar from './ChatSidebar';
 import ModelSwitcher from './components/ModelSwitcher';
 import ContextPanel from './components/ContextPanel';
 import TaskPanel from './components/TaskPanel';
-import { Button } from 'antd';
+import { Button, Spin } from 'antd';
 import api from '@/services/api';
 import { A2UIProvider } from './a2ui';
 import type { A2UIClientEvent } from './a2ui/types';
@@ -26,12 +26,14 @@ export default function ChatPage() {
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Support /ops/chat?session=<id> to auto-select a session
   useEffect(() => {
     const targetSid = searchParams.get('session');
     if (targetSid && targetSid !== sessionId) {
       setSessionId(targetSid);
+      setLoadingHistory(true);
       api
         .get(`/sessions/${targetSid}`)
         .then((res) => {
@@ -58,8 +60,12 @@ export default function ChatPage() {
               }),
             );
           setMessages(msgs);
+          if (res.data?.model_provider_id) {
+            setModelProviderId(res.data.model_provider_id);
+          }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => setLoadingHistory(false));
     }
   }, [searchParams]);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -68,6 +74,8 @@ export default function ChatPage() {
   const {
     input,
     setInput,
+    attachedFiles,
+    setAttachedFiles,
     isRunning,
     sendMessage,
     stop,
@@ -167,7 +175,13 @@ export default function ChatPage() {
           </div>
 
           <AnimatePresence mode="wait">
-            {messages.length === 0 ? (
+            {loadingHistory ? (
+              <div
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Spin size="large" />
+              </div>
+            ) : messages.length === 0 ? (
               <motion.div
                 key="empty"
                 initial={{ opacity: 0 }}
@@ -192,6 +206,11 @@ export default function ChatPage() {
                     onSend={() => sendMessage()}
                     onStop={stop}
                     onOpenContext={() => setContextOpen(true)}
+                    attachedFiles={attachedFiles}
+                    onAttachFile={(f) => setAttachedFiles((prev) => [...prev, f])}
+                    onRemoveFile={(id) =>
+                      setAttachedFiles((prev) => prev.filter((f) => f.id !== id))
+                    }
                   />
                 </div>
               </motion.div>

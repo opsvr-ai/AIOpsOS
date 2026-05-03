@@ -4,7 +4,7 @@ import hashlib
 import os
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -13,7 +13,9 @@ from sqlalchemy import select, text
 from src.api.deps import get_current_user, get_optional_space_id
 from src.config import settings
 from src.models.base import async_session_factory
-from src.models.knowledge import KnowledgeChunk
+from src.models.knowledge import KnowledgeChunk, KnowledgeDocument
+from src.schemas.kb_lint import LintFixResponse, LintReport
+from src.schemas.kb_monitor import MonitorStatus, ProcessAllResult, ProcessResult, WatchedFile
 from src.schemas.knowledge import (
     CompileRequest,
     CompileResult,
@@ -31,8 +33,6 @@ from src.schemas.knowledge import (
     WikiTreeNode,
 )
 from src.services.knowledge_base import knowledge_base
-from src.schemas.kb_lint import LintFixResponse, LintReport
-from src.schemas.kb_monitor import MonitorStatus, ProcessAllResult, ProcessResult, WatchedFile
 
 router = APIRouter()
 
@@ -57,6 +57,9 @@ async def create_document(body: KnowledgeDocumentCreate, _=Depends(get_current_u
     )
 
 
+MAX_KB_UPLOAD = 20 * 1024 * 1024  # 20MB
+MAX_IMAGE_UPLOAD = 5 * 1024 * 1024  # 5MB
+
 @router.post("/knowledge/upload", response_model=KnowledgeUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -67,13 +70,15 @@ async def upload_document(
     convert = convert_to_markdown.lower() in ("true", "1", "yes")
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
+    if file.size and file.size > MAX_KB_UPLOAD:
+        raise HTTPException(status_code=413, detail="File too large (max 20MB)")
     try:
         doc = await knowledge_base.add_document_from_file(
             file.file, file.filename, source=source,
             convert_to_markdown=convert,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     await knowledge_base.export_to_files(doc)
     return KnowledgeUploadResponse(
@@ -94,6 +99,8 @@ async def upload_image(
     """Upload an image for use in knowledge document markdown content."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename")
+    if file.size and file.size > MAX_IMAGE_UPLOAD:
+        raise HTTPException(status_code=413, detail="Image too large (max 5MB)")
 
     allowed = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"}
     ext = os.path.splitext(file.filename)[1].lower()
@@ -298,8 +305,8 @@ async def get_monitor_files(_=Depends(get_current_user)):
 @router.post("/knowledge/monitor/process-document", response_model=ProcessResult)
 async def process_document(filepath: str, _=Depends(get_current_user)):
     """Manually trigger llm-wiki processing for a single raw source file."""
-    from src.services.kb_monitor import kb_monitor
     from src.config import settings
+    from src.services.kb_monitor import kb_monitor
     full_path = os.path.join(settings.wiki_path, filepath) if not os.path.isabs(filepath) else filepath
     return await kb_monitor.process_document(full_path)
 
@@ -418,7 +425,7 @@ async def list_raw_files(_=Depends(get_current_user)):
             sha256=sha256,
             ingested=ingested,
             size=stat.st_size,
-            last_modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+            last_modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
             compiled=wiki_count > 0,
             wiki_pages_count=wiki_count,
         ))
@@ -646,7 +653,8 @@ async def fix_lint_issue(issue_id: str, page: str = "", _=Depends(get_current_us
 @router.post("/knowledge/lint/fix-all")
 async def fix_all_lint_issues(_=Depends(get_current_user)):
     """Run auto-fix on all fixable lint issues and return summary."""
-    from src.services.kb_lint import fix_lint_issue as do_fix, run_lint
+    from src.services.kb_lint import fix_lint_issue as do_fix
+    from src.services.kb_lint import run_lint
     report = run_lint()
     fixed = 0
     failed = 0

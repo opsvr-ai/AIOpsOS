@@ -8,24 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import uuid as _uuid
 from datetime import UTC, datetime
 
 import aiohttp
+from langchain_core.messages import HumanMessage, SystemMessage
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
-from src.agent.context import set_current_user, set_current_space
+from src.agent.context import set_current_space, set_current_user
 from src.agent.deep_agent import get_deep_agent
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
 from src.models.user import User
 from src.services.memory_provider import get_memory_manager
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
-from .const import REPLY_SEND_TIMEOUT
 from .message_parser import ParsedMessage
 from .message_sender import reply_stream, reply_stream_non_blocking, send_message
 
@@ -53,7 +50,8 @@ async def _resolve_user(channel_config: dict) -> User:
             return user
 
         # Create a minimal system user for WeCom messages
-        import hashlib, secrets
+        import hashlib
+        import secrets
         bot_id = channel_config.get("bot_id", "wecom")
         email = f"wecom-{hashlib.md5(bot_id.encode()).hexdigest()[:8]}@aiopsos.local"
         user = User(

@@ -85,13 +85,17 @@ export default function DataSourcePage() {
       if (filterStatus) params.status = filterStatus;
       if (search) params.search = search;
       const res = await api.get('/datasources', { params });
-      setDatasources(res.data ?? []);
-      // if API returns total in headers or meta, use that; otherwise estimate
-      setTotal(
-        (res.data?.length ?? 0) < PAGE_SIZE
-          ? (page - 1) * PAGE_SIZE + (res.data?.length ?? 0)
-          : (page + 1) * PAGE_SIZE,
-      );
+      const body = res.data;
+      const items = Array.isArray(body) ? body : (body?.items ?? []);
+      setDatasources(items);
+      const serverTotal = body?.total;
+      if (typeof serverTotal === 'number') {
+        setTotal(serverTotal);
+      } else {
+        setTotal(
+          items.length < PAGE_SIZE ? (page - 1) * PAGE_SIZE + items.length : (page + 1) * PAGE_SIZE,
+        );
+      }
     } catch {
       msg.error('加载数据源失败');
     }
@@ -104,10 +108,15 @@ export default function DataSourcePage() {
       const res = await api.get(`/datasources/${dsId}/logs`, {
         params: { page: p, page_size: ps },
       });
-      setLogs(res.data ?? []);
-      setLogsTotal(
-        (res.data?.length ?? 0) < ps ? (p - 1) * ps + (res.data?.length ?? 0) : (p + 1) * ps,
-      );
+      const logBody = res.data;
+      const logItems = Array.isArray(logBody) ? logBody : (logBody?.items ?? []);
+      setLogs(logItems);
+      const logServerTotal = logBody?.total;
+      if (typeof logServerTotal === 'number') {
+        setLogsTotal(logServerTotal);
+      } else {
+        setLogsTotal(logItems.length < ps ? (p - 1) * ps + logItems.length : (p + 1) * ps);
+      }
     } catch {
       /* ignore */
     }

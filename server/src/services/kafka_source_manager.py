@@ -7,13 +7,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from src.consumers.dedup import find_existing
+from src.consumers.normalizer import normalize
+from src.models.alert import Alert
 from src.models.base import async_session_factory
 from src.models.datasource import DataSource
 from src.models.ingestion_log import IngestionLog
 from src.models.notification import Notification
-from src.models.alert import Alert
-from src.consumers.normalizer import normalize
-from src.consumers.dedup import find_existing
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class KafkaSourceManager:
             result = await db.execute(
                 select(DataSource).where(
                     DataSource.source_type == "kafka",
-                    DataSource.is_enabled == True,
+                    DataSource.is_enabled,
                 )
             )
             sources = result.scalars().all()

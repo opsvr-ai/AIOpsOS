@@ -3,9 +3,9 @@
 revision = "009_model_providers"
 down_revision = "008_tool_search_idx"
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 
 def upgrade():

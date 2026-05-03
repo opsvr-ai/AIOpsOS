@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
-from src.api.deps import DbSession
+from src.api.deps import DbSession, get_current_user
 from src.models.log import LogEvent
 
 log_search_router = APIRouter(prefix="/api/v1/logs", tags=["Log Search"])
@@ -21,6 +21,7 @@ async def search_logs(
     trace_id: str | None = Query(None),
     limit: int = Query(100, le=1000),
     db: DbSession = None,
+    _=Depends(get_current_user),
 ):
     query = select(LogEvent)
     if service:
@@ -59,6 +60,7 @@ async def get_error_context(
     before_seconds: int = Query(30),
     after_seconds: int = Query(30),
     db: DbSession = None,
+    _=Depends(get_current_user),
 ):
     target = await db.execute(
         select(LogEvent).where(LogEvent.trace_id == trace_id).limit(1)
@@ -103,6 +105,7 @@ async def count_logs(
     service: str | None = Query(None),
     level: str | None = Query(None),
     db: DbSession = None,
+    _=Depends(get_current_user),
 ):
     query = select(LogEvent.level, func.count()).select_from(LogEvent)
     if service:

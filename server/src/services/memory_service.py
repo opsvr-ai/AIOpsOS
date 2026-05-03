@@ -9,9 +9,7 @@ import logging
 import uuid
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config import settings
 from src.models.base import async_session_factory
 from src.models.knowledge import AgentMemory
 
@@ -193,8 +191,9 @@ class MemoryService:
 
         Returns {"personal": count, "team": count}.
         """
-        from src.models.session import Message
         from langchain_core.messages import HumanMessage, SystemMessage
+
+        from src.models.session import Message
 
         async with async_session_factory() as db:
             result = await db.execute(

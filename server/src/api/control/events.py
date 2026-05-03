@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id
 from src.models.datasource import DataSource
-from src.services.event_mapper import _table_name, ensure_event_table
+from src.services.event_mapper import ensure_event_table
 
 router = APIRouter()
 

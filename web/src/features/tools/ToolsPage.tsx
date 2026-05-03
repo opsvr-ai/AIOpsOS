@@ -26,6 +26,7 @@ import {
   Tabs,
   Segmented,
   Table,
+  Switch,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -131,6 +132,18 @@ interface SkillVersion {
   description: string | null;
   config: Record<string, unknown>;
   created_at: string;
+}
+
+interface MCPServer {
+  id: string;
+  name: string;
+  transport: string;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  is_active: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 const SKILL_NAME_RE = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
@@ -243,6 +256,13 @@ export default function ToolsPage() {
   // Category filter
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [categories, setCategories] = useState<CategoryCount[]>([]);
+
+  // MCP server state
+  const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
+  const [mcpServersLoading, setMcpServersLoading] = useState(false);
+  const [mcpServerModalOpen, setMcpServerModalOpen] = useState(false);
+  const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
+  const [mcpServerForm] = Form.useForm();
 
   // Health filter for invalid skills
   const [filterHealth, setFilterHealth] = useState<string>('all');
@@ -606,6 +626,78 @@ export default function ToolsPage() {
     form.resetFields();
     form.setFieldsValue({ type: 'skill', is_active: true });
     setCreateOpen(true);
+  };
+
+  // ── MCP Server handlers ──────────────────────────────────────────
+
+  const fetchMcpServers = useCallback(async () => {
+    setMcpServersLoading(true);
+    try {
+      const res = await api.get('/tools/mcp-servers');
+      setMcpServers(res.data ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setMcpServersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (filterType === 'mcp') fetchMcpServers();
+  }, [filterType, fetchMcpServers]);
+
+  const handleMcpServerCreate = () => {
+    setEditingMcpServer(null);
+    mcpServerForm.resetFields();
+    mcpServerForm.setFieldsValue({ transport: 'stdio', is_active: true });
+    setMcpServerModalOpen(true);
+  };
+
+  const handleMcpServerEdit = (s: MCPServer) => {
+    setEditingMcpServer(s);
+    mcpServerForm.setFieldsValue({
+      name: s.name,
+      transport: s.transport,
+      command: s.command,
+      args: s.args?.join(' ') ?? '',
+      url: s.url,
+      is_active: s.is_active,
+    });
+    setMcpServerModalOpen(true);
+  };
+
+  const handleMcpServerDelete = async (id: string) => {
+    try {
+      await api.delete(`/tools/mcp-servers/${id}`);
+      msg.success('已删除');
+      fetchMcpServers();
+    } catch {
+      msg.error('删除失败');
+    }
+  };
+
+  const handleMcpServerSubmit = async (values: Record<string, unknown>) => {
+    const payload = {
+      ...values,
+      args:
+        typeof values.args === 'string'
+          ? (values.args as string).split(/\s+/).filter(Boolean)
+          : (values.args ?? []),
+    };
+    try {
+      if (editingMcpServer) {
+        await api.put(`/tools/mcp-servers/${editingMcpServer.id}`, payload);
+        msg.success('更新成功');
+      } else {
+        await api.post('/tools/mcp-servers', payload);
+        msg.success('创建成功');
+      }
+      setMcpServerModalOpen(false);
+      mcpServerForm.resetFields();
+      fetchMcpServers();
+    } catch {
+      msg.error(editingMcpServer ? '更新失败' : '创建失败');
+    }
   };
 
   const handleSyncFromFs = async (toolId: string) => {
@@ -1442,6 +1534,91 @@ export default function ToolsPage() {
           { key: 'mcp', label: 'MCP 市场' },
         ]}
       />
+
+      {/* MCP Server management */}
+      {filterType === 'mcp' && (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <ApiOutlined />
+              <span>MCP 服务器</span>
+              {mcpServers.length > 0 && <Tag style={{ marginLeft: 4 }}>{mcpServers.length}</Tag>}
+            </Space>
+          }
+          extra={
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={handleMcpServerCreate}
+            >
+              添加服务器
+            </Button>
+          }
+          style={{ borderRadius: 12, marginBottom: 16 }}
+        >
+          {mcpServersLoading ? (
+            <Skeleton active title={false} paragraph={{ rows: 2 }} />
+          ) : mcpServers.length === 0 ? (
+            <Empty
+              description="暂无 MCP 服务器"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '12px 0' }}
+            />
+          ) : (
+            mcpServers.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  background: token.colorFillQuaternary,
+                  marginBottom: 6,
+                }}
+              >
+                <Space size={8}>
+                  <Badge status={s.is_active ? 'success' : 'default'} />
+                  <Typography.Text strong style={{ fontSize: 13 }}>
+                    {s.name}
+                  </Typography.Text>
+                  <Tag
+                    color={s.transport === 'stdio' ? 'blue' : 'green'}
+                    style={{ borderRadius: 4, fontSize: 10 }}
+                  >
+                    {s.transport}
+                  </Tag>
+                  {s.url && (
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }} ellipsis>
+                      {s.url}
+                    </Typography.Text>
+                  )}
+                </Space>
+                <Space size={4}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => handleMcpServerEdit(s)}
+                  />
+                  <Popconfirm
+                    title="确定删除此 MCP 服务器？"
+                    onConfirm={() => handleMcpServerDelete(s.id)}
+                    okText="删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
+              </div>
+            ))
+          )}
+        </Card>
+      )}
 
       {/* Batch action bar */}
       {selectedCount > 0 && (
@@ -2636,6 +2813,56 @@ export default function ToolsPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* MCP Server create/edit modal */}
+      <Modal
+        title={editingMcpServer ? '编辑 MCP 服务器' : '添加 MCP 服务器'}
+        open={mcpServerModalOpen}
+        onCancel={() => {
+          setMcpServerModalOpen(false);
+          mcpServerForm.resetFields();
+        }}
+        onOk={() => mcpServerForm.submit()}
+        okText={editingMcpServer ? '保存' : '添加'}
+        cancelText="取消"
+        width={520}
+        destroyOnHidden
+      >
+        <Form form={mcpServerForm} layout="vertical" onFinish={handleMcpServerSubmit}>
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Input placeholder="如 my-mcp-server" />
+          </Form.Item>
+
+          <Form.Item name="transport" label="传输协议">
+            <Select
+              options={[
+                { value: 'stdio', label: 'stdio (命令行)' },
+                { value: 'url', label: 'URL (远程)' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item name="command" label="命令">
+            <Input placeholder="如 npx 或 uvx" />
+          </Form.Item>
+
+          <Form.Item
+            name="args"
+            label="参数"
+            extra="空格分隔，如: -y @modelcontextprotocol/server-filesystem /tmp"
+          >
+            <Input placeholder="参数..." />
+          </Form.Item>
+
+          <Form.Item name="url" label="URL">
+            <Input placeholder="如 http://localhost:3000/mcp" />
+          </Form.Item>
+
+          <Form.Item name="is_active" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

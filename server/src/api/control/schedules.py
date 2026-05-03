@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
-from src.models.schedule import Schedule, ScheduleExecution, SceneTrigger
+from src.models.schedule import SceneTrigger, Schedule, ScheduleExecution
 from src.schemas.schedule import (
-    ScheduleCreate, ScheduleUpdate, ScheduleOut, ScheduleExecutionOut,
-    TriggerCreate, TriggerUpdate, TriggerOut,
+    ScheduleCreate,
+    ScheduleExecutionOut,
+    ScheduleOut,
+    ScheduleUpdate,
+    TriggerCreate,
+    TriggerOut,
+    TriggerUpdate,
 )
 from src.services.cron_scheduler import compute_next_run
 

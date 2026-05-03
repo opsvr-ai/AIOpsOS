@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import UTC
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_, select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id
@@ -69,13 +71,13 @@ async def delete_cron_job(job_id: str, db: DbSession, _=Depends(get_current_user
 
 @router.post("/cron/jobs/{job_id}/trigger")
 async def trigger_cron_job(job_id: str, db: DbSession, _=Depends(get_current_user)):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     result = await db.execute(select(CronJob).where(CronJob.id == job_id))
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail="Cron job not found")
-    job.next_run = datetime.now(timezone.utc)
+    job.next_run = datetime.now(UTC)
     job.enabled = True
     await db.commit()
     return {"detail": "triggered", "job_id": job_id}

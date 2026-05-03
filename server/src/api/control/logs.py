@@ -43,7 +43,7 @@ async def view_logs(
         return {"lines": [], "total": 0, "file": file}
 
     all_lines = []
-    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+    with open(file_path, encoding="utf-8", errors="replace") as f:
         raw = f.readlines()
 
     source_lines = raw[-lines:] if tail else raw[:lines]

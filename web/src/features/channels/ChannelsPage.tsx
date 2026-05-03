@@ -568,10 +568,17 @@ export default function ChannelsPage() {
   const openEdit = (ch: Channel) => {
     setEditingId(ch.id);
     setChannelType(ch.channel_type);
+    const config = { ...ch.config };
+    const sc = config.success_condition as { type?: string; value?: string } | undefined;
+    if (sc && typeof sc === 'object') {
+      delete config.success_condition;
+      config.success_condition_type = sc.type || 'status_code';
+      config.success_condition_value = sc.value || '200-299';
+    }
     form.setFieldsValue({
       name: ch.name,
       is_active: ch.is_active,
-      ...ch.config,
+      ...config,
     });
     setOpen(true);
   };

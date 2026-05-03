@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, or_
+from sqlalchemy import func, or_, select
 
 from src.api.deps import CurrentUser, DbSession, get_current_user, get_db
 from src.models.space import Space, SpaceInvitation, SpaceJoinRequest, SpaceMember
@@ -246,29 +246,6 @@ async def invite_member(
     return invitation
 
 
-@router.get("/{space_id}/invitations", response_model=list[SpaceInvitationOut])
-async def list_invitations(space_id: uuid.UUID, user: CurrentUser, db: DbSession):
-    await _require_admin(db, str(space_id), str(user.id))
-    result = await db.execute(
-        select(SpaceInvitation, User.username)
-        .join(User, User.id == SpaceInvitation.invitee_id)
-        .where(SpaceInvitation.space_id == space_id)
-        .order_by(SpaceInvitation.created_at.desc())
-    )
-    return [
-        {
-            "id": inv.id,
-            "space_id": inv.space_id,
-            "inviter_id": inv.inviter_id,
-            "invitee_id": inv.invitee_id,
-            "invitee_name": username,
-            "status": inv.status,
-            "created_at": inv.created_at,
-        }
-        for inv, username in result
-    ]
-
-
 @router.get("/invitations/pending", response_model=list[SpaceInvitationOut])
 async def my_pending_invitations(user: CurrentUser, db: DbSession):
     result = await db.execute(
@@ -294,6 +271,29 @@ async def my_pending_invitations(user: CurrentUser, db: DbSession):
         }
         for inv, username, space_name in result
     ]
+
+@router.get("/{space_id}/invitations", response_model=list[SpaceInvitationOut])
+async def list_invitations(space_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    await _require_admin(db, str(space_id), str(user.id))
+    result = await db.execute(
+        select(SpaceInvitation, User.username)
+        .join(User, User.id == SpaceInvitation.invitee_id)
+        .where(SpaceInvitation.space_id == space_id)
+        .order_by(SpaceInvitation.created_at.desc())
+    )
+    return [
+        {
+            "id": inv.id,
+            "space_id": inv.space_id,
+            "inviter_id": inv.inviter_id,
+            "invitee_id": inv.invitee_id,
+            "invitee_name": username,
+            "status": inv.status,
+            "created_at": inv.created_at,
+        }
+        for inv, username in result
+    ]
+
 
 
 @router.post("/invitations/{invitation_id}/respond")
@@ -512,7 +512,7 @@ async def search_users(
         select(User.id, User.username, User.email)
         .where(
             or_(User.username.ilike(f"%{q}%"), User.email.ilike(f"%{q}%")),
-            User.is_active == True,
+            User.is_active,
         )
         .limit(20)
     )
@@ -531,7 +531,7 @@ async def migrate_default_spaces(db: DbSession, _=Depends(get_current_user)):
 
     result = await db.execute(
         select(User.id, User.username)
-        .where(User.is_active == True)
+        .where(User.is_active)
     )
     users = list(result.all())
 

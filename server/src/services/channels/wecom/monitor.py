@@ -17,7 +17,7 @@ import asyncio
 import json as _json
 import logging
 import uuid
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 import aiohttp
 
@@ -31,11 +31,10 @@ from .const import (
     WECOM_CMD_SUBSCRIBE,
     WS_HEARTBEAT_INTERVAL,
     WS_MAX_AUTH_FAILURES,
-    WS_RECONNECT_DELAY_MIN,
     WS_RECONNECT_DELAY_MAX,
+    WS_RECONNECT_DELAY_MIN,
 )
 from .message_parser import ParsedMessage, parse_message
-from .message_sender import reply_stream, send_message
 
 logger = logging.getLogger(__name__)
 

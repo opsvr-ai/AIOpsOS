@@ -8,9 +8,8 @@ Usage:
   cd server && python scripts/import_hermes_skills.py [--hermes-path PATH] [--activate]
 """
 
-import asyncio
 import argparse
-import os
+import asyncio
 import re
 import shutil
 import sys
@@ -20,9 +19,10 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.models.base import async_session_factory
-from src.models.agent import Tool
 from sqlalchemy import select
+
+from src.models.agent import Tool
+from src.models.base import async_session_factory
 
 SKILL_NAME_RE = re.compile(r"^(?!.*--)[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 

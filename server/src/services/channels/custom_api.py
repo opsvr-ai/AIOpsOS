@@ -79,6 +79,7 @@ class CustomApiChannel(NotificationChannelBase):
         query_params = dict(config.get("query_params", {}) or {})
         body_template = config.get("body_template", "")
         body_content_type = config.get("body_content_type", "application/json")
+        headers["Content-Type"] = body_content_type
         auth_type = config.get("auth_type", "none")
         auth_config = dict(config.get("auth_config", {}) or {})
         success_condition = dict(config.get("success_condition", {}) or {})

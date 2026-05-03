@@ -1,7 +1,6 @@
 """API Poller — polls API-type DataSources on configured intervals with request chaining."""
 
 import asyncio
-import json
 import logging
 import re
 import time
@@ -10,13 +9,13 @@ from datetime import UTC, datetime
 import aiohttp
 from sqlalchemy import select
 
+from src.consumers.dedup import find_existing
+from src.consumers.normalizer import normalize
+from src.models.alert import Alert
 from src.models.base import async_session_factory
 from src.models.datasource import DataSource
 from src.models.ingestion_log import IngestionLog
 from src.models.notification import Notification
-from src.models.alert import Alert
-from src.consumers.normalizer import normalize
-from src.consumers.dedup import find_existing
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,6 @@ def _extract_jsonpath(data: dict, path: str | None):
 
 async def _execute_request_chain(datasource: DataSource) -> list[dict]:
     config = datasource.config
-    api_conf = config.get("auth", {})
     request_chain = config.get("request_chain", [])
     if not request_chain:
         # single request to base_url
@@ -119,7 +117,6 @@ async def _poll_datasource(datasource_id: str) -> None:
         if not ds or not ds.is_enabled or ds.source_type != "api":
             return
         ds_name = ds.name
-        ds_config = ds.config
 
     start = time.time()
     events_received = 0
@@ -242,7 +239,7 @@ class ApiPoller:
             result = await db.execute(
                 select(DataSource).where(
                     DataSource.source_type == "api",
-                    DataSource.is_enabled == True,
+                    DataSource.is_enabled,
                 )
             )
             sources = result.scalars().all()

@@ -8,12 +8,12 @@ is deferred (requires LLM).
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.config import settings
 from src.schemas.kb_lint import LintIssue, LintReport
-from src.services.kb_crossref import find_orphans, find_broken_links
+from src.services.kb_crossref import find_broken_links, find_orphans
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ def _fix_index_stale(_page: str) -> dict:
 
 def _fix_missing_frontmatter(page: str) -> dict:
     content, fp = _read_wiki_page(page)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     fm = (f"---\ntitle: {page}\ntype: concept\ncreated: {today}\nupdated: {today}\n"
           f"tags: []\nsources: []\n---\n\n")
     _write_wiki_page(fp, fm + content)
@@ -221,7 +221,7 @@ def _fix_missing_frontmatter(page: str) -> dict:
 def _fix_missing_fm_field(page: str) -> dict:
     content, fp = _read_wiki_page(page)
     fm, body = _parse_frontmatter(content)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     defaults = {"title": page, "type": "concept", "created": today}
     changed = False
     for field in REQUIRED_FM_FIELDS:
@@ -302,7 +302,7 @@ def _fix_log_missing(_page: str) -> dict:
 
 def _fix_stale_content(page: str) -> dict:
     content, fp = _read_wiki_page(page)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     new_content = re.sub(r"(updated:\s*)\S+", rf"\1{today}", content, count=1)
     if new_content == content:
         return {"ok": True, "issue_id": "stale_content", "message": f"Could not update date in [[{page}]]"}
@@ -348,7 +348,7 @@ def run_lint() -> LintReport:
         warnings=warnings,
         info=infos,
         issues=issues,
-        checked_at=datetime.now(timezone.utc).isoformat(),
+        checked_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -476,7 +476,7 @@ def _check_stale_content() -> list[LintIssue]:
     if not os.path.isdir(wiki):
         return issues
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for fp in Path(wiki).glob("*.md"):
         try:
             content = fp.read_text(encoding="utf-8")
@@ -487,7 +487,7 @@ def _check_stale_content() -> list[LintIssue]:
         if not updated_str:
             continue
         try:
-            updated = datetime.strptime(updated_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            updated = datetime.strptime(updated_str, "%Y-%m-%d").replace(tzinfo=UTC)
             days = (now - updated).days
             if days > 90:
                 issues.append(LintIssue(

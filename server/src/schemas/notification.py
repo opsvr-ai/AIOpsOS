@@ -1,5 +1,6 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 
@@ -10,6 +11,7 @@ class NotificationOut(BaseModel):
     title: str
     message: str | None = None
     severity: str = "info"
+    category: str = "alert"
     is_read: bool = False
     read_at: datetime | None = None
     created_at: datetime | None = None

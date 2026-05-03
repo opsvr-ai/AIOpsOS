@@ -1,8 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, field_validator
 
 MODEL_TYPES = ["llm", "multimodal", "voice", "embedding", "rerank"]
 
@@ -49,6 +48,11 @@ class ModelProviderOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
+    @field_validator('api_key', mode='before')
+    @classmethod
+    def mask_api_key(cls, v: str) -> str:
+        return '***'
 
 class ModelProviderTestResult(BaseModel):
     ok: bool

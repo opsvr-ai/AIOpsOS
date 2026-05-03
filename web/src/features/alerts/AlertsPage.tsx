@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Typography,
   Select,
@@ -82,6 +82,8 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [severityFilter, setSeverityFilter] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // View
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
@@ -100,6 +102,12 @@ export default function AlertsPage() {
   // Pagination
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
+  const [totalAlerts, setTotalAlerts] = useState(0);
+
+  useEffect(() => {
+    searchTimerRef.current = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [search]);
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -113,15 +121,17 @@ export default function AlertsPage() {
       };
       if (statusFilter) params.status = statusFilter;
       if (severityFilter) params.severity = severityFilter;
-      if (search.trim()) params.search = search.trim();
+      if (debouncedSearch) params.search = debouncedSearch;
       const res = await api.get('/alerts', { params });
-      setAlerts(res.data ?? []);
+      const body = res.data;
+      setAlerts(Array.isArray(body) ? body : (body?.items ?? []));
+      setTotalAlerts(body?.total ?? (Array.isArray(body) ? body.length : 0));
     } catch {
       msg.error('加载告警失败');
     } finally {
       setLoading(false);
     }
-  }, [msg, statusFilter, severityFilter, search, page, pageSize]);
+  }, [msg, statusFilter, severityFilter, debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     fetchAlerts();
@@ -451,7 +461,7 @@ export default function AlertsPage() {
           <Pagination
             current={page}
             pageSize={pageSize}
-            total={9999}
+            total={totalAlerts}
             showSizeChanger={false}
             onChange={handlePageChange}
           />

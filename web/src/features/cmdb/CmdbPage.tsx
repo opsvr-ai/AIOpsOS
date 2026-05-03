@@ -164,6 +164,10 @@ export default function CmdbPage() {
   };
 
   const handleSync = async (datasourceId: string) => {
+    if (!datasourceId) {
+      msg.warning('请先选择一个数据源');
+      return;
+    }
     setSyncing(true);
     try {
       await api.post(`/datasources/${datasourceId}/sync`, { mode: 'incremental' });

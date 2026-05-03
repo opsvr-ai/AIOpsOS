@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 def _db_available():
     try:
         from sqlalchemy import create_engine, text
+
         from src.config import settings
         sync_url = settings.sync_database_url.replace("+asyncpg", "+psycopg2")
         engine = create_engine(sync_url)
@@ -28,6 +29,7 @@ async def client():
         yield c
 
 
+@pytest.mark.asyncio
 @db_required
 class TestAuthAPI:
     async def test_register_and_login(self, client: AsyncClient):

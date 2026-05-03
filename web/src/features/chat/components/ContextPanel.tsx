@@ -151,6 +151,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
   const [renameValue, setRenameValue] = useState('');
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [pendingFolders, setPendingFolders] = useState<Set<string>>(new Set());
 
   const sid = ensureSessionId(sessionId);
 
@@ -312,6 +313,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
       message.success('文件夹创建成功');
       setNewFolderName('');
       setShowNewFolder(false);
+      setPendingFolders((prev) => new Set(prev).add(folderPath));
       await fetchTree();
     } catch {
       message.error('创建失败');
@@ -379,6 +381,24 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
       }
     }
 
+    // Ensure pending (empty) folders appear in the tree
+    for (const fp of pendingFolders) {
+      if (fp === '/') continue;
+      const parts = fp.replace(/^\//, '').split('/');
+      let current = rootChildren;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        let found = current.find((c) => c.type === 'folder' && c.name === part) as
+          | FileTreeNode
+          | undefined;
+        if (!found) {
+          found = { name: part, type: 'folder', children: [] };
+          current.push(found);
+        }
+        current = found.children!;
+      }
+    }
+
     return convertTreeData(rootChildren);
   })();
 
@@ -387,7 +407,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
       title="上下文"
       open={open}
       onClose={onClose}
-      width={360}
+      width={480}
       styles={{ body: { padding: 0 } }}
     >
       <Tabs
@@ -540,13 +560,20 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
                               alignItems: 'center',
                               gap: 6,
                               padding: '2px 0',
+                              width: '100%',
                             }}
                           >
                             {fileIcon(data.mime_type ?? null)}
-                            <Typography.Text ellipsis style={{ maxWidth: 140, fontSize: 13 }}>
+                            <Typography.Text
+                              ellipsis
+                              style={{ flex: 1, minWidth: 0, fontSize: 13 }}
+                            >
                               {node.title as string}
                             </Typography.Text>
-                            <Typography.Text type="secondary" style={{ fontSize: 10 }}>
+                            <Typography.Text
+                              type="secondary"
+                              style={{ fontSize: 10, flexShrink: 0 }}
+                            >
                               {formatSize(data.file_size ?? 0)}
                             </Typography.Text>
                             <Dropdown menu={contextMenu(data.id!, data.name)} trigger={['click']}>
@@ -555,6 +582,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
                                 size="small"
                                 icon={<MoreOutlined />}
                                 onClick={(e) => e.stopPropagation()}
+                                style={{ flexShrink: 0 }}
                               />
                             </Dropdown>
                           </div>

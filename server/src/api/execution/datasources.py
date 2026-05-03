@@ -1,17 +1,19 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func
-from uuid import UUID
+from sqlalchemy import select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
 from src.models.datasource import DataSource
 from src.models.ingestion_log import IngestionLog
 from src.schemas.datasource import (
-    DataSourceCreate, DataSourceUpdate, DataSourceOut,
+    DataSourceCreate,
+    DataSourceOut,
     DataSourceTestResult,
+    DataSourceUpdate,
 )
 from src.schemas.ingestion_log import IngestionLogOut
-from src.consumers.normalizer import normalize
 
 router = APIRouter(prefix="/api/v1")
 

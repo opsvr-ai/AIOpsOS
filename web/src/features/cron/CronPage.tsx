@@ -93,20 +93,35 @@ export default function CronPage() {
   };
 
   const handleDelete = async (id: string) => {
-    await api.delete(`/cron/jobs/${id}`);
-    msg.success('删除成功');
-    loadJobs();
+    try {
+      await api.delete(`/cron/jobs/${id}`);
+      msg.success('删除成功');
+      loadJobs();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      msg.error(detail || '删除失败');
+    }
   };
 
   const handleTrigger = async (id: string) => {
-    await api.post(`/cron/jobs/${id}/trigger`);
-    msg.success('已触发，将在下次轮询时执行');
-    loadJobs();
+    try {
+      await api.post(`/cron/jobs/${id}/trigger`);
+      msg.success('已触发，将在下次轮询时执行');
+      loadJobs();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      msg.error(detail || '触发失败');
+    }
   };
 
   const handleToggle = async (job: CronJobData) => {
-    await api.patch(`/cron/jobs/${job.id}`, { enabled: !job.enabled });
-    loadJobs();
+    try {
+      await api.patch(`/cron/jobs/${job.id}`, { enabled: !job.enabled });
+      loadJobs();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      msg.error(detail || '操作失败');
+    }
   };
 
   const renderSkeletons = () => (

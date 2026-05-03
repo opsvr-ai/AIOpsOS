@@ -61,6 +61,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    delivery_status: Mapped[str] = mapped_column(String(16), nullable=False, default="delivered")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
     )

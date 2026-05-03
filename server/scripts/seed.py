@@ -6,9 +6,9 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from src.core.security import hash_password
 from src.models.base import async_session_factory
 from src.models.user import Permission, Role, User
-from src.core.security import hash_password
 
 logger = logging.getLogger(__name__)
 

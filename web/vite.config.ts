@@ -11,6 +11,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    watch: { usePolling: true },
     proxy: {
       '/uploads': {
         target: 'http://localhost:8000',

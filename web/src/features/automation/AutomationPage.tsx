@@ -19,7 +19,9 @@ import {
   TimePicker,
 } from 'antd';
 import {
-  PlusOutlined, ThunderboltOutlined, AlertOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+  AlertOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
@@ -93,9 +95,13 @@ export default function AutomationPage() {
       const data: ScenarioOption[] = res.data ?? [];
       setScenarios(data);
       const map: Record<string, string> = {};
-      data.forEach((s) => { map[s.id] = s.name; });
+      data.forEach((s) => {
+        map[s.id] = s.name;
+      });
       setScenarioMap(map);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const fetchSchedules = useCallback(async () => {
@@ -103,15 +109,20 @@ export default function AutomationPage() {
       const res = await api.get('/schedules');
       const data: Schedule[] = res.data ?? [];
       setSchedules(data);
-      data.forEach((s) => {
-        api.get(`/schedules/${s.id}/executions`).then((r) => {
-          setExecutions((prev) => ({ ...prev, [s.id]: r.data ?? [] }));
-        }).catch(() => {});
+      const execResults = await Promise.allSettled(
+        data.map((s) => api.get(`/schedules/${s.id}/executions`)),
+      );
+      const newExecs: Record<string, Execution[]> = {};
+      execResults.forEach((result, i) => {
+        newExecs[data[i].id] =
+          result.status === 'fulfilled' ? ((result.value.data as Execution[]) ?? []) : [];
       });
+      setExecutions((prev) => ({ ...prev, ...newExecs }));
     } catch {
       msg.error('加载调度失败');
     }
-  }, [msg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchTriggers = useCallback(async () => {
     try {
@@ -120,18 +131,22 @@ export default function AutomationPage() {
     } catch {
       msg.error('加载触发规则失败');
     }
-  }, [msg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchScenarios(), fetchSchedules(), fetchTriggers()]).finally(() => setLoading(false));
+    Promise.all([fetchScenarios(), fetchSchedules(), fetchTriggers()]).finally(() =>
+      setLoading(false),
+    );
   }, [fetchScenarios, fetchSchedules, fetchTriggers]);
 
   const refresh = () => {
     setLoading(true);
-    const fetchers = tab === 'schedules'
-      ? [fetchScenarios(), fetchSchedules()]
-      : [fetchScenarios(), fetchTriggers()];
+    const fetchers =
+      tab === 'schedules'
+        ? [fetchScenarios(), fetchSchedules()]
+        : [fetchScenarios(), fetchTriggers()];
     Promise.all(fetchers).finally(() => setLoading(false));
   };
 
@@ -159,7 +174,15 @@ export default function AutomationPage() {
   const handleScheduleSubmit = async (values: Record<string, unknown>) => {
     const payload = {
       ...values,
-      params: values.params ? (() => { try { return JSON.parse(values.params as string); } catch { return {}; } })() : {},
+      params: values.params
+        ? (() => {
+            try {
+              return JSON.parse(values.params as string);
+            } catch {
+              return {};
+            }
+          })()
+        : {},
     };
     try {
       if (editingSchedule) {
@@ -222,7 +245,13 @@ export default function AutomationPage() {
   const handleTriggerSubmit = async (values: Record<string, unknown>) => {
     const payload = {
       ...values,
-      condition: (() => { try { return JSON.parse(values.condition as string); } catch { return {}; } })(),
+      condition: (() => {
+        try {
+          return JSON.parse(values.condition as string);
+        } catch {
+          return {};
+        }
+      })(),
       time_window_start: values.time_window_start
         ? dayjs(values.time_window_start as string).format('HH:mm:ss')
         : null,
@@ -270,12 +299,21 @@ export default function AutomationPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 20,
+        }}
+      >
         <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
           自动化
         </Title>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>
+            刷新
+          </Button>
           {tab === 'schedules' ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateSchedule}>
               创建调度
@@ -290,7 +328,10 @@ export default function AutomationPage() {
 
       <Tabs
         activeKey={tab}
-        onChange={(k) => { setTab(k); setModalOpen(false); }}
+        onChange={(k) => {
+          setTab(k);
+          setModalOpen(false);
+        }}
         items={[
           {
             key: 'schedules',
@@ -362,12 +403,20 @@ export default function AutomationPage() {
 
       <Modal
         title={
-          editingSchedule ? '编辑调度' :
-          editingTrigger ? '编辑触发规则' :
-          tab === 'schedules' ? '创建调度' : '创建触发规则'
+          editingSchedule
+            ? '编辑调度'
+            : editingTrigger
+              ? '编辑触发规则'
+              : tab === 'schedules'
+                ? '创建调度'
+                : '创建触发规则'
         }
         open={modalOpen}
-        onCancel={() => { setModalOpen(false); form.resetFields(); triggerForm.resetFields(); }}
+        onCancel={() => {
+          setModalOpen(false);
+          form.resetFields();
+          triggerForm.resetFields();
+        }}
         onOk={() => {
           if (editingTrigger || (!editingSchedule && tab === 'triggers' && !editingSchedule)) {
             triggerForm.submit();
@@ -385,16 +434,24 @@ export default function AutomationPage() {
               <Input placeholder="调度名称" />
             </Form.Item>
 
-            <Form.Item name="cron_expression" label="调度规则" rules={[{ required: true, message: '请设置调度规则' }]}>
+            <Form.Item
+              name="cron_expression"
+              label="调度规则"
+              rules={[{ required: true, message: '请设置调度规则' }]}
+            >
               <CronBuilder />
             </Form.Item>
 
-            <Form.Item name="scenario_id" label="场景" rules={[{ required: true, message: '请选择场景' }]}>
+            <Form.Item
+              name="scenario_id"
+              label="场景"
+              rules={[{ required: true, message: '请选择场景' }]}
+            >
               <Select
                 showSearch
                 placeholder="选择执行场景"
                 filterOption={(input, option) =>
-                  (option?.label as string || '').toLowerCase().includes(input.toLowerCase())
+                  ((option?.label as string) || '').toLowerCase().includes(input.toLowerCase())
                 }
                 options={scenarios.map((s) => ({ label: s.name, value: s.id }))}
               />
@@ -414,20 +471,30 @@ export default function AutomationPage() {
               <Input placeholder="触发规则名称" />
             </Form.Item>
 
-            <Form.Item name="condition" label="触发条件 (JSON)" rules={[{ required: true, message: '请输入条件' }]}>
+            <Form.Item
+              name="condition"
+              label="触发条件 (JSON)"
+              rules={[{ required: true, message: '请输入条件' }]}
+            >
               <Input.TextArea
                 rows={5}
-                placeholder={'{"type": "simple", "field": "severity", "op": "eq", "value": "critical"}'}
+                placeholder={
+                  '{"type": "simple", "field": "severity", "op": "eq", "value": "critical"}'
+                }
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
             </Form.Item>
 
-            <Form.Item name="scenario_id" label="场景" rules={[{ required: true, message: '请选择场景' }]}>
+            <Form.Item
+              name="scenario_id"
+              label="场景"
+              rules={[{ required: true, message: '请选择场景' }]}
+            >
               <Select
                 showSearch
                 placeholder="选择场景"
                 filterOption={(input, option) =>
-                  (option?.label as string || '').toLowerCase().includes(input.toLowerCase())
+                  ((option?.label as string) || '').toLowerCase().includes(input.toLowerCase())
                 }
                 options={scenarios.map((s) => ({ label: s.name, value: s.id }))}
               />

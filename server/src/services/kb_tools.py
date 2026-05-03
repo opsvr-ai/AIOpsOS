@@ -87,7 +87,7 @@ def read_wiki_file(filename: str) -> str:
     for path in candidates:
         if os.path.isfile(path):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     return f.read()
             except OSError as e:
                 return f"Error reading file: {e}"
@@ -96,7 +96,7 @@ def read_wiki_file(filename: str) -> str:
     matches = [p for p in all_md if filename.lower() in p.stem.lower()]
     if len(matches) == 1:
         try:
-            with open(matches[0], "r", encoding="utf-8") as f:
+            with open(matches[0], encoding="utf-8") as f:
                 return f.read()
         except OSError as e:
             return f"Error reading file: {e}"
@@ -145,7 +145,7 @@ def write_wiki_file(filename: str, content: str) -> str:
 
     # Only allow .md files
     if dest.suffix != ".md":
-        return f"Error: only .md files can be written to wiki."
+        return "Error: only .md files can be written to wiki."
 
     try:
         os.makedirs(dest.parent, exist_ok=True)
@@ -167,7 +167,7 @@ def write_kb_raw(filename: str, content: str) -> str:
     date_prefix = Path(_today_str())
     dest = (Path(raw_dir) / date_prefix / filename).resolve()
     if not str(dest).startswith(str(Path(raw_dir).resolve())):
-        return f"Error: path traversal detected."
+        return "Error: path traversal detected."
 
     try:
         os.makedirs(dest.parent, exist_ok=True)

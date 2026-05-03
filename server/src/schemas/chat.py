@@ -30,6 +30,8 @@ class SessionOut(BaseModel):
     sleep_status: str = "awake"
     memory_status: str = "unconsolidated"
     auto_consolidate: bool = True
+    turn_count: int = 0
+    skill_review_due: bool = False
     last_active_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

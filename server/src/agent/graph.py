@@ -1,19 +1,17 @@
 """Enhanced agent graph with memory, knowledge retrieval, and sub-agent orchestration.
 
-Flow: init -> load_memories -> retrieve_knowledge -> plan -> orchestrate
+Flow: init -> [load_memories || retrieve_knowledge] -> plan -> orchestrate
   -> exec_task | dispatch_sub_agent -> synthesize -> final_answer -> END
 """
 
 import asyncio
-import logging
 import json
-import os
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from src.agent.nodes.exec_task_node import exec_task_node
@@ -23,7 +21,6 @@ from src.agent.nodes.plan_node import plan_node
 from src.agent.nodes.synthesize_node import synthesize_node
 from src.agent.state import AgentState
 from src.agent.sub_agents import AnalysisAgent, KnowledgeAgent, MonitorAgent, OpsAgent
-from src.config import settings
 from src.services.kb_tools import (
     grep_kb,
     list_wiki_pages,
@@ -270,71 +267,65 @@ async def _build_llm(**kwargs):
 # ── new nodes ──────────────────────────────────────────────────────
 
 
-async def load_memories_node(state: AgentState) -> dict:
-    """Load relevant long-term memories (personal + team) for the current query.
+async def load_memories_and_knowledge_node(state: AgentState) -> dict:
+    """Load memories and retrieve knowledge in parallel — both are independent reads."""
 
-    Hermes-style prefetch: searches personal memories by user_id + query keywords,
-    plus team memories that match the query for cross-user ops knowledge sharing.
-    """
-    user_id = state.get("user_id", "")
-    messages = state.get("messages", [])
-    query = messages[-1].content if messages else ""
-    if not query or not user_id:
-        return {"memories": []}
-    try:
-        keywords = " ".join(query.split()[:20])
-        personal = await memory_service.retrieve(
-            keywords, user_id, scope="personal", top_k=5,
-        )
-        team = await memory_service.retrieve(
-            keywords, user_id, scope="team", top_k=3,
-        )
-        seen: set[str] = set()
-        merged: list[dict] = []
-        all_tags: list[str] = []
-        for m in personal + team:
-            if m["id"] not in seen:
-                seen.add(m["id"])
-                merged.append(m)
-                for t in m.get("tags", []) or []:
-                    if t and t not in all_tags:
-                        all_tags.append(t)
-        return {"memories": merged, "memory_tags": all_tags}
-    except Exception:
-        logger.exception("Failed to load memories")
-        return {"memories": [], "memory_tags": []}
+    async def _load():
+        user_id = state.get("user_id", "")
+        messages = state.get("messages", [])
+        query = messages[-1].content if messages else ""
+        if not query or not user_id:
+            return {"memories": [], "memory_tags": []}
+        try:
+            keywords = " ".join(query.split()[:20])
+            personal = await memory_service.retrieve(
+                keywords, user_id, scope="personal", top_k=5,
+            )
+            team = await memory_service.retrieve(
+                keywords, user_id, scope="team", top_k=3,
+            )
+            seen: set[str] = set()
+            merged: list[dict] = []
+            all_tags: list[str] = []
+            for m in personal + team:
+                if m["id"] not in seen:
+                    seen.add(m["id"])
+                    merged.append(m)
+                    for t in m.get("tags", []) or []:
+                        if t and t not in all_tags:
+                            all_tags.append(t)
+            return {"memories": merged, "memory_tags": all_tags}
+        except Exception:
+            logger.exception("Failed to load memories")
+            return {"memories": [], "memory_tags": []}
 
-
-async def retrieve_knowledge_node(state: AgentState) -> dict:
-    """Retrieve relevant context from the knowledge base.
-
-    Tries vector search first, falls back to grep on wiki files.
-    """
-    messages = state.get("messages", [])
-    query = messages[-1].content if messages else ""
-    if not query:
+    async def _retrieve():
+        messages = state.get("messages", [])
+        query = messages[-1].content if messages else ""
+        if not query:
+            return {"knowledge_context": ""}
+        try:
+            context = await asyncio.wait_for(
+                knowledge_base.retrieve_context(query, top_k=5),
+                timeout=10,
+            )
+            if context and context.strip():
+                return {"knowledge_context": context}
+        except TimeoutError:
+            logger.warning("Knowledge retrieval timed out for: %.60s", query)
+        except Exception:
+            logger.exception("Knowledge retrieval failed for: %.60s", query)
+        try:
+            from src.services.kb_tools import grep_kb
+            grep_results = grep_kb(query, max_results=5)
+            if grep_results and "No results found" not in grep_results and "wiki directory" not in grep_results:
+                return {"knowledge_context": grep_results[:2000]}
+        except Exception:
+            logger.exception("Grep fallback also failed")
         return {"knowledge_context": ""}
-    # Try vector search (may fail if embedding API is unreachable)
-    try:
-        context = await asyncio.wait_for(
-            knowledge_base.retrieve_context(query, top_k=5),
-            timeout=10,
-        )
-        if context and context.strip():
-            return {"knowledge_context": context}
-    except asyncio.TimeoutError:
-        logger.warning("Knowledge retrieval timed out for: %.60s", query)
-    except Exception:
-        logger.exception("Knowledge retrieval failed for: %.60s", query)
-    # Fallback: grep on wiki files
-    try:
-        from src.services.kb_tools import grep_kb
-        grep_results = grep_kb(query, max_results=5)
-        if grep_results and "No results found" not in grep_results and "wiki directory" not in grep_results:
-            return {"knowledge_context": grep_results[:2000]}
-    except Exception:
-        logger.exception("Grep fallback also failed")
-    return {"knowledge_context": ""}
+
+    mem_result, kb_result = await asyncio.gather(_load(), _retrieve())
+    return {**mem_result, **kb_result}
 
 
 async def orchestrator_node(state: AgentState) -> dict:
@@ -460,8 +451,7 @@ def build_graph() -> StateGraph:
     builder = StateGraph(AgentState)
 
     builder.add_node("init", init_node)
-    builder.add_node("load_memories", load_memories_node)
-    builder.add_node("retrieve_knowledge", retrieve_knowledge_node)
+    builder.add_node("load_memories_and_knowledge", load_memories_and_knowledge_node)
     builder.add_node("plan", plan_node)
     builder.add_node("orchestrate", orchestrator_node)
     builder.add_node("exec_task", exec_task_node)
@@ -471,9 +461,8 @@ def build_graph() -> StateGraph:
 
     builder.set_entry_point("init")
 
-    builder.add_edge("init", "load_memories")
-    builder.add_edge("load_memories", "retrieve_knowledge")
-    builder.add_edge("retrieve_knowledge", "plan")
+    builder.add_edge("init", "load_memories_and_knowledge")
+    builder.add_edge("load_memories_and_knowledge", "plan")
     builder.add_edge("plan", "orchestrate")
 
     builder.add_conditional_edges(

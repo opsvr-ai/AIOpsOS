@@ -2,8 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func as sa_func, or_, select, update
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func as sa_func
+from sqlalchemy import or_, select, update
 
 from src.api.deps import get_current_user, get_optional_space_id
 from src.models.base import async_session_factory
@@ -113,7 +114,7 @@ async def manual_consolidate(
         return {"ok": True, **result}
     except Exception as e:
         logger.exception("Manual consolidation failed for session %s", session_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sleep-management/sessions/{session_id}/wake")

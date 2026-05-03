@@ -1,4 +1,4 @@
-from src.services.tool_manager import _SkillTool, _build_schema, ToolManager
+from src.services.tool_manager import ToolManager, _build_schema, _SkillTool
 
 
 class TestBuildSchema:

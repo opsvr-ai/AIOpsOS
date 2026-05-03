@@ -7,13 +7,13 @@ import logging
 import time
 from datetime import UTC, datetime
 
+from src.consumers.dedup import find_existing
+from src.consumers.normalizer import normalize
+from src.models.alert import Alert
+from src.models.base import async_session_factory
 from src.models.datasource import DataSource
 from src.models.ingestion_log import IngestionLog
 from src.models.notification import Notification
-from src.models.base import async_session_factory
-from src.consumers.normalizer import normalize
-from src.consumers.dedup import find_existing
-from src.models.alert import Alert
 from src.services.event_mapper import insert_events
 
 logger = logging.getLogger(__name__)
@@ -115,6 +115,7 @@ async def process_webhook(datasource: DataSource, body: dict, headers: dict) -> 
                 # Fire-and-forget channel dispatch
                 try:
                     import asyncio
+
                     from src.services.channel_manager import channel_manager
                     asyncio.ensure_future(
                         channel_manager.notify(

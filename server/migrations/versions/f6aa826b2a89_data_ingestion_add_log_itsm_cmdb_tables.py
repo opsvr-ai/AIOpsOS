@@ -4,17 +4,16 @@ Revision ID: f6aa826b2a89
 Revises: c2a0e4a72cbc
 Create Date: 2026-05-02 07:52:45.577403
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
-
+from alembic import op
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 revision: str = 'f6aa826b2a89'
-down_revision: Union[str, None] = 'c2a0e4a72cbc'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'c2a0e4a72cbc'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

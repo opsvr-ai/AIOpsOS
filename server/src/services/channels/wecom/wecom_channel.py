@@ -16,12 +16,13 @@ import json as _json
 import logging
 import time
 import uuid
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
 import aiohttp
 
 from src.services.channels.base import NotificationChannelBase, NotificationPayload
 
+from .agent_bridge import handle_wecom_message
 from .const import CLOUD_API_BASE, CLOUD_WS_BASE, WECOM_CMD_SUBSCRIBE
 from .message_parser import ParsedMessage
 from .message_sender import send_message
@@ -29,11 +30,10 @@ from .monitor import (
     WeComMonitor,
     get_ws,
     start_monitor,
-    stop_monitor,
     stop_all_monitors,
+    stop_monitor,
 )
 from .webhook_handler import create_webhook_router
-from .agent_bridge import handle_wecom_message
 
 logger = logging.getLogger(__name__)
 

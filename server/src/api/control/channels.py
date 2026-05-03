@@ -1,18 +1,23 @@
-import uuid
 import logging
-from datetime import datetime, UTC
+import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 
-from pydantic import BaseModel
-from src.api.deps import DbSession, get_current_user, require_perm
-from src.services.channel_manager import channel_manager
+from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
 from src.models.channel import AgentProfile, NotificationChannel
 from src.schemas.channel import (
-    AgentProfileCreate, AgentProfileOut, AgentProfileUpdate,
-    ChannelCreate, ChannelUpdate, ChannelOut, TaskDispatchRequest, AgentMetrics,
+    AgentProfileCreate,
+    AgentProfileOut,
+    AgentProfileUpdate,
+    ChannelCreate,
+    ChannelOut,
+    ChannelUpdate,
+    TaskDispatchRequest,
 )
+from src.services.channel_manager import channel_manager
 
 logger = logging.getLogger(__name__)
 
@@ -20,19 +25,26 @@ router = APIRouter()
 
 
 @router.get("/channels", response_model=list[ChannelOut])
-async def list_channels(db: DbSession, _=Depends(get_current_user)):
-    result = await db.execute(
-        select(NotificationChannel).order_by(NotificationChannel.created_at.desc())
-    )
+async def list_channels(
+    db: DbSession, space_id: str | None = Depends(get_optional_space_id),
+    _=Depends(get_current_user),
+):
+    query = select(NotificationChannel).order_by(NotificationChannel.created_at.desc())
+    if space_id:
+        query = query.where(
+            (NotificationChannel.space_id == space_id) | (NotificationChannel.space_id.is_(None))
+        )
+    result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.post("/channels", response_model=ChannelOut)
 async def create_channel(
-    body: ChannelCreate, db: DbSession, _=Depends(require_perm("channels", "create"))
+    body: ChannelCreate, db: DbSession, space_id: str | None = Depends(get_optional_space_id),
+    _=Depends(require_perm("channels", "create"))
 ):
     try:
-        channel = NotificationChannel(**body.model_dump())
+        channel = NotificationChannel(**body.model_dump(), space_id=space_id)
         db.add(channel)
         await db.commit()
         await db.refresh(channel)
@@ -40,7 +52,7 @@ async def create_channel(
     except Exception as exc:
         logger.exception("Failed to create channel: %s", exc)
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.delete("/channels/{channel_id}")
@@ -143,8 +155,8 @@ async def start_monitor_endpoint(channel_id: str, db: DbSession, _=Depends(get_c
     if not bot_id or not bot_secret:
         raise HTTPException(status_code=400, detail="bot_id and bot_secret required")
 
-    from src.services.channels.wecom.monitor import get_monitor, start_monitor
     from src.services.channels.wecom.agent_bridge import handle_wecom_message
+    from src.services.channels.wecom.monitor import get_monitor, start_monitor
 
     existing = get_monitor("default")
     if existing and existing.is_connected:
@@ -173,7 +185,7 @@ async def stop_monitor_endpoint(channel_id: str, db: DbSession, _=Depends(get_cu
     if channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    from src.services.channels.wecom.monitor import stop_monitor, get_monitor
+    from src.services.channels.wecom.monitor import get_monitor, stop_monitor
     monitor = get_monitor("default")
     if not monitor:
         return {"ok": True, "message": "No monitor running"}
@@ -233,7 +245,7 @@ async def app_send_message(channel_id: str, body: AppSendRequest, db: DbSession,
         return {"ok": result_data.get("errcode") == 0, "data": result_data}
     except Exception as exc:
         logger.exception("WeCom app send failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 class AppChatCreateRequest(BaseModel):
@@ -272,7 +284,7 @@ async def app_create_chat(channel_id: str, body: AppChatCreateRequest, db: DbSes
         return {"ok": result_data.get("errcode") == 0, "data": result_data}
     except Exception as exc:
         logger.exception("WeCom app create_chat failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 class AppChatSendRequest(BaseModel):
@@ -308,7 +320,7 @@ async def app_send_chat_message(channel_id: str, body: AppChatSendRequest, db: D
         return {"ok": result_data.get("errcode") == 0, "data": result_data}
     except Exception as exc:
         logger.exception("WeCom app send_chat failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/channels/{channel_id}/app/chat/{chatid}")
@@ -337,7 +349,7 @@ async def app_get_chat(channel_id: str, chatid: str, db: DbSession, _=Depends(ge
         return {"ok": result_data.get("errcode") == 0, "data": result_data}
     except Exception as exc:
         logger.exception("WeCom app get_chat failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/agent-profiles", response_model=list[AgentProfileOut])

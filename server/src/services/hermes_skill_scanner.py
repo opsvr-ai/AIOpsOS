@@ -9,7 +9,7 @@ Parses YAML frontmatter (name, description, version, license, hermes metadata).
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -214,7 +214,7 @@ async def sync_hermes_skills_to_db() -> dict:
                         "hermes_related": sk["hermes_related"],
                         "skill_prompt": sk["body"],
                         "source_label": sk["source_label"],
-                        "registered_at": datetime.now(timezone.utc).isoformat(),
+                        "registered_at": datetime.now(UTC).isoformat(),
                     },
                 )
                 db.add(tool)

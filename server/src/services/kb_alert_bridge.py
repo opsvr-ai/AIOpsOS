@@ -8,14 +8,14 @@ and updates the alert's knowledge_entry_id with a wikilink reference.
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 
 from src.config import settings
-from src.models.base import async_session_factory
 from src.models.alert import Alert
+from src.models.base import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ async def extract_alert_knowledge(alert_id: str) -> dict:
         if not recommendations and "recommendation" in analysis:
             recommendations = [str(analysis["recommendation"])]
 
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         page_name = f"Alert-{_safe_slug(title)}-{alert_id[:8]}"
 
         content = (
@@ -102,7 +102,7 @@ async def extract_alert_knowledge(alert_id: str) -> dict:
             f.write(content)
 
         alert.knowledge_entry_id = page_name
-        alert.updated_at = datetime.now(timezone.utc)
+        alert.updated_at = datetime.now(UTC)
         await db.commit()
 
         logger.info("Alert→Knowledge bridge: created %s for alert %s", page_name, alert_id)

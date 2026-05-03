@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import CurrentUser, DbSession, require_perm
+from src.api.deps import DbSession, require_perm
 from src.models.user import Permission, Role, User
 from src.schemas.permission import (
-    PermissionCreate, PermissionOut,
-    RoleCreate, RoleOut, RoleUpdate,
-    UserAdminOut, UserAdminUpdate, UserInvitationRequest, UserRoleAssign,
+    PermissionCreate,
+    PermissionOut,
+    RoleCreate,
+    RoleOut,
+    RoleUpdate,
+    UserAdminOut,
+    UserAdminUpdate,
+    UserInvitationRequest,
 )
 from src.schemas.user import UserAdminCreate, UserRegistrationApproval
 
@@ -217,7 +222,6 @@ async def update_user(
     _=Depends(require_perm("users", "update"))
 ):
     from src.core.security import hash_password
-    from src.schemas.permission import UserAdminUpdate
 
     result = await db.execute(
         select(User).where(User.id == user_id).options(
@@ -306,6 +310,7 @@ async def invite_user(
 ):
     import secrets
     from datetime import UTC, datetime, timedelta
+
     from src.models.user import UserInvitation
 
     existing = await db.execute(select(User).where(User.email == body.email))
@@ -332,7 +337,7 @@ async def invite_user(
         email_result = await db.execute(
             select(NotificationChannel).where(
                 NotificationChannel.channel_type == "email",
-                NotificationChannel.is_active == True,
+                NotificationChannel.is_active,
             )
         )
         ch = email_result.scalars().first()

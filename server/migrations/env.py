@@ -1,15 +1,16 @@
 import asyncio
 import sys
-from pathlib import Path
 from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
+from pathlib import Path
+
 from alembic import context
+from sqlalchemy.ext.asyncio import create_async_engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import src.models  # noqa: F401 — ensure all model tables are registered on Base.metadata
 from src.config import settings
 from src.models.base import Base
-import src.models  # noqa: F401 — ensure all model tables are registered on Base.metadata
 
 config = context.config
 if config.config_file_name is not None:

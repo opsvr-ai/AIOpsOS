@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from src.schemas.channel import ChannelOut
 
@@ -129,6 +130,15 @@ class MCPServerCreate(BaseModel):
     args: list[str] = []
     url: str | None = None
     is_active: bool = True
+
+
+class MCPServerUpdate(BaseModel):
+    name: str | None = None
+    transport: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    is_active: bool | None = None
 
 
 class MCPServerOut(BaseModel):

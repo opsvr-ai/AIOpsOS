@@ -16,6 +16,7 @@ import logging
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from src.agent.context import get_current_space
 from src.agent.tools.fuzzy_match import fuzzy_find_and_replace
 from src.models.agent import Tool
 from src.models.base import async_session_factory
@@ -105,8 +106,13 @@ async def _skill_patch(
     async with async_session_factory() as db:
         from sqlalchemy import select
 
+        space = get_current_space()
+        space_id = space.get("space_id", "")
+        conditions = [Tool.name == skill_name, Tool.type == "skill"]
+        if space_id:
+            conditions.append(Tool.space_id == space_id)
         tool = await db.scalar(
-            select(Tool).where(Tool.name == skill_name, Tool.type == "skill")
+            select(Tool).where(*conditions)
         )
         if tool is None:
             return _json.dumps({

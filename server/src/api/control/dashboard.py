@@ -52,7 +52,7 @@ async def get_dashboard_summary(
         agent_online = await db.scalar(
             text(
                 f"""SELECT COUNT(*) FROM agent_profiles ap
-                 JOIN agents a ON a.id = ap.agent_id
+                 JOIN agents a ON a.id = ap.connected_agent_id
                  WHERE ap.online = true AND {_space_filter(space_id, 'a.space_id')}"""
             ),
             params,

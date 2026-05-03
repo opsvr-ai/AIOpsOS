@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import api from '@/services/api';
 
 export interface DocFile {
   name: string;
@@ -33,12 +34,7 @@ export const useDocsStore = create<DocsState>((set) => ({
   fetchDocs: async () => {
     set({ loading: true });
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/v1/docs', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Failed to fetch docs');
-      const data = await res.json();
+      const { data } = await api.get('/docs');
       set({ categories: data.categories ?? [], loading: false });
     } catch {
       set({ loading: false });
@@ -48,13 +44,8 @@ export const useDocsStore = create<DocsState>((set) => ({
   fetchContent: async (path: string) => {
     set({ contentLoading: true, activeFile: path });
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/v1/docs/${path}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Failed to fetch content');
-      const text = await res.text();
-      set({ content: text, contentLoading: false });
+      const { data } = await api.get(`/docs/${path}`, { responseType: 'text' });
+      set({ content: data, contentLoading: false });
     } catch {
       set({ content: '# 加载失败\n\n文档内容加载失败，请稍后重试。', contentLoading: false });
     }

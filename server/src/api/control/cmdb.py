@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select, text, func
+from sqlalchemy import func, select, text
 
-from src.api.deps import DbSession, require_perm
-from src.models.cmdb import CmdbNode, CmdbEdge, CmdbSyncLog, CmdbMappingRule, CmdbReviewItem
-from src.agent.sub_agents.cmdb_ingestion_agent import CmdbIngestionAgent
+from src.api.deps import DbSession, get_optional_space_id, require_perm
+from src.models.cmdb import CmdbEdge, CmdbMappingRule, CmdbNode, CmdbReviewItem, CmdbSyncLog
 
 cmdb_router = APIRouter(prefix="/cmdb", tags=["CMDB"])
 
@@ -37,9 +36,14 @@ async def list_nodes(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
     _: Any = Depends(require_perm("cmdb", "read")),
 ):
     query = select(CmdbNode)
+    if space_id:
+        query = query.where(
+            (CmdbNode.space_id == space_id) | (CmdbNode.space_id.is_(None))
+        )
     if search:
         query = query.where(
             CmdbNode.name.ilike(f"%{search}%") | CmdbNode.external_id.ilike(f"%{search}%")
@@ -77,6 +81,7 @@ async def get_topology(
     ci_types: str | None = Query(None),
     depth: int = Query(3, ge=1, le=10),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
     _: Any = Depends(require_perm("cmdb", "read")),
 ):
     if node_id:
@@ -107,8 +112,12 @@ async def get_topology(
     else:
         edges_result = await db.execute(select(CmdbEdge).limit(200))
         edges_data = edges_result.all()
-        nodes_result = await db.execute(select(CmdbNode).limit(500))
-        nodes = nodes_result.scalars().all()
+        node_query = select(CmdbNode).limit(500)
+        if space_id:
+            node_query = node_query.where(
+                (CmdbNode.space_id == space_id) | (CmdbNode.space_id.is_(None))
+            )
+        nodes_result = await db.execute(node_query)
 
     return {
         "nodes": [
@@ -138,9 +147,14 @@ async def list_review_items(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
     _: Any = Depends(require_perm("cmdb", "read")),
 ):
     query = select(CmdbReviewItem)
+    if space_id:
+        query = query.where(
+            (CmdbReviewItem.space_id == space_id) | (CmdbReviewItem.space_id.is_(None))
+        )
     if status:
         query = query.where(CmdbReviewItem.status == status)
 
@@ -189,7 +203,7 @@ async def approve_review_item(
     item.status = "approved"
     item.reviewer = body.reviewer
     item.review_note = body.note
-    item.reviewed_at = datetime.now(timezone.utc)
+    item.reviewed_at = datetime.now(UTC)
     await db.commit()
     return {"success": True, "status": "approved"}
 
@@ -208,7 +222,7 @@ async def reject_review_item(
     item.status = "rejected"
     item.reviewer = body.reviewer
     item.review_note = body.note
-    item.reviewed_at = datetime.now(timezone.utc)
+    item.reviewed_at = datetime.now(UTC)
     await db.commit()
     return {"success": True, "status": "rejected"}
 
@@ -219,9 +233,14 @@ async def reject_review_item(
 async def list_mapping_rules(
     datasource_id: UUID | None = Query(None),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
     _: Any = Depends(require_perm("cmdb", "read")),
 ):
     query = select(CmdbMappingRule)
+    if space_id:
+        query = query.where(
+            (CmdbMappingRule.space_id == space_id) | (CmdbMappingRule.space_id.is_(None))
+        )
     if datasource_id:
         query = query.where(CmdbMappingRule.datasource_id == datasource_id)
     result = await db.execute(query.order_by(CmdbMappingRule.version.desc()))
@@ -269,9 +288,14 @@ async def list_sync_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
     _: Any = Depends(require_perm("cmdb", "read")),
 ):
     query = select(CmdbSyncLog)
+    if space_id:
+        query = query.where(
+            (CmdbSyncLog.space_id == space_id) | (CmdbSyncLog.space_id.is_(None))
+        )
     if datasource_id:
         query = query.where(CmdbSyncLog.datasource_id == datasource_id)
 

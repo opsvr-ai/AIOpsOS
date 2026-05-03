@@ -14,12 +14,12 @@ import json as _json
 import logging
 import secrets
 import struct
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse
 
-from .const import WEBHOOK_PATH_BOT, WEBHOOK_PATH_AGENT
+from .const import WEBHOOK_PATH_AGENT, WEBHOOK_PATH_BOT
 from .message_parser import ParsedMessage, parse_message
 
 logger = logging.getLogger(__name__)

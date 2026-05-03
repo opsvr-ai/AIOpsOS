@@ -43,6 +43,13 @@ class _SkillTool(BaseTool):
         return f"[Skill {self.name}] executed with: {kwargs}"
 
     async def _arun(self, **kwargs: Any) -> str:
+        # Inject space_id from request context so DB-record tools inherit it automatically
+        from src.agent.context import get_current_space
+
+        space = get_current_space()
+        if space.get("space_id"):
+            kwargs["space_id"] = space["space_id"]
+
         # Mode 1: simple function call
         if self._fn:
             return str(self._fn(**kwargs))
@@ -204,7 +211,7 @@ class ToolManager:
         async with async_session_factory() as db:
             # load skill tools (skip names that are already built-in)
             result = await db.execute(
-                select(Tool).where(Tool.is_active == True, Tool.type == "skill")
+                select(Tool).where(Tool.is_active, Tool.type == "skill")
             )
             for tool in result.scalars().all():
                 if tool.name not in self._builtin:
@@ -213,7 +220,7 @@ class ToolManager:
             # load MCP-backed tools (skip names that are already built-in)
             mcp_tools_result = await db.execute(
                 select(Tool)
-                .where(Tool.is_active == True, Tool.type == "mcp")
+                .where(Tool.is_active, Tool.type == "mcp")
                 .options(selectinload(Tool.mcp_server))
             )
             for tool in mcp_tools_result.scalars().all():

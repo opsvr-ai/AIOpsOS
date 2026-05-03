@@ -1,10 +1,12 @@
 """Tasks extracted from chat sessions — manually created or LLM-extracted."""
 
 import uuid
-from datetime import UTC, datetime
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
 from src.models.base import Base, TimestampMixin
 
 

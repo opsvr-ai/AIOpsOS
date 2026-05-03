@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>【六脉】智能运维数智平台研发项目 — 创新申报分析报告</title>
+<style>
+/* ========== Reset & Base ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: #f0f4f8; color: #1a2332; line-height: 1.7;
+}
+a { color: inherit; text-decoration: none; }
+
+/* ========== Color Theme ========== */
+:root {
+  --primary: #0f3b5e;
+  --primary-light: #1a5a8a;
+  --primary-dark: #0a2640;
+  --accent: #1e90ff;
+  --accent-glow: #4db8ff;
+  --gradient-main: linear-gradient(135deg, #0a2640 0%, #0f3b5e 40%, #1a5a8a 100%);
+  --gradient-accent: linear-gradient(135deg, #1e90ff, #00b4d8);
+  --bg-card: #ffffff;
+  --bg-alt: #f7fafc;
+  --bg-dark: #0a2640;
+  --text-primary: #1a2332;
+  --text-secondary: #4a5568;
+  --text-light: #8896a6;
+  --text-on-dark: #e8edf3;
+  --border: #e2e8f0;
+  --border-light: #edf2f7;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.12);
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+}
+
+/* ========== Navigation Bar ========== */
+.nav-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(10, 38, 64, 0.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding: 0 40px; display: flex; align-items: center; height: 56px;
+  justify-content: space-between;
+}
+.nav-bar .logo { font-size: 0.9rem; font-weight: 700; color: #fff; letter-spacing: 1px; }
+.nav-bar .logo span { color: var(--accent); }
+.nav-bar nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.nav-bar nav a {
+  color: rgba(255,255,255,0.65); font-size: 0.75rem; padding: 4px 10px;
+  border-radius: 20px; transition: all 0.2s; letter-spacing: 0.3px;
+}
+.nav-bar nav a:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+/* ========== Cover ========== */
+.cover {
+  min-height: 100vh; display: flex; flex-direction: column; justify-content: center;
+  align-items: center; text-align: center;
+  background: var(--gradient-main); position: relative; overflow: hidden;
+  padding: 100px 40px 60px;
+}
+.cover::before {
+  content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+  background: radial-gradient(circle at 30% 40%, rgba(30, 144, 255, 0.08) 0%, transparent 60%),
+              radial-gradient(circle at 70% 60%, rgba(0, 180, 216, 0.06) 0%, transparent 50%);
+  animation: float 20s ease-in-out infinite;
+}
+@keyframes float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-30px, -20px); } }
+.cover .grid-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+.cover .badge {
+  display: inline-block; background: rgba(30, 144, 255, 0.2); color: var(--accent-glow);
+  padding: 6px 20px; border-radius: 30px; font-size: 0.8rem; font-weight: 600;
+  letter-spacing: 2px; border: 1px solid rgba(30, 144, 255, 0.3);
+  margin-bottom: 32px; position: relative; z-index: 1;
+}
+.cover h1 {
+  font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 800; color: #fff;
+  line-height: 1.2; margin-bottom: 12px; position: relative; z-index: 1;
+  letter-spacing: 2px;
+}
+.cover h1 .highlight { background: var(--gradient-accent); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.cover .subtitle {
+  font-size: clamp(1rem, 1.8vw, 1.3rem); color: rgba(255,255,255,0.7);
+  max-width: 600px; margin: 0 auto 30px; position: relative; z-index: 1;
+  font-weight: 300; letter-spacing: 1px;
+}
+.cover .meta-info {
+  display: flex; gap: 32px; flex-wrap: wrap; justify-content: center;
+  color: rgba(255,255,255,0.5); font-size: 0.85rem; position: relative; z-index: 1;
+}
+.cover .meta-info span { display: flex; align-items: center; gap: 6px; }
+.cover .meta-info .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+/* scroll indicator */
+.scroll-indicator {
+  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  color: rgba(255,255,255,0.3); font-size: 0.7rem; letter-spacing: 2px;
+  animation: bounce 2s infinite; z-index: 1;
+}
+.scroll-indicator .arrow { width: 20px; height: 20px; border-right: 2px solid rgba(255,255,255,0.3); border-bottom: 2px solid rgba(255,255,255,0.3); transform: rotate(45deg); }
+@keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(8px); } }
+
+/* ========== Container ========== */
+.container { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+/* ========== Section ========== */
+.section {
+  padding: 72px 0; background: #fff; border-bottom: 1px solid var(--border-light);
+}
+.section:nth-child(even) { background: var(--bg-alt); }
+.section-header {
+  text-align: center; margin-bottom: 48px; position: relative;
+}
+.section-header .section-num {
+  display: inline-block; font-size: 0.75rem; font-weight: 700; color: var(--accent);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px;
+}
+.section-header h2 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem); font-weight: 800; color: var(--primary-dark);
+  position: relative; display: inline-block;
+}
+.section-header h2::after {
+  content: ''; display: block; width: 60px; height: 3px;
+  background: var(--gradient-accent); border-radius: 3px; margin: 12px auto 0;
+}
+
+/* ========== TOC ========== */
+.toc-wrapper {
+  max-width: 700px; margin: 0 auto;
+}
+.toc-item {
+  display: flex; align-items: center; gap: 20px;
+  padding: 14px 24px; border-radius: var(--radius-md);
+  transition: all 0.25s; cursor: pointer;
+  border: 1px solid transparent;
+}
+.toc-item:hover { background: var(--bg-alt); border-color: var(--border); }
+.toc-item .num {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gradient-accent); color: #fff; font-weight: 700; font-size: 0.85rem;
+}
+.toc-item .text { flex: 1; font-weight: 600; color: var(--text-primary); }
+.toc-item .page { color: var(--text-light); font-size: 0.8rem; }
+
+/* ========== Cards ========== */
+.card { 
+  background: var(--bg-card); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+  padding: 28px 32px; transition: all 0.3s;
+}
+.card:hover { box-shadow: var(--shadow-md); }
+.card-accent { border-left: 4px solid var(--accent); }
+
+/* ========== Grids ========== */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+
+/* ========== Stat Cards ========== */
+.stat-card {
+  background: var(--bg-card); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+  padding: 24px; text-align: center; transition: all 0.3s;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card .icon { font-size: 2rem; margin-bottom: 8px; }
+.stat-card .n { font-size: 2rem; font-weight: 800; color: var(--primary); line-height: 1.2; }
+.stat-card .l { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* ========== Info Cards (Pillar style) ========== */
+.pillar {
+  background: var(--bg-card); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+  padding: 28px; transition: all 0.3s;
+}
+.pillar:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+.pillar .ic { font-size: 2.2rem; margin-bottom: 12px; display: block; }
+.pillar .t { font-size: 1.05rem; font-weight: 700; color: var(--primary-dark); margin-bottom: 8px; }
+.pillar .d { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; }
+
+/* ========== Innovation Architecture ========== */
+.arch-wrapper {
+  background: var(--gradient-main); border-radius: var(--radius-lg);
+  padding: 48px 36px; position: relative; overflow: hidden;
+}
+.arch-wrapper::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(30,144,255,0.1) 0%, transparent 60%);
+}
+.arch-title { text-align: center; color: #fff; font-size: 1.3rem; font-weight: 700; margin-bottom: 36px; position: relative; z-index: 1; letter-spacing: 1px; }
+.arch-flow {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  flex-wrap: wrap; position: relative; z-index: 1;
+}
+.arch-node {
+  background: rgba(255,255,255,0.1); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-md);
+  padding: 20px 24px; text-align: center; min-width: 160px; flex: 1;
+  transition: all 0.3s;
+}
+.arch-node:hover { background: rgba(255,255,255,0.18); transform: translateY(-2px); }
+.arch-node .emoji { font-size: 1.8rem; display: block; margin-bottom: 6px; }
+.arch-node .name { color: #fff; font-weight: 700; font-size: 0.95rem; }
+.arch-node .desc { color: rgba(255,255,255,0.6); font-size: 0.75rem; margin-top: 4px; }
+.arch-arrow { color: rgba(255,255,255,0.3); font-size: 1.5rem; flex-shrink: 0; }
+.arch-node.highlight { background: rgba(30,144,255,0.25); border-color: rgba(30,144,255,0.4); }
+
+/* ========== Tables ========== */
+.table-wrapper {
+  overflow-x: auto; border-radius: var(--radius-md);
+  border: 1px solid var(--border); background: var(--bg-card);
+}
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+thead { background: var(--primary-dark); color: #fff; }
+thead th { padding: 14px 18px; text-align: left; font-weight: 600; font-size: 0.85rem; letter-spacing: 0.5px; }
+tbody td { padding: 13px 18px; border-bottom: 1px solid var(--border-light); color: var(--text-primary); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(30, 144, 255, 0.04); }
+tbody tr:nth-child(even) { background: var(--bg-alt); }
+tbody tr:nth-child(even):hover { background: rgba(30, 144, 255, 0.06); }
+
+/* Risk table coloring */
+.tag {
+  display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 2px 12px;
+  border-radius: 20px; letter-spacing: 0.3px;
+}
+.tag-critical { background: #fee2e2; color: #b91c1c; }
+.tag-warning { background: #fef3c7; color: #92400e; }
+.tag-success { background: #dcfce7; color: #166534; }
+.tag-info { background: #dbeafe; color: #1e40af; }
+
+/* ========== Timeline ========== */
+.timeline { position: relative; padding-left: 36px; }
+.timeline::before {
+  content: ''; position: absolute; left: 12px; top: 0; bottom: 0;
+  width: 3px; background: var(--gradient-accent); border-radius: 3px;
+}
+.timeline-item { position: relative; margin-bottom: 32px; padding-left: 20px; }
+.timeline-item:last-child { margin-bottom: 0; }
+.timeline-item::before {
+  content: ''; position: absolute; left: -32px; top: 6px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); border: 3px solid #fff;
+  box-shadow: 0 0 0 3px var(--accent);
+}
+.timeline-item .time {
+  font-size: 0.8rem; color: var(--accent); font-weight: 700;
+  margin-bottom: 4px; letter-spacing: 0.5px;
+}
+.timeline-item .content .title { font-weight: 700; color: var(--primary-dark); font-size: 1rem; }
+.timeline-item .content .desc { color: var(--text-secondary); font-size: 0.88rem; margin-top: 4px; }
+
+/* ========== Gantt-style Timeline ========== */
+.gantt-wrapper { padding: 8px 0; }
+.gantt-row {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 20px;
+}
+.gantt-row:last-child { margin-bottom: 0; }
+.gantt-row .label { flex: 0 0 160px; font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+.gantt-track { flex: 1; height: 32px; position: relative; background: var(--bg-alt); border-radius: 20px; overflow: hidden; }
+.gantt-bar {
+  position: absolute; top: 4px; height: 24px; border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 600; color: #fff; letter-spacing: 0.3px;
+  transition: all 0.3s;
+}
+.gantt-bar:hover { filter: brightness(1.1); transform: scaleY(1.05); }
+.gantt-bar.bar1 { background: linear-gradient(135deg, #1e90ff, #00b4d8); left: 0%; width: 25%; }
+.gantt-bar.bar2 { background: linear-gradient(135deg, #0f3b5e, #1a5a8a); left: 28%; width: 12%; }
+.gantt-bar.bar3 { background: linear-gradient(135deg, #6366f1, #818cf8); left: 44%; width: 15%; }
+.gantt-bar.bar4 { background: linear-gradient(135deg, #10b981, #34d399); left: 62%; width: 14%; }
+.gantt-bar.bar5 { background: linear-gradient(135deg, #f59e0b, #fbbf24); left: 78%; width: 18%; }
+.gantt-labels { display: flex; margin-top: 8px; margin-left: 176px; font-size: 0.7rem; color: var(--text-light); }
+.gantt-labels span { flex: 1; text-align: center; }
+
+/* ========== Callout / Highlight Box ========== */
+.callout {
+  background: var(--bg-alt); border-left: 4px solid var(--accent);
+  border-radius: var(--radius-sm); padding: 20px 24px; margin: 24px 0;
+}
+.callout p { color: var(--text-secondary); font-size: 0.92rem; margin-top: 6px; }
+.callout strong { color: var(--primary-dark); }
+
+/* ========== Quoteblock ========== */
+.quoteblock {
+  background: linear-gradient(135deg, rgba(30,144,255,0.06), rgba(0,180,216,0.04));
+  border-left: 4px solid var(--accent); border-radius: var(--radius-sm);
+  padding: 24px 28px; margin: 24px 0; font-style: italic;
+  color: var(--text-secondary); position: relative;
+}
+.quoteblock::before { content: '\201C'; position: absolute; top: -8px; left: 12px; font-size: 3rem; color: rgba(30,144,255,0.15); font-family: Georgia, serif; }
+
+/* ========== Badge List ========== */
+.badge-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.badge-list .item {
+  background: rgba(30,144,255,0.08); color: var(--primary-light);
+  padding: 4px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 500;
+  border: 1px solid rgba(30,144,255,0.15);
+}
+
+/* ========== Divider ========== */
+.divider { width: 60px; height: 2px; background: var(--gradient-accent); margin: 20px 0; border-radius: 2px; }
+
+/* ========== Metrics Row (KPI) ========== */
+.metrics-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px; margin: 24px 0;
+}
+.metric-box {
+  text-align: center; background: var(--bg-card); border-radius: var(--radius-md);
+  border: 1px solid var(--border); padding: 20px 16px;
+}
+.metric-box .value { font-size: 1.6rem; font-weight: 800; color: var(--primary); }
+.metric-box .value .unit { font-size: 0.8rem; font-weight: 400; color: var(--text-secondary); }
+.metric-box .label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* ========== Numbered List (Fancy) ========== */
+.fancy-list { counter-reset: fancy; list-style: none; }
+.fancy-list li {
+  counter-increment: fancy; padding: 12px 0 12px 40px; position: relative;
+  color: var(--text-primary); font-size: 0.95rem;
+}
+.fancy-list li::before {
+  content: counter(fancy); position: absolute; left: 0; top: 12px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--gradient-accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 700;
+}
+
+/* ========== Footer ========== */
+.footer {
+  background: var(--primary-dark); color: rgba(255,255,255,0.4);
+  text-align: center; padding: 40px 24px; font-size: 0.8rem;
+}
+.footer .brand { font-size: 1rem; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 2px; }
+.footer .brand span { color: var(--accent); }
+.footer p { margin-top: 8px; }
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .cover { padding: 80px 24px 40px; }
+  .cover .meta-info { gap: 16px; flex-direction: column; align-items: center; }
+  .section { padding: 48px 0; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .gantt-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .gantt-row .label { flex: 1; font-size: 0.82rem; }
+  .gantt-labels { margin-left: 0; }
+  .nav-bar { padding: 0 16px; }
+  .nav-bar nav { display: none; }
+  .arch-flow { flex-direction: column; }
+  .arch-arrow { transform: rotate(90deg); }
+  .arch-wrapper { padding: 32px 20px; }
+}
+
+@media print {
+  .nav-bar { display: none; }
+  .cover { min-height: 100vh; }
+  .section { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== Navigation ==================== -->
+<div class="nav-bar">
+  <div class="logo">🔷 <span>六脉</span> · AIOps</div>
+  <nav>
+    <a href="#toc">目录</a>
+    <a href="#ch1">项目概要</a>
+    <a href="#ch2">背景痛点</a>
+    <a href="#ch3">核心架构</a>
+    <a href="#ch4">目标内容</a>
+    <a href="#ch5">风险分析</a>
+    <a href="#ch6">里程碑</a>
+    <a href="#ch7">综合评价</a>
+  </nav>
+</div>
+
+<!-- ==================== COVER ==================== -->
+<section class="cover" id="top">
+  <div class="grid-overlay"></div>
+  <div class="badge">📋 内部创新 · 生产运维部</div>
+  <h1>
+    【六脉】智能运维<br>
+    <span class="highlight">数智平台</span>研发项目
+  </h1>
+  <p class="subtitle">
+    以多智能体协同技术重塑运维范式 — 构建「运维中枢大脑 + 智能体矩阵」<br>
+    实现从"工具驱动"到"智能驱动"的根本性跨越
+  </p>
+  <div class="meta-info">
+    <span>📅 报告生成：2025年7月</span>
+    <span class="dot"></span>
+    <span>🏢 申报部门：生产运维部</span>
+    <span class="dot"></span>
+    <span>📌 类型：内部创新</span>
+  </div>
+  <div class="scroll-indicator">
+    向下滚动
+    <div class="arrow"></div>
+  </div>
+</section>
+
+<!-- ==================== TOC ==================== -->
+<section class="section" id="toc" style="padding-top: 80px;">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CONTENTS</div>
+      <h2>目 录</h2>
+    </div>
+    <div class="toc-wrapper">
+      <a href="#ch1" class="toc-item"><span class="num">1</span><span class="text">项目概要 — 基本信息与创新亮点</span><span class="page">▸</span></a>
+      <a href="#ch2" class="toc-item"><span class="num">2</span><span class="text">行业背景与痛点分析</span><span class="page">▸</span></a>
+      <a href="#ch3" class="toc-item"><span class="num">3</span><span class="text">核心架构与创新点 — 大脑 + 小脑 模式</span><span class="page">▸</span></a>
+      <a href="#ch4" class="toc-item"><span class="num">4</span><span class="text">工作目标与内容分解</span><span class="page">▸</span></a>
+      <a href="#ch5" class="toc-item"><span class="num">5</span><span class="text">风险分析与应对策略</span><span class="page">▸</span></a>
+      <a href="#ch6" class="toc-item"><span class="num">6</span><span class="text">里程碑计划</span><span class="page">▸</span></a>
+      <a href="#ch7" class="toc-item"><span class="num">7</span><span class="text">综合评价与展望</span><span class="page">▸</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 1 ==================== -->
+<section class="section" id="ch1">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 01</div>
+      <h2>项目概要</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">基本信息 · 创新亮点 · 总体概况</p>
+    </div>
+
+    <!-- Basic Info Cards -->
+    <div class="grid-3" style="margin-bottom: 32px;">
+      <div class="stat-card">
+        <div class="icon">🏷️</div>
+        <div class="n">六脉</div>
+        <div class="l">项目品牌名称</div>
+      </div>
+      <div class="stat-card">
+        <div class="icon">🏢</div>
+        <div class="n">生产运维部</div>
+        <div class="l">申报部门</div>
+      </div>
+      <div class="stat-card">
+        <div class="icon">🔄</div>
+        <div class="n">内部创新</div>
+        <div class="l">创新类型</div>
+      </div>
+    </div>
+
+    <div class="quoteblock" style="margin-bottom: 32px;">
+      <strong>项目定位：</strong>以多智能体协同技术为底座，构建"运维中枢神经大脑 + 智能体客户端 + 智能体专家矩阵"的全新双向认知沟通模式，突破传统「客户端-服务端」单向运维架构。
+    </div>
+
+    <!-- Innovation Highlights -->
+    <h3 style="font-size: 1.15rem; color: var(--primary-dark); margin-bottom: 16px;">✨ 创新亮点一览</h3>
+    <div class="grid-3">
+      <div class="pillar">
+        <span class="ic">🧠</span>
+        <div class="t">新技术基底</div>
+        <div class="d">基于 Harness 工程理念、LangChain 生态 DeepAgents 框架，构建多智能体协同核心引擎。</div>
+      </div>
+      <div class="pillar">
+        <span class="ic">🔄</span>
+        <div class="t">新模式突破</div>
+        <div class="d">突破传统「客户端-服务端」单向模式，构建「运维中枢神经大脑 + 智能体客户端 + 智能体专家矩阵」双向认知沟通模式。</div>
+      </div>
+      <div class="pillar">
+        <span class="ic">🤖</span>
+        <div class="t">新思路落地</div>
+        <div class="d">为重要业务系统定制专属运维数字专家智能体，实现 7×24 小时全天候监控与智能状态分析。</div>
+      </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="metrics-row" style="margin-top: 36px;">
+      <div class="metric-box">
+        <div class="value">3<span class="unit"> 大</span></div>
+        <div class="label">核心创新方向</div>
+      </div>
+      <div class="metric-box">
+        <div class="value">4<span class="unit"> 类</span></div>
+        <div class="label">关键技术储备</div>
+      </div>
+      <div class="metric-box">
+        <div class="value">5<span class="unit"> 个</span></div>
+        <div class="label">里程碑节点</div>
+      </div>
+      <div class="metric-box">
+        <div class="value">7×24</div>
+        <div class="label">全时段智能监控</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 2 ==================== -->
+<section class="section" id="ch2">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 02</div>
+      <h2>行业背景与痛点分析</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">技术趋势 · 运维困境 · 差距分析</p>
+    </div>
+
+    <div class="grid-2">
+      <!-- 行业趋势 -->
+      <div class="card card-accent">
+        <h4 style="font-size: 1rem; color: var(--primary-dark); margin-bottom: 12px;">📈 行业趋势</h4>
+        <p style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.7;">
+          多智能体协同技术正推动人工智能向高阶迭代演进，头部厂商加速布局智能运维赛道。
+          Gartner 预测，到 2027 年，超过 60% 的大型企业将采用 AIOps 平台实现运维自动化与智能化。
+        </p>
+        <div class="badge-list">
+          <span class="item">多智能体协同</span>
+          <span class="item">LLM + 运维</span>
+          <span class="item">自主决策</span>
+          <span class="item">数字专家</span>
+        </div>
+      </div>
+
+      <!-- Pain Points -->
+      <div class="card card-accent" style="border-left-color: #b91c1c;">
+        <h4 style="font-size: 1rem; color: #b91c1c; margin-bottom: 12px;">⚠️ 运维痛点</h4>
+        <ul style="list-style: none; padding: 0; color: var(--text-secondary); font-size: 0.92rem; line-height: 1.8;">
+          <li style="padding: 4px 0;">🔴 <strong>系统繁杂</strong> — 多套异构系统并行，运维复杂度指数级上升</li>
+          <li style="padding: 4px 0;">🔴 <strong>过度依赖人力</strong> — 故障处置经验依赖个人，知识无法沉淀复用</li>
+          <li style="padding: 4px 0;">🔴 <strong>数据分散</strong> — 各系统数据孤岛，难以形成全局视图</li>
+          <li style="padding: 4px 0;">🔴 <strong>故障定界耗时长</strong> — 平均故障定位时间（MTTR）居高不下</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Gap Analysis Table -->
+    <h3 style="font-size: 1.1rem; color: var(--primary-dark); margin: 36px 0 16px;">📊 联盟 AIOps 能力差距分析</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>对比维度</th>
+            <th>行业头部水平</th>
+            <th>联盟当前水平</th>
+            <th>差距程度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>智能体协同架构</td>
+            <td>多智能体生产级部署</td>
+            <td>初级验证阶段</td>
+            <td><span class="tag tag-critical">较大</span></td>
+          </tr>
+          <tr>
+            <td>故障自愈能力</td>
+            <td>自动检测 → 诊断 → 修复链路</td>
+            <td>人工介入为主</td>
+            <td><span class="tag tag-critical">较大</span></td>
+          </tr>
+          <tr>
+            <td>大模型落地</td>
+            <td>LLM 深度融入运维流程</td>
+            <td>技术预研阶段</td>
+            <td><span class="tag tag-warning">中等</span></td>
+          </tr>
+          <tr>
+            <td>数据整合</td>
+            <td>统一数据湖 + 实时流处理</td>
+            <td>分散存储，部分打通</td>
+            <td><span class="tag tag-warning">中等</span></td>
+          </tr>
+          <tr>
+            <td>技术储备</td>
+            <td>OpenClaw / DeepAgents 等已商用</td>
+            <td>已进行初步探索和预研</td>
+            <td><span class="tag tag-info">可追赶</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 3 ==================== -->
+<section class="section" id="ch3">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 03</div>
+      <h2>核心架构与创新点</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">「运维中枢神经大脑 + 智能体客户端 + 智能体专家矩阵」</p>
+    </div>
+
+    <!-- Architecture Diagram -->
+    <div class="arch-wrapper">
+      <div class="arch-title">🧬 六脉智能运维数智平台 — 核心架构</div>
+      <div class="arch-flow">
+        <div class="arch-node highlight">
+          <span class="emoji">🧠</span>
+          <div class="name">运维中枢大脑</div>
+          <div class="desc">多智能体协同平台<br>Skills 动态发现 · 任务编排</div>
+        </div>
+        <div class="arch-arrow">⟷</div>
+        <div class="arch-node">
+          <span class="emoji">📡</span>
+          <div class="name">智能体客户端</div>
+          <div class="desc">全链路数据采集<br>实时监控 · 自主分析</div>
+        </div>
+        <div class="arch-arrow">⟷</div>
+        <div class="arch-node">
+          <span class="emoji">👥</span>
+          <div class="name">专家智能体矩阵</div>
+          <div class="desc">领域专家数字分身<br>故障诊断 · 应急协同</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Innovation Detail -->
+    <div class="grid-3" style="margin-top: 36px;">
+      <div class="pillar">
+        <span class="ic">⚙️</span>
+        <div class="t">Harness 工程理念</div>
+        <div class="d">借鉴 Harness 持续交付与可靠性工程思想，构建标准化、可重复、可观测的智能运维流水线，确保 AI 行为可解释、可控制。</div>
+      </div>
+      <div class="pillar">
+        <span class="ic">🔗</span>
+        <div class="t">LangChain · DeepAgents</div>
+        <div class="d">基于 LangChain 生态系统深度集成 DeepAgents 框架，实现智能体的动态发现、编排调度与协同推理，构建企业级多智能体平台。</div>
+      </div>
+      <div class="pillar">
+        <span class="ic">🔄</span>
+        <div class="t">双向认知沟通模式</div>
+        <div class="d">突破传统"客户端-服务端"单向请求模式，建立"大脑-客户端-专家"双向认知链路，实现信息实时同步、协同决策。</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>🔑 核心创新价值：</strong>
+      <p>从"工具驱动"到"智能驱动"的根本性转变 —— 传统运维工具需要人工操作和判断，而六脉平台通过多智能体协同，让系统自主感知、自主分析、自主协同，运维人员从"执行者"转变为"决策者"和"训练师"。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 4 ==================== -->
+<section class="section" id="ch4">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 04</div>
+      <h2>工作目标与内容分解</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">四大目标 · 三大模块 · 实施路径</p>
+    </div>
+
+    <!-- Goals -->
+    <h3 style="font-size: 1.1rem; color: var(--primary-dark); margin-bottom: 16px;">🎯 四大工作目标</h3>
+    <div class="grid-2">
+      <div class="pillar" style="border-left: 4px solid var(--accent);">
+        <span class="ic">🧠</span>
+        <div class="t">目标一 · 多智能体核心架构</div>
+        <div class="d">构建运维数字专家矩阵，实现"工具驱动 → 智能驱动"的根本性转变。以 DeepAgents 框架为底座，打造多智能体协同核心引擎。</div>
+      </div>
+      <div class="pillar" style="border-left: 4px solid #10b981;">
+        <span class="ic">🔍</span>
+        <div class="t">目标二 · 聚焦故障处置场景</div>
+        <div class="d">"大模型 + 小模型"协同联动，实现故障快速取证、智能分析、辅助定界。大幅缩短平均故障定位时间（MTTR）。</div>
+      </div>
+      <div class="pillar" style="border-left: 4px solid #f59e0b;">
+        <span class="ic">🔌</span>
+        <div class="t">目标三 · 对接现有工具</div>
+        <div class="d">无缝对接应急处置、实时监控、告警平台等现有运维工具，融入日常运维全流程，不做"空中楼阁"。 </div>
+      </div>
+      <div class="pillar" style="border-left: 4px solid #8b5cf6;">
+        <span class="ic">🎯</span>
+        <div class="t">目标四 · 场景深度融合</div>
+        <div class="d">逐步实现关键业务系统全覆盖，达成核心运维量化指标，包括 MTTR 降低、告警准确率提升、自动处置率提高等。</div>
+      </div>
+    </div>
+
+    <!-- Main Content Modules -->
+    <h3 style="font-size: 1.1rem; color: var(--primary-dark); margin: 36px 0 16px;">📦 三大核心工作模块</h3>
+    <div class="grid-3">
+      <div class="card" style="padding: 24px;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">🖥️</div>
+        <h4 style="font-size: 1rem; color: var(--primary-dark); margin-bottom: 8px;">智能运维数智平台</h4>
+        <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+          多智能体协同核心平台，具备 Skills 动态发现、任务智能编排、多智能体通信与协同等核心能力，是运维中枢大脑的基础设施。
+        </p>
+      </div>
+      <div class="card" style="padding: 24px;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">📡</div>
+        <h4 style="font-size: 1rem; color: var(--primary-dark); margin-bottom: 8px;">智能体客户端</h4>
+        <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+          全链路数据自主采集与分析引擎，支持 7×24 小时实时监控与告警。作为"小脑"端感知和执行的关键节点，连接基础设施与大脑。
+        </p>
+      </div>
+      <div class="card" style="padding: 24px;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">🏗️</div>
+        <h4 style="font-size: 1rem; color: var(--primary-dark); margin-bottom: 8px;">高质量运维场景建设</h4>
+        <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+          聚焦故障取证与应急协同两大核心场景，将 AI 能力融入运维全生命周期，构建可复用的场景模板与知识库。
+        </p>
+      </div>
+    </div>
+
+    <!-- Detailed breakdown -->
+    <div class="callout" style="margin-top: 28px;">
+      <strong>📋 实施路径说明：</strong>
+      <p>以"平台筑基 → 客户端部署 → 场景深化"为实施路线，采用迭代式交付方式。<br>
+      一期聚焦故障处置场景"小闭环"，后续逐步拓展至全场景"大闭环"，确保每一步都有可量化的价值输出。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 5 ==================== -->
+<section class="section" id="ch5">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 05</div>
+      <h2>风险分析与应对策略</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">全面识别 · 分级管控 · 精准应对</p>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 10%;">序号</th>
+            <th style="width: 22%;">风险类别</th>
+            <th style="width: 30%;">风险描述</th>
+            <th style="width: 12%;">风险等级</th>
+            <th style="width: 26%;">应对措施</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>R1</strong></td>
+            <td>智能体运行安全风险</td>
+            <td>AI 智能体在自主决策过程中可能产生不可预期的行为，存在误操作或安全漏洞风险</td>
+            <td><span class="tag tag-critical">高风险</span></td>
+            <td>设置安全栅栏、关键操作人工确认、智能体"只分析不执行"原则</td>
+          </tr>
+          <tr>
+            <td><strong>R2</strong></td>
+            <td>技术更新迭代风险</td>
+            <td>AI 技术迭代速度极快，平台可能面临技术选型过时、架构需要频繁调整的风险</td>
+            <td><span class="tag tag-warning">中风险</span></td>
+            <td>优先选用头部大厂成熟技术路线，保持架构扩展性，关注行业标准演进</td>
+          </tr>
+          <tr>
+            <td><strong>R3</strong></td>
+            <td>技术储备及人力不足</td>
+            <td>多智能体协同涉及大模型、知识图谱、强化学习等前沿技术，团队可能缺乏足够经验</td>
+            <td><span class="tag tag-warning">中风险</span></td>
+            <td>以联盟内部人员为主力 + 外部咨询团队为辅，边学边做，知识转移</td>
+          </tr>
+          <tr>
+            <td><strong>R4</strong></td>
+            <td>算力资源不足</td>
+            <td>大模型推理和训练需要大量 GPU 算力，可能面临资源瓶颈</td>
+            <td><span class="tag tag-info">低风险</span></td>
+            <td>先以试点系统进行路径验证，控制算力需求；后续根据效果分批扩容</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Risk Visualization -->
+    <h3 style="font-size: 1.05rem; color: var(--primary-dark); margin: 36px 0 16px;">📊 风险矩阵概览</h3>
+    <div class="grid-4">
+      <div class="stat-card" style="border-top: 4px solid #b91c1c;">
+        <div class="icon" style="font-size: 1.5rem;">🔴</div>
+        <div class="n" style="font-size: 1.2rem; color: #b91c1c;">R1</div>
+        <div class="l">运行安全风险</div>
+      </div>
+      <div class="stat-card" style="border-top: 4px solid #d97706;">
+        <div class="icon" style="font-size: 1.5rem;">🟡</div>
+        <div class="n" style="font-size: 1.2rem; color: #d97706;">R2</div>
+        <div class="l">技术迭代风险</div>
+      </div>
+      <div class="stat-card" style="border-top: 4px solid #d97706;">
+        <div class="icon" style="font-size: 1.5rem;">🟡</div>
+        <div class="n" style="font-size: 1.2rem; color: #d97706;">R3</div>
+        <div class="l">人力不足风险</div>
+      </div>
+      <div class="stat-card" style="border-top: 4px solid #2563eb;">
+        <div class="icon" style="font-size: 1.5rem;">🔵</div>
+        <div class="n" style="font-size: 1.2rem; color: #2563eb;">R4</div>
+        <div class="l">算力不足风险</div>
+      </div>
+    </div>
+
+    <div class="quoteblock" style="margin-top: 24px;">
+      <strong>风险管控原则：</strong> 安全第一、渐进推进、可控可回溯。对于高风险项设置"熔断机制"，确保 AI 行为始终在可控范围内。通过试点验证逐步降低不确定性，以最小成本获取最大经验。
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 6 ==================== -->
+<section class="section" id="ch6">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 06</div>
+      <h2>里程碑计划</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">2026年 · 三个阶段 · 稳步推进</p>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline" style="max-width: 600px; margin: 0 auto 40px;">
+      <div class="timeline-item">
+        <div class="time">🚀 2026.08.03 → 2026.08.31</div>
+        <div class="content">
+          <div class="title">第一阶段 · 基础版本上线</div>
+          <div class="desc">完成服务端 + 客户端 + 多智能体协作核心功能开发与部署，实现平台 0→1 的突破。</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">🔗 2026.10.26 → 2026.11.06</div>
+        <div class="content">
+          <div class="title">第二阶段 · 工具对接与准生产试运行</div>
+          <div class="desc">平台与应急处置、实时监控、告警系统等对接，在准生产环境进行端到端验证。</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="time">🏁 2026.12.01 → 2026.12.31</div>
+        <div class="content">
+          <div class="title">第三阶段 · 项目验收</div>
+          <div class="desc">项目阶段性目标达成评审，成果交付，进入持续运营与迭代阶段。</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gantt-style Chart -->
+    <h3 style="font-size: 1.05rem; color: var(--primary-dark); margin-bottom: 20px; text-align: center;">📅 甘特图 · 项目进度总览</h3>
+    <div class="card" style="padding: 32px 28px;">
+      <div class="gantt-wrapper">
+        <div class="gantt-row">
+          <div class="label">📋 需求与设计</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar1" style="left: 0%; width: 22%;">6月-7月</div>
+          </div>
+        </div>
+        <div class="gantt-row">
+          <div class="label">🧠 核心平台开发</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar1" style="left: 10%; width: 30%;">7月-8月</div>
+          </div>
+        </div>
+        <div class="gantt-row">
+          <div class="label">🚀 基础版本上线</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar2" style="left: 32%; width: 14%;">8月上-8月底</div>
+          </div>
+        </div>
+        <div class="gantt-row">
+          <div class="label">🔌 工具集成对接</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar3" style="left: 48%; width: 18%;">9月-10月</div>
+          </div>
+        </div>
+        <div class="gantt-row">
+          <div class="label">🧪 准生产试运行</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar4" style="left: 64%; width: 14%;">10月底-11月初</div>
+          </div>
+        </div>
+        <div class="gantt-row">
+          <div class="label">✅ 项目验收</div>
+          <div class="gantt-track">
+            <div class="gantt-bar bar5" style="left: 80%; width: 16%;">12月</div>
+          </div>
+        </div>
+      </div>
+      <div class="gantt-labels">
+        <span>6月</span>
+        <span>7月</span>
+        <span>8月</span>
+        <span>9月</span>
+        <span>10月</span>
+        <span>11月</span>
+        <span>12月</span>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top: 28px;">
+      <strong>📌 关键交付物：</strong>
+      <p>① 多智能体协同平台 1.0 版本 &nbsp;·&nbsp; ② 智能体客户端 SDK &nbsp;·&nbsp; ③ 对接集成方案 &nbsp;·&nbsp; ④ 准生产测试报告 &nbsp;·&nbsp; ⑤ 项目验收文档</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CHAPTER 7 ==================== -->
+<section class="section" id="ch7">
+  <div class="container">
+    <div class="section-header">
+      <div class="section-num">CHAPTER 07</div>
+      <h2>综合评价与展望</h2>
+      <p style="color: var(--text-secondary); margin-top: 12px; font-size: 0.95rem;">项目价值 · 战略意义 · 未来展望</p>
+    </div>
+
+    <!-- Value Assessment -->
+    <div class="grid-3" style="margin-bottom: 28px;">
+      <div class="stat-card" style="border-top: 4px solid var(--accent);">
+        <div class="icon" style="font-size: 1.8rem;">🎯</div>
+        <div class="n" style="font-size: 1.1rem;">战略对齐度</div>
+        <div class="l" style="font-size: 0.85rem;">高度契合行业智能化转型方向，填补联盟在 AIOps 多智能体领域的空白</div>
+      </div>
+      <div class="stat-card" style="border-top: 4px solid #10b981;">
+        <div class="icon" style="font-size: 1.8rem;">💡</div>
+        <div class="n" style="font-size: 1.1rem;">创新含金量</div>
+        <div class="l" style="font-size: 0.85rem;">"大脑+小脑+专家矩阵"架构模式在行业内具有领先性和差异化优势</div>
+      </div>
+      <div class="stat-card" style="border-top: 4px solid #f59e0b;">
+        <div class="icon" style="font-size: 1.8rem;">📈</div>
+        <div class="n" style="font-size: 1.1rem;">可落地性</div>
+        <div class="l" style="font-size: 0.85rem;">已有技术预研基础，分期实施路径清晰，风险可控</div>
+      </div>
+    </div>
+
+    <!-- Summary Text -->
+    <div class="card" style="margin-bottom: 24px;">
+      <h4 style="font-size: 1.05rem; color: var(--primary-dark); margin-bottom: 12px;">📋 项目综合评价</h4>
+      <div style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.8;">
+        <p style="margin-bottom: 12px;">
+          <strong>【六脉】智能运维数智平台研发项目</strong> 立足于当前 AI 技术浪潮和运维数字化转型的迫切需求，以多智能体协同技术为核心突破口，提出了一套完整的「运维中枢大脑 + 智能体客户端 + 智能体专家矩阵」的三层架构方案。
+        </p>
+        <p style="margin-bottom: 12px;">
+          项目从"技术预研 → 平台研发 → 工具对接 → 场景落地"形成了清晰的实施路径，充分考虑了安全风险、技术迭代、人员能力和算力资源等关键制约因素，并制定了切实可行的应对措施。特别是在安全层面采取"只分析不执行+人工确认"的原则，体现了对 AI 生产级应用的审慎态度。
+        </p>
+        <p>
+          建议联盟决策层从战略高度给予该项目充分支持，将其作为运维数字化转型的"一号工程"来推进。该项目不仅具有直接的运维效率提升价值，更重要的是为联盟构建自主可控的 AI 运维能力体系奠定坚实基础。
+        </p>
+      </div>
+    </div>
+
+    <!-- Outlook -->
+    <div class="card" style="background: var(--gradient-main); color: #fff; border: none;">
+      <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 12px;">🔭 未来展望</h4>
+      <div style="color: rgba(255,255,255,0.8); font-size: 0.92rem; line-height: 1.8;">
+        <p style="margin-bottom: 10px;">
+          <strong>短期（2026年）：</strong> 完成平台基础能力建设，聚焦故障取证与应急协同，在 3~5 个关键业务系统落地验证。
+        </p>
+        <p style="margin-bottom: 10px;">
+          <strong>中期（2027年）：</strong> 拓展至更多运维场景（变更管理、容量规划、成本优化等），构建行业级运维知识图谱，MTTR 降低 50% 以上。
+        </p>
+        <p>
+          <strong>长期（2028+）：</strong> 实现 L4 级别（高度自动化）智能运维，运维数字专家覆盖全部核心业务系统，形成可对外输出的 AIOps 解决方案。
+        </p>
+      </div>
+    </div>
+
+    <!-- Quote -->
+    <div class="quoteblock" style="margin-top: 28px;">
+      <p style="font-size: 1rem;">
+        "<strong>六脉</strong>者，贯通人机之经络，<br>
+        融智运于无形，化维艰于指掌。<br>
+        以 AI 之智，赋运维之能，成数智之道。"
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== FOOTER ==================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="brand">🔷 <span>六脉</span> · 智能运维数智平台</div>
+    <p>本报告由 AIOpsOS 报告生成专家自动生成 &nbsp;·&nbsp; 基于公司级创新申报材料 V2.0</p>
+    <p style="font-size: 0.75rem; margin-top: 6px;">© 2025 生产运维部 &nbsp;·&nbsp; 仅供内部评审使用</p>
+  </div>
+</footer>
+
+</body>
+</html>

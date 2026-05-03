@@ -10,12 +10,13 @@ Adapt this for your specific task by modifying:
 4. Hyperparameters (GRPOConfig)
 """
 
-import torch
 import re
+
+import torch
 from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig
-from trl import GRPOTrainer, GRPOConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import GRPOConfig, GRPOTrainer
 
 # ==================== CONFIGURATION ====================
 

@@ -1,6 +1,6 @@
 """Webhook receiver — public endpoint, no JWT auth."""
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import select
 
 from src.api.deps import DbSession
@@ -16,7 +16,7 @@ async def receive_webhook(endpoint_id: str, request: Request, db: DbSession):
         select(DataSource).where(
             DataSource.source_type == "webhook",
             DataSource.config["endpoint_id"].astext == endpoint_id,
-            DataSource.is_enabled == True,
+            DataSource.is_enabled,
         )
     )
     ds = result.scalar_one_or_none()
@@ -26,7 +26,7 @@ async def receive_webhook(endpoint_id: str, request: Request, db: DbSession):
     try:
         body = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
     headers = dict(request.headers)
     result = await process_webhook(ds, body, headers)

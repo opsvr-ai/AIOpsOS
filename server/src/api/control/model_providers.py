@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
 from src.api.deps import DbSession, get_current_user, require_admin, require_perm
-from src.models.user import User
-from src.core.model_factory import _build_model_from_provider
+from src.core.model_factory import _build_model_from_provider, invalidate_model_cache
 from src.models.model_provider import ModelProvider
+from src.models.user import User
 from src.schemas.model_provider import (
-    ModelProviderCreate, ModelProviderOut, ModelProviderTestResult, ModelProviderUpdate,
+    ModelProviderCreate,
+    ModelProviderOut,
+    ModelProviderTestResult,
+    ModelProviderUpdate,
 )
 
 router = APIRouter()
@@ -54,6 +57,7 @@ async def create_provider(
     db.add(provider)
     await db.commit()
     await db.refresh(provider)
+    invalidate_model_cache(provider.model_type)
     return provider
 
 
@@ -76,6 +80,7 @@ async def update_provider(
         setattr(provider, k, v)
     await db.commit()
     await db.refresh(provider)
+    invalidate_model_cache(provider.model_type)
     return provider
 
 
@@ -91,6 +96,7 @@ async def delete_provider(
         raise HTTPException(status_code=404, detail="not found")
     await db.delete(provider)
     await db.commit()
+    invalidate_model_cache(provider.model_type)
     return {"detail": "deleted"}
 
 
@@ -129,13 +135,14 @@ async def set_default(
     await _unset_defaults(db, provider.model_type)
     provider.is_default = True
     await db.commit()
+    invalidate_model_cache(provider.model_type)
     return {"detail": "set as default"}
 
 
 async def _unset_defaults(db: DbSession, model_type: str):
     result = await db.execute(
         select(ModelProvider).where(
-            ModelProvider.is_default == True, ModelProvider.model_type == model_type
+            ModelProvider.is_default, ModelProvider.model_type == model_type
         )
     )
     for p in result.scalars().all():

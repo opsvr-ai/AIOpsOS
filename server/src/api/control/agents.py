@@ -1,19 +1,33 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
-from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_admin, require_perm
+from src.api.deps import (
+    DbSession,
+    get_current_user,
+    get_optional_space_id,
+    require_perm,
+)
 from src.models.agent import (
-    Agent, AgentVersion, Scenario, Tool,
-    agent_channels, agent_sub_agents, agent_tools,
+    Agent,
+    AgentVersion,
+    Scenario,
+    Tool,
+    agent_sub_agents,
+    agent_tools,
 )
 from src.models.channel import NotificationChannel
 from src.schemas.agent import (
-    AgentCreate, AgentOut, AgentRollbackRequest, AgentUpdate, AgentVersionOut,
-    ScenarioCreate, ScenarioOut,
+    AgentCreate,
+    AgentOut,
+    AgentRollbackRequest,
+    AgentUpdate,
+    AgentVersionOut,
+    ScenarioCreate,
+    ScenarioOut,
 )
 from src.services.agent_sync import create_agent_version_snapshot
 
@@ -324,10 +338,14 @@ async def reload_agents(_=Depends(require_perm("agents", "update"))):
 async def seed_agents(db: DbSession, _=Depends(get_current_user)):
     from src.agent.deep_agent import (
         AI_OPS_SYSTEM_PROMPT,
-        KNOWLEDGE_SYSTEM_PROMPT, MONITOR_SYSTEM_PROMPT,
-        OPS_SYSTEM_PROMPT, ANALYSIS_SYSTEM_PROMPT,
-        MEMORY_SYSTEM_PROMPT, CMDB_SYSTEM_PROMPT,
-        SUBAGENTS, KNOWLEDGE_TOOLS,
+        ANALYSIS_SYSTEM_PROMPT,
+        CMDB_SYSTEM_PROMPT,
+        KNOWLEDGE_SYSTEM_PROMPT,
+        KNOWLEDGE_TOOLS,
+        MEMORY_SYSTEM_PROMPT,
+        MONITOR_SYSTEM_PROMPT,
+        OPS_SYSTEM_PROMPT,
+        SUBAGENTS,
     )
 
     created = 0

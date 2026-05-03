@@ -3,18 +3,18 @@ from src.models.alert import Alert
 from src.models.assistant import PersonalAssistantConfig
 from src.models.base import Base
 from src.models.channel import AgentProfile, NotificationChannel, SystemConfig
-from src.models.model_provider import ModelProvider
-from src.models.report import Report
+from src.models.cmdb import CmdbEdge, CmdbMappingRule, CmdbNode, CmdbReviewItem, CmdbSyncLog
 from src.models.cron_job import CronJob
 from src.models.datasource import DataSource
 from src.models.feedback import Feedback
 from src.models.ingestion_log import IngestionLog
-from src.models.cmdb import CmdbEdge, CmdbMappingRule, CmdbNode, CmdbReviewItem, CmdbSyncLog
 from src.models.itsm import ItsmTicket
 from src.models.knowledge import AgentMemory, KnowledgeChunk, KnowledgeDocument
 from src.models.log import LogEvent
+from src.models.model_provider import ModelProvider
 from src.models.notification import Notification
-from src.models.schedule import Schedule, ScheduleExecution, SceneTrigger
+from src.models.report import Report
+from src.models.schedule import SceneTrigger, Schedule, ScheduleExecution
 from src.models.session import Memory, Message, Session, SessionFile
 from src.models.space import Space, SpaceInvitation, SpaceJoinRequest, SpaceMember
 from src.models.task import Task

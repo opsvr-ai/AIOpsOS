@@ -6,12 +6,13 @@ Usage:
 """
 
 import logging
+
 from src.services.channels.base import NotificationChannelBase, NotificationPayload
-from src.services.channels.dingtalk import DingTalkChannel
-from src.services.channels.wecom import WeComChannel
-from src.services.channels.webhook_channel import WebhookChannel
-from src.services.channels.email import EmailChannel
 from src.services.channels.custom_api import CustomApiChannel
+from src.services.channels.dingtalk import DingTalkChannel
+from src.services.channels.email import EmailChannel
+from src.services.channels.webhook_channel import WebhookChannel
+from src.services.channels.wecom import WeComChannel
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +87,16 @@ class ChannelManager:
         alert_id: str | None = None,
     ) -> dict[str, bool]:
         """Send notification to all active channels in the database."""
+        from sqlalchemy import select
+
         from src.models.base import async_session_factory
         from src.models.channel import NotificationChannel
-        from sqlalchemy import select
 
         results: dict[str, bool] = {}
         try:
             async with async_session_factory() as db:
                 result = await db.execute(
-                    select(NotificationChannel).where(NotificationChannel.is_active == True)
+                    select(NotificationChannel).where(NotificationChannel.is_active)
                 )
                 channels = result.scalars().all()
                 for ch in channels:

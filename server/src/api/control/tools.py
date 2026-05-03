@@ -4,11 +4,11 @@ import io
 import logging
 import re
 import shutil
-import tempfile
+import uuid
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
@@ -20,8 +20,8 @@ from src.schemas.agent import (
     ConsistencySummary,
     MCPServerCreate,
     MCPServerOut,
+    MCPServerUpdate,
     SkillDirectoryCreate,
-    SkillFileNode,
     SkillFileWriteRequest,
     SkillGenerateRequest,
     SkillRollbackRequest,
@@ -29,11 +29,10 @@ from src.schemas.agent import (
     SkillUploadResult,
     SkillValidationResult,
     SkillVersionOut,
-    SyncAction,
+    SyncDiffItem,
     SyncExecuteOut,
     SyncExecuteRequest,
     SyncScanOut,
-    SyncDiffItem,
     ToolConsistencyOut,
     ToolCreate,
     ToolListOut,
@@ -41,11 +40,9 @@ from src.schemas.agent import (
     ToolSearchParams,
     ToolUpdate,
 )
-from src.services.tool_manager import tool_manager
 from src.services.skill_sync import (
     SKILLS_DIR,
     check_tool_consistency,
-    compute_content_hash,
     create_default_skill_dirs,
     create_skill_subdir,
     create_version_snapshot,
@@ -55,11 +52,11 @@ from src.services.skill_sync import (
     remove_skill_file,
     store_file_hash,
     sync_from_filesystem,
-    sync_tool_to_filesystem,
     validate_skill_protocol,
     write_skill_file,
     write_skill_file_content,
 )
+from src.services.tool_manager import tool_manager
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +88,7 @@ async def list_tools(
     _=Depends(get_current_user),
     space_id: str | None = Depends(get_optional_space_id),
 ):
-    from sqlalchemy import or_
+    from sqlalchemy import not_, or_
 
     base_query = select(Tool)
     if params.type:
@@ -109,9 +106,9 @@ async def list_tools(
             or_(Tool.space_id == space_id, Tool.space_id.is_(None))
         )
     if params.status == "active":
-        base_query = base_query.where(Tool.is_active == True)
+        base_query = base_query.where(Tool.is_active)
     elif params.status == "inactive":
-        base_query = base_query.where(Tool.is_active == False)
+        base_query = base_query.where(not_(Tool.is_active))
 
     from sqlalchemy import func
 
@@ -123,7 +120,7 @@ async def list_tools(
         for t in all_tools:
             vr = validate_skill_protocol(t.name)
             t.is_valid = vr["valid"]
-        invalid_tools = [t for t in all_tools if t.is_valid is False]
+        invalid_tools = [t for t in all_tools if not t.is_valid]
         total = len(invalid_tools)
         start = (params.page - 1) * params.page_size
         tools = invalid_tools[start:start + params.page_size]
@@ -194,7 +191,7 @@ async def check_consistency(
         tools = list(result.scalars().all())
 
     results = [check_tool_consistency(t) for t in tools]
-    inconsistent = sum(1 for r in results if r["is_consistent"] is False)
+    inconsistent = sum(1 for r in results if not r["is_consistent"])
     return BatchConsistencyOut(
         tools=[ToolConsistencyOut(**r) for r in results],
         inconsistent_count=inconsistent,
@@ -284,13 +281,13 @@ async def update_tool(
 
     if tool.is_builtin:
         data = body.model_dump(exclude_unset=True)
-        if data.get("is_active") is False:
+        if not data.get("is_active", True):
             raise HTTPException(status_code=403, detail="Built-in tools cannot be deactivated")
         if any(k in data for k in ("name", "description", "config")):
             raise HTTPException(status_code=403, detail="Built-in tools cannot be modified")
 
     # Validate before enabling a skill
-    if tool.type == "skill" and body.is_active is True and not tool.is_active:
+    if tool.type == "skill" and body.is_active and not tool.is_active:
         vr = validate_skill_protocol(tool.name)
         if not vr["valid"]:
             raise HTTPException(status_code=422, detail=f"Validation failed: {'; '.join(vr['errors'])}")
@@ -475,6 +472,9 @@ def _validate_zip_skill(zf: zipfile.ZipFile, filename: str) -> tuple[str | None,
     return skill_name, "ok", ""
 
 
+MAX_SKILL_ZIP_SIZE = 10 * 1024 * 1024  # 10MB per zip
+MAX_SKILL_FILE_SIZE = 5 * 1024 * 1024  # 5MB per file
+
 @router.post("/tools/upload", response_model=SkillUploadResponse)
 async def upload_skills(
     db: DbSession,
@@ -482,6 +482,10 @@ async def upload_skills(
     _=Depends(require_perm("tools", "create")),
 ):
     """Upload skill zip files. Each zip must contain a skill directory with SKILL.md."""
+    for f in files:
+        if f.size and f.size > MAX_SKILL_ZIP_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large: {f.filename} (max 10MB)")
+
     results: list[SkillUploadResult] = []
     created = updated = skipped = errors = 0
 
@@ -789,7 +793,7 @@ async def get_skill_file_content(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"File not found: {path}")
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.put("/tools/{tool_id}/files/content")
@@ -813,7 +817,7 @@ async def write_skill_file_endpoint(
         await db.refresh(tool)
         return {"path": body.path, "status": "ok"}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/tools/{tool_id}/files/directory")
@@ -827,7 +831,7 @@ async def create_skill_directory_endpoint(
         create_skill_subdir(tool.name, body.path)
         return {"path": body.path, "status": "created"}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.delete("/tools/{tool_id}/files")
@@ -862,6 +866,8 @@ async def upload_skill_files(
     tool = await _get_skill_tool(tool_id, db)
     results: list[dict] = []
     for f in files:
+        if f.size and f.size > MAX_SKILL_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large: {f.filename} (max 5MB)")
         if not f.filename:
             continue
         try:
@@ -945,7 +951,7 @@ async def ai_generate_skill(
     body: SkillGenerateRequest, _=Depends(require_perm("tools", "create")),
 ):
     """Generate a complete SKILL.md using AI based on name and description."""
-    from langchain_core.messages import SystemMessage, HumanMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     prompt = AI_SKILL_GEN_PROMPT.format(
         name=body.name,
@@ -1246,3 +1252,35 @@ async def create_mcp_server(
     await db.commit()
     await db.refresh(server)
     return server
+
+
+@router.put("/mcp-servers/{server_id}", response_model=MCPServerOut)
+async def update_mcp_server(
+    server_id: uuid.UUID,
+    body: MCPServerUpdate,
+    db: DbSession,
+    _=Depends(require_perm("tools", "update")),
+):
+    server = await db.get(MCPServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    update_data = body.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(server, key, value)
+    await db.commit()
+    await db.refresh(server)
+    return server
+
+
+@router.delete("/mcp-servers/{server_id}", status_code=204)
+async def delete_mcp_server(
+    server_id: uuid.UUID,
+    db: DbSession,
+    _=Depends(require_perm("tools", "delete")),
+):
+    server = await db.get(MCPServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    await db.delete(server)
+    await db.commit()
+    return None

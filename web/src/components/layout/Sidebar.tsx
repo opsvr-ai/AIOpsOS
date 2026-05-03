@@ -4,6 +4,7 @@ import { Layout, Menu, theme, Button } from 'antd';
 import { StarOutlined } from '@ant-design/icons';
 import MyAssistantDrawer from '@/features/assistant/MyAssistantDrawer';
 import {
+  ProfileOutlined,
   DashboardOutlined,
   MessageOutlined,
   AlertOutlined,
@@ -14,6 +15,7 @@ import {
   BookOutlined,
   SendOutlined,
   TeamOutlined,
+  UserOutlined,
   SettingOutlined,
   AppstoreOutlined,
   ClockCircleOutlined,
@@ -23,8 +25,11 @@ import {
   MoonOutlined,
   SafetyCertificateOutlined,
   FileTextOutlined,
+  PieChartOutlined,
+  ReadOutlined,
   ApiOutlined,
   DatabaseOutlined,
+  FolderOutlined,
 } from '@ant-design/icons';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -44,8 +49,9 @@ const baseMenuItems = [
       { key: '/ops/automation', icon: <ThunderboltOutlined />, label: '自动化' },
       { key: '/ops/cmdb', icon: <HddOutlined />, label: 'CMDB' },
       { key: '/ops/logs', icon: <FileTextOutlined />, label: '日志检索' },
-      { key: '/ops/itsm', icon: <MessageOutlined />, label: 'ITSM' },
-      { key: '/ops/reports', icon: <FileTextOutlined />, label: '报告' },
+      { key: '/ops/itsm', icon: <ProfileOutlined />, label: 'ITSM' },
+      { key: '/ops/reports', icon: <PieChartOutlined />, label: '分析报告' },
+      { key: '/ops/cron', icon: <ClockCircleOutlined />, label: '定时任务' },
     ],
   },
   {
@@ -56,9 +62,8 @@ const baseMenuItems = [
       { key: '/ai/agents', icon: <RobotOutlined />, label: '智能体' },
       { key: '/ai/tools', icon: <ToolOutlined />, label: '工具市场' },
       { key: '/ai/knowledge', icon: <BookOutlined />, label: '知识库' },
-      { key: '/ai/cron', icon: <ClockCircleOutlined />, label: '定时任务' },
       { key: '/ai/sleep', icon: <MoonOutlined />, label: '睡眠管理' },
-      { key: '/ai/memory', icon: <HddOutlined />, label: '记忆管理' },
+      { key: '/ai/memory', icon: <FolderOutlined />, label: '记忆管理' },
       { key: 'assistant', icon: <StarOutlined />, label: '我的助理' },
     ],
   },
@@ -74,9 +79,9 @@ const adminMenuItems = [
       { key: '/control/channels', icon: <SendOutlined />, label: '消息渠道' },
       { key: '/control/model-providers', icon: <ApiOutlined />, label: '模型配置' },
       { key: '/control/permissions', icon: <SafetyCertificateOutlined />, label: '权限矩阵' },
-      { key: '/control/users', icon: <TeamOutlined />, label: '用户管理' },
+      { key: '/control/users', icon: <UserOutlined />, label: '用户管理' },
       { key: '/control/system', icon: <SettingOutlined />, label: '系统管理' },
-      { key: '/control/logs', icon: <FileTextOutlined />, label: '日志查看' },
+      { key: '/control/logs', icon: <ReadOutlined />, label: '日志查看' },
     ],
   },
 ];
@@ -90,11 +95,26 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
 
-  const selectedKeys = [location.pathname === '/' ? '/ops' : location.pathname];
+  const menuItems = isAdmin ? [...baseMenuItems, ...adminMenuItems] : baseMenuItems;
+
+  // Build keys list for nested route matching: /ops/reports/123 → /ops/reports
+  const pathCandidates: string[] = [];
+  const segments = location.pathname.split('/').filter(Boolean);
+  for (let i = segments.length; i >= 1; i--) {
+    pathCandidates.push('/' + segments.slice(0, i).join('/'));
+  }
+  const allMenuKeys = new Set<string>();
+  const walk = (items: any[]) => {
+    for (const item of items) {
+      if (typeof item?.key === 'string') allMenuKeys.add(item.key);
+      if (Array.isArray(item?.children)) walk(item.children);
+    }
+  };
+  walk(menuItems);
+  const bestMatch = pathCandidates.find((k) => allMenuKeys.has(k));
+  const selectedKeys = [location.pathname === '/' ? '/ops' : bestMatch || location.pathname];
   const section = location.pathname.split('/')[1] || 'ops';
   const openKey = section + '-group';
-
-  const menuItems = isAdmin ? [...baseMenuItems, ...adminMenuItems] : baseMenuItems;
 
   return (
     <Layout.Sider

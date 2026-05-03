@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.sql import text
 
 from src.agent.sub_agents.base import BaseSubAgent
@@ -95,7 +95,7 @@ class OpsAgent(BaseSubAgent):
             parts.append(f"Scheduled tasks: {count or 0}")
 
             active = await db.scalar(
-                select(func.count(Schedule.id)).where(Schedule.is_active == True)
+                select(func.count(Schedule.id)).where(Schedule.is_active)
             )
             parts.append(f"  Active: {active or 0}")
 

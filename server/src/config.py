@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     kb_monitor_enabled: bool = True
     kb_monitor_poll_interval: int = 30  # seconds between filesystem scans
     kb_monitor_model: str = "deepseek-v4-flash"
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
     log_dir: str = "data/logs"
     log_format: str = "text"
     log_retention_days: int = 30

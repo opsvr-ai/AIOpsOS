@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Select, theme } from 'antd';
-import { PlusOutlined, TeamOutlined } from '@ant-design/icons';
+import { Button, Select, Space, theme, Typography } from 'antd';
+import { PlusOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useSpaceStore } from '@/stores/spaceStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -22,6 +22,7 @@ export default function SpaceSelector() {
   const defaultSpaceId = useAuthStore((s) => s.user?.default_space_id);
   const [spaces, setSpaces] = useState<SpaceItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetchSpaces();
@@ -29,6 +30,7 @@ export default function SpaceSelector() {
 
   const fetchSpaces = async () => {
     setLoading(true);
+    setError(false);
     try {
       const res = await api.get('/spaces');
       const data: SpaceItem[] = res.data ?? [];
@@ -42,7 +44,7 @@ export default function SpaceSelector() {
         });
       }
     } catch {
-      /* ignore */
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -59,6 +61,34 @@ export default function SpaceSelector() {
     }
   };
 
+  const seenIds = new Set(spaces.map((s) => s.id));
+  const optionItems = [
+    ...(currentSpace && !seenIds.has(currentSpace.id)
+      ? [{ value: currentSpace.id, label: currentSpace.name }]
+      : []),
+    ...spaces.map((s) => ({ value: s.id, label: s.name })),
+    { value: '__manage__', label: '管理空间' },
+  ];
+
+  if (error) {
+    return (
+      <Space size={4}>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          加载失败
+        </Typography.Text>
+        <Button
+          type="link"
+          size="small"
+          icon={<ReloadOutlined />}
+          onClick={fetchSpaces}
+          style={{ padding: 0, fontSize: 12 }}
+        >
+          重试
+        </Button>
+      </Space>
+    );
+  }
+
   return (
     <Select
       value={currentSpace?.id ?? undefined}
@@ -69,26 +99,23 @@ export default function SpaceSelector() {
       size="small"
       variant="borderless"
       dropdownStyle={{ minWidth: 200 }}
-      options={[
-        ...spaces.map((s) => ({
-          value: s.id,
-          label: (
-            <span>
-              <TeamOutlined style={{ marginRight: 6, color: token.colorTextTertiary }} />
-              {s.name}
-            </span>
-          ),
-        })),
-        {
-          value: '__manage__',
-          label: (
+      options={optionItems}
+      optionRender={(option) => {
+        if (option.value === '__manage__') {
+          return (
             <span style={{ color: token.colorPrimary }}>
               <PlusOutlined style={{ marginRight: 6 }} />
               管理空间
             </span>
-          ),
-        },
-      ]}
+          );
+        }
+        return (
+          <span>
+            <TeamOutlined style={{ marginRight: 6, color: token.colorTextTertiary }} />
+            {option.label}
+          </span>
+        );
+      }}
     />
   );
 }

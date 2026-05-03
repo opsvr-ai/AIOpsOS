@@ -17,6 +17,7 @@ from src.api.execution.notifications import router as notification_router
 from src.api.execution.router import router as execution_router
 from src.api.execution.tasks import router as tasks_router
 from src.api.execution.webhooks import router as webhook_router
+from src.api.execution.workflow import workflow_router
 from src.api.public import router as public_router
 from src.config import settings
 from src.core.logging import setup_logging
@@ -173,7 +174,12 @@ async def _auto_seed_agents() -> None:
 
 
 async def _init_database(app: FastAPI) -> bool:
-    """Create tables, run seeds, auto-migrate. Returns True on success."""
+    """Create tables and run seeds. Returns True on success.
+
+    Only DB-creation and seed are essential. Everything else (tool reload,
+    skill sync, agent pre-warm) happens in _init_optional() so a single
+    non-essential failure does not block background services.
+    """
     import src.models  # noqa: F401 — ensure all ORM models are registered with Base.metadata
 
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -188,16 +194,30 @@ async def _init_database(app: FastAPI) -> bool:
     from scripts.seed import seed as run_seed
     await run_seed()
 
+    return True
+
+
+async def _init_optional() -> None:
+    """Non-essential init: tool reload, skill sync, agent seeding, pre-warm.
+
+    Each step is independently try/except'd so one failure does not cascade.
+    """
     from src.services.tool_manager import tool_manager
     await tool_manager.reload()
 
     from src.services.skill_sync import auto_register_filesystem_skills
-    registered = await auto_register_filesystem_skills()
-    if registered:
-        logger.info("Auto-registered %d filesystem skills as DB tools", registered)
-        await tool_manager.reload()
+    try:
+        registered = await auto_register_filesystem_skills()
+        if registered:
+            logger.info("Auto-registered %d filesystem skills as DB tools", registered)
+            await tool_manager.reload()
+    except Exception:
+        logger.exception("Skill sync failed (non-fatal)")
 
-    await _auto_seed_agents()
+    try:
+        await _auto_seed_agents()
+    except Exception:
+        logger.exception("Agent auto-seed failed (non-fatal)")
 
     try:
         from src.agent.deep_agent import get_deep_agent
@@ -205,8 +225,6 @@ async def _init_database(app: FastAPI) -> bool:
         logger.info("Agent pre-warmed successfully")
     except Exception:
         logger.exception("Agent pre-warm failed (non-fatal)")
-
-    return True
 
 
 async def _start_background_services(app: FastAPI):
@@ -221,15 +239,16 @@ async def _start_background_services(app: FastAPI):
     # Auto-start WeCom WebSocket monitors for active bot_websocket channels
     try:
         from sqlalchemy import select
-        from src.models.channel import NotificationChannel
+
         from src.models.base import async_session_factory
+        from src.models.channel import NotificationChannel
         from src.services.channels.wecom.agent_bridge import handle_wecom_message
         from src.services.channels.wecom.monitor import start_monitor
 
         async with async_session_factory() as db:
             result = await db.execute(
                 select(NotificationChannel).where(
-                    NotificationChannel.is_active == True,
+                    NotificationChannel.is_active,
                     NotificationChannel.channel_type == "wecom",
                 )
             )
@@ -268,13 +287,13 @@ async def _start_background_services(app: FastAPI):
 
     # Auto-register WeCom webhook callback routes for channels with callback config
     try:
-        from src.services.channels.wecom.webhook_handler import create_webhook_router
         from src.services.channels.wecom.agent_bridge import handle_wecom_message
+        from src.services.channels.wecom.webhook_handler import create_webhook_router
 
         async with async_session_factory() as db:
             result = await db.execute(
                 select(NotificationChannel).where(
-                    NotificationChannel.is_active == True,
+                    NotificationChannel.is_active,
                     NotificationChannel.channel_type == "wecom",
                 )
             )
@@ -297,7 +316,7 @@ async def _start_background_services(app: FastAPI):
                     )
                     if reply_text:
                         return {"msgtype": "markdown", "markdown": {"content": reply_text}}
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "[wecom-webhook] agent reply timed out for chatid=%s (limit=%.1fs)",
                         parsed_msg.chatid, _cfg.get("webhook_timeout", 4.0),
@@ -397,7 +416,14 @@ async def lifespan(app: FastAPI):
     if not db_ok:
         logger.warning("DB init failed after retries; background services will not start")
 
-    # Start background services independently of DB init success
+    # Non-essential init runs independently — failures do not block services
+    if db_ok:
+        try:
+            await _init_optional()
+        except Exception:
+            logger.exception("Optional init failed (non-fatal)")
+
+    # Start background services if DB is available
     if db_ok:
         await _start_background_services(app)
 
@@ -444,6 +470,7 @@ app.include_router(notification_router)
 app.include_router(tasks_router)
 app.include_router(log_search_router)
 app.include_router(itsm_search_router)
+app.include_router(workflow_router)
 app.include_router(public_router)
 
 

@@ -53,11 +53,9 @@ async def list_memories(
                 from src.models.base import async_session_factory
 
                 async with async_session_factory() as db:
-                    for sid in sids:
-                        row = await db.execute(select(Session).where(Session.id == sid))
-                        s = row.scalar_one_or_none()
-                        if s:
-                            session_titles[sid] = s.title or ""
+                    row = await db.execute(select(Session).where(Session.id.in_(sids)))
+                    for s in row.scalars().all():
+                        session_titles[str(s.id)] = s.title or ""
             except Exception:
                 logger.exception("Failed to resolve session titles for memories")
 
@@ -76,9 +74,10 @@ async def list_tags(
     user=Depends(get_current_user),
 ):
     """List all tags with their occurrence counts."""
+    from sqlalchemy import func
+
     from src.models.base import async_session_factory
     from src.models.knowledge import AgentMemory
-    from sqlalchemy import func
 
     async with async_session_factory() as db:
         query = select(
@@ -252,11 +251,9 @@ async def get_related_memories(
     sids = {str(r.session_id) for r in related if r.session_id}
     if sids:
         async with async_session_factory() as db:
-            for sid in sids:
-                row = await db.execute(select(Session).where(Session.id == sid))
-                s = row.scalar_one_or_none()
-                if s:
-                    session_titles[sid] = s.title or ""
+            rows = await db.execute(select(Session).where(Session.id.in_(sids)))
+            for s in rows.scalars().all():
+                session_titles[str(s.id)] = s.title or ""
 
     return [
         {
@@ -307,10 +304,8 @@ async def backfill_memories(
     then runs LLM-based dual-scope extraction on each. Returns counts
     of sessions processed and memories created.
     """
-    from langchain_openai import ChatOpenAI
-    from src.config import settings
     from src.models.base import async_session_factory
-    from src.models.session import Session, Message
+    from src.models.session import Session
 
     async with async_session_factory() as db:
         # Find sessions with messages but no memories

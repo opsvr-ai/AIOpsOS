@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
-from src.api.deps import CurrentUser, DbSession, require_perm
+from src.api.deps import DbSession, require_perm
 from src.models.channel import SystemConfig
-from src.services.ldap_service import test_ldap_connection, sync_ldap_users
+from src.services.ldap_service import sync_ldap_users, test_ldap_connection
 
 router = APIRouter()
 

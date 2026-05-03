@@ -33,7 +33,7 @@ class Interrupt:
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
             return self.response
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
 
     def resolve(self, response: dict[str, Any]) -> None:

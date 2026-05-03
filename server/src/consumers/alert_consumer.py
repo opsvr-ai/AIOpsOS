@@ -3,8 +3,6 @@
 import asyncio
 import json
 import logging
-import signal
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -135,8 +133,8 @@ class AlertConsumer:
 async def _auto_analyze(alert_id: str):
     """Trigger-based auto-analysis for a newly ingested alert."""
     from src.models.base import async_session_factory
-    from src.services.trigger_engine import match_triggers
     from src.services.alert_analyzer import analyze
+    from src.services.trigger_engine import match_triggers
 
     async with async_session_factory() as db:
         result = await db.execute(select(Alert).where(Alert.id == alert_id))

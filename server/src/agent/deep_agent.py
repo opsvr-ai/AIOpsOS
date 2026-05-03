@@ -13,30 +13,26 @@ Provides:
 - Skill management tools (skill_manage, skill_patch)
 """
 
+import asyncio
 import contextvars
 import logging
 from pathlib import Path
 from typing import Any
 
-from langchain_core.messages import AIMessage
+from deepagents import SubAgent, create_deep_agent
+from deepagents.backends import LocalShellBackend
 from langchain_core.language_models import LanguageModelInput
+from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph
 
-from deepagents import SubAgent, create_deep_agent
-from deepagents.backends import LocalShellBackend
-
 from src.agent.context import (
     get_current_space,
     get_current_user,
-    set_current_space,
-    set_current_user,
 )
-from src.config import settings
 from src.agent.human_interrupt import (
-    HumanInterruptException,
     _request_approval,
     _request_input,
 )
@@ -100,7 +96,17 @@ def build_user_context_message() -> str:
 # Module-level cache for DeepSeek reasoning_content preservation.
 # Pydantic models intercept class attribute access, so we use a module dict
 # instead of a class-level dict for caching reasoning_content by tool_call_id.
-_rc_cache: dict[str, str] = {}
+# Capped at 2000 entries to prevent unbounded growth over long-running processes.
+import collections as _collections
+_rc_cache: _collections.OrderedDict[str, str] = _collections.OrderedDict()
+_RC_CACHE_MAX: int = 2000
+_rc_accumulated: str = ""
+
+
+def _rc_cache_set(key: str, value: str) -> None:
+    if len(_rc_cache) >= _RC_CACHE_MAX:
+        _rc_cache.popitem(last=False)
+    _rc_cache[key] = value
 
 
 class DeepSeekChatOpenAI(ChatOpenAI):
@@ -133,12 +139,12 @@ class DeepSeekChatOpenAI(ChatOpenAI):
             delta = choices[0].get("delta", {})
             rc_chunk = delta.get("reasoning_content")
             if rc_chunk:
-                _rc_cache.setdefault("_accumulated", "")
-                _rc_cache["_accumulated"] += rc_chunk
+                global _rc_accumulated
+                _rc_accumulated += rc_chunk
             for tc in (delta.get("tool_calls") or []):
                 tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", "")
-                if tc_id and "_accumulated" in _rc_cache:
-                    _rc_cache[tc_id] = _rc_cache["_accumulated"]
+                if tc_id and _rc_accumulated:
+                    _rc_cache_set(tc_id, _rc_accumulated)
         return result
 
     def _create_chat_result(
@@ -162,7 +168,7 @@ class DeepSeekChatOpenAI(ChatOpenAI):
                     msg.additional_kwargs["reasoning_content"] = rc
                     for tc in (msg.tool_calls or []):
                         tc_id = tc["id"] if isinstance(tc, dict) else tc.id
-                        _rc_cache[tc_id] = rc
+                        _rc_cache_set(tc_id, rc)
 
         return result
 
@@ -195,7 +201,7 @@ class DeepSeekChatOpenAI(ChatOpenAI):
             else:
                 if tool_calls:
                     # Fallback: use most recent accumulated rc
-                    fallback_rc = _rc_cache.get("_accumulated")
+                    fallback_rc = _rc_accumulated
                     if fallback_rc:
                         msg_dict["reasoning_content"] = fallback_rc
 
@@ -324,16 +330,15 @@ KNOWLEDGE_TOOLS = [
 async def _list_cron_jobs() -> str:
     """List all cron jobs with basic status from the database."""
     import json as _json
-    from datetime import datetime, timezone
+
+    from sqlalchemy import select
 
     from src.models.base import async_session_factory
     from src.models.cron_job import CronJob
-    from sqlalchemy import select
 
     async with async_session_factory() as _db:
         result = await _db.execute(select(CronJob).order_by(CronJob.created_at.desc()))
         jobs = result.scalars().all()
-        now = datetime.now(timezone.utc)
         data = []
         for j in jobs:
             last_output_summary = None
@@ -361,9 +366,10 @@ async def _get_cron_job_detail(query: str) -> str:
     """Get full detail for a single cron job by name (fuzzy match) or exact ID."""
     import json as _json
 
+    from sqlalchemy import select
+
     from src.models.base import async_session_factory
     from src.models.cron_job import CronJob
-    from sqlalchemy import select
 
     async with async_session_factory() as _db:
         # Try exact ID match first
@@ -407,7 +413,6 @@ async def _get_cron_job_detail(query: str) -> str:
 async def _list_cron_outputs(job_id: str = "") -> str:
     """List execution output files from data/cron_output/ directory, optionally filtered by job_id."""
     import json as _json
-    import os
     from pathlib import Path
 
     project_root = Path(__file__).resolve().parent.parent.parent
@@ -480,13 +485,14 @@ def _build_send_channel_message_tool(channels: list | None = None) -> Structured
 
         resolved = list(channels) if channels else []
         if not resolved:
+            from sqlalchemy import select
+
             from src.models.base import async_session_factory
             from src.models.channel import NotificationChannel
-            from sqlalchemy import select
 
             async with async_session_factory() as _db:
                 result = await _db.execute(
-                    select(NotificationChannel).where(NotificationChannel.is_active == True)
+                    select(NotificationChannel).where(NotificationChannel.is_active)
                 )
                 resolved = result.scalars().all()
 
@@ -1165,15 +1171,16 @@ async def _build_hardcoded_agent() -> CompiledStateGraph:
 
 
 async def build_deep_agent_from_db() -> CompiledStateGraph:
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
     from src.models.agent import Agent
     from src.models.base import async_session_factory
-    from sqlalchemy.orm import selectinload
-    from sqlalchemy import select
 
     async with async_session_factory() as db:
         result = await db.execute(
             select(Agent)
-            .where(Agent.type == "main", Agent.is_active == True)
+            .where(Agent.type == "main", Agent.is_active)
             .options(
                 selectinload(Agent.tools),
                 selectinload(Agent.sub_agents).selectinload(Agent.tools),
@@ -1285,6 +1292,7 @@ async def build_deep_agent_from_db() -> CompiledStateGraph:
 # Lazy singletons
 _deep_agent: CompiledStateGraph | None = None
 _agent_initialized: bool = False
+_agent_lock = asyncio.Lock()
 
 
 def _compute_capability_tags(agent_name: str, system_prompt: str) -> list[str]:
@@ -1322,21 +1330,24 @@ async def get_deep_agent() -> CompiledStateGraph:
     global _deep_agent, _agent_initialized
     if _deep_agent is not None:
         return _deep_agent
-    if not _agent_initialized:
-        _agent_initialized = True
-        try:
-            _deep_agent = await build_deep_agent_from_db()
-            logger.info("Agent loaded from database")
-        except Exception:
-            logger.warning("Failed to load agent from DB, using hardcoded defaults")
+    async with _agent_lock:
+        if _deep_agent is not None:
+            return _deep_agent
+        if not _agent_initialized:
+            _agent_initialized = True
             try:
-                _deep_agent = await _build_hardcoded_agent()
+                _deep_agent = await build_deep_agent_from_db()
+                logger.info("Agent loaded from database")
             except Exception:
-                logger.error("Failed to build hardcoded agent (will retry on next request)")
-                _agent_initialized = False
-    if _deep_agent is None:
-        raise RuntimeError("Agent not initialized — check model provider configuration")
-    return _deep_agent
+                logger.warning("Failed to load agent from DB, using hardcoded defaults")
+                try:
+                    _deep_agent = await _build_hardcoded_agent()
+                except Exception:
+                    logger.error("Failed to build hardcoded agent (will retry on next request)")
+                    _agent_initialized = False
+        if _deep_agent is None:
+            raise RuntimeError("Agent not initialized — check model provider configuration")
+        return _deep_agent
 
 
 async def reload_deep_agent() -> CompiledStateGraph:

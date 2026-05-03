@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潍坊市未来3天天气分析报告 | 2026年5月3日~5月5日</title>
+<style>
+/* ===== CSS Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f0f6ff;
+  --bg-alt: #e8f0fe;
+  --fg: #1a2332;
+  --fg-secondary: #5a6e87;
+  --accent: #1a6bb5;
+  --accent-light: #d4e4ff;
+  --accent-dark: #0d4a8a;
+  --border: #c8d8e8;
+  --card-bg: #ffffff;
+  --card-shadow: 0 2px 12px rgba(26, 107, 181, 0.08);
+  --critical: #dc2626;
+  --warning: #e6a817;
+  --success: #16a34a;
+  --info: #2563eb;
+  --font-heading: 'Georgia', 'Noto Serif SC', serif;
+  --font-body: -apple-system, 'Noto Sans SC', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --transition: all 0.2s ease;
+}
+
+/* ===== Weather-specific accent ===== */
+[data-theme="weather"] {
+  --accent: #1a6bb5;
+  --accent-light: #d4e4ff;
+  --accent-dark: #0d4a8a;
+  --bg: #f0f6ff;
+  --bg-alt: #e8f0fe;
+  --border: #c8d8e8;
+  --card-shadow: 0 2px 16px rgba(26, 107, 181, 0.10);
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Layout ===== */
+.report-container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.report-header {
+  background: linear-gradient(135deg, #1a6bb5 0%, #2b8cd9 40%, #5ba8e8 100%);
+  border-radius: var(--radius);
+  padding: 40px 48px 36px;
+  margin-bottom: 32px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+.report-header::before {
+  content: '🌤';
+  position: absolute;
+  right: 32px;
+  top: 24px;
+  font-size: 72px;
+  opacity: 0.2;
+  transform: rotate(15deg);
+}
+.report-header::after {
+  content: '';
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.report-header h1 {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+.report-header .subtitle {
+  font-size: 15px;
+  opacity: 0.85;
+  margin-bottom: 16px;
+}
+.report-header .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 32px;
+  font-size: 13px;
+  opacity: 0.78;
+}
+.report-header .meta span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.report-body { margin-bottom: 32px; }
+
+.report-footer {
+  text-align: center;
+  padding: 24px 16px 8px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-secondary);
+  font-size: 13px;
+}
+
+/* ===== Typography ===== */
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 700;
+  margin: 36px 0 20px;
+  padding-left: 16px;
+  border-left: 4px solid var(--accent);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title .emoji { font-size: 24px; }
+
+h2 { font-family: var(--font-heading); font-size: 20px; margin: 28px 0 16px; }
+h3 { font-size: 17px; margin: 20px 0 12px; color: var(--fg-secondary); }
+h4 { font-size: 15px; font-weight: 600; margin: 16px 0 8px; }
+
+/* ===== Stat Cards ===== */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  text-align: center;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+  transition: var(--transition);
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(26,107,181,0.12); }
+.stat-card .n {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.2;
+  font-family: var(--font-heading);
+}
+.stat-card .n .unit { font-size: 18px; font-weight: 400; opacity: 0.7; }
+.stat-card .l {
+  font-size: 13px;
+  color: var(--fg-secondary);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.stat-card.critical .n { color: var(--critical); }
+.stat-card.warning .n { color: var(--warning); }
+.stat-card.success .n { color: var(--success); }
+.stat-card.info .n { color: var(--info); }
+
+.stat-card-lg {
+  grid-column: span 2;
+}
+
+/* ===== Tags ===== */
+.tag-group { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
+}
+.tag.warning { background: #fff8e6; border-color: #f5d78e; color: #92400e; }
+.tag.success { background: #e6f7ed; border-color: #a3d9b1; color: #166534; }
+.tag.critical { background: #fde8e8; border-color: #f5a5a5; color: #991b1b; }
+.tag.info { background: var(--accent-light); border-color: #9bc1e8; color: #1a5a8a; }
+.tag.neutral { background: #f3f4f6; border-color: #d1d5db; color: #374151; }
+
+/* ===== Day Cards ===== */
+.day-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+.day-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border);
+  transition: var(--transition);
+}
+.day-card:hover { transform: translateY(-3px); box-shadow: 0 6px 24px rgba(26,107,181,0.12); }
+.day-card-head {
+  padding: 18px 20px 14px;
+  text-align: center;
+  position: relative;
+}
+.day-card-head.day-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+.day-card-head.day-2 { background: linear-gradient(135deg, #1a6bb5 0%, #42a5f5 100%); color: #fff; }
+.day-card-head.day-3 { background: linear-gradient(135deg, #e8852e 0%, #f5a623 100%); color: #fff; }
+.day-card-head .date-label {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.9;
+  margin-bottom: 2px;
+}
+.day-card-head .day-name {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.day-card-head .weather-icon-big {
+  font-size: 48px;
+  margin: 6px 0;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+.day-card-body {
+  padding: 16px 20px 20px;
+}
+.day-card-body .temp-range {
+  text-align: center;
+  margin-bottom: 12px;
+}
+.day-card-body .temp-range .high {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--warning);
+}
+.day-card-body .temp-range .low {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--info);
+  margin-left: 10px;
+}
+.day-card-body .temp-range .separator {
+  color: var(--border);
+  font-size: 24px;
+  margin: 0 4px;
+}
+.day-card-body .weather-summary {
+  font-size: 14px;
+  color: var(--fg-secondary);
+  line-height: 1.6;
+  text-align: center;
+}
+.day-card-body .weather-summary .weather-emoji { font-size: 20px; }
+.day-card-detail-row {
+  display: flex;
+  justify-content: space-around;
+  border-top: 1px solid var(--border);
+  padding: 10px 0 0;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+.day-card-detail-row span { text-align: center; }
+.day-card-detail-row .label { display: block; font-size: 11px; opacity: 0.7; }
+.day-card-detail-row .value { display: block; font-weight: 600; color: var(--fg); margin-top: 2px; }
+
+/* ===== Tables ===== */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 16px 0 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+thead th {
+  background: var(--accent);
+  color: #fff;
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+thead th:first-child { border-radius: var(--radius-sm) 0 0 0; }
+thead th:last-child { border-radius: 0 var(--radius-sm) 0 0; }
+
+tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) { background: var(--bg); }
+tbody tr:hover { background: var(--accent-light); }
+
+/* ===== Callout ===== */
+.callout {
+  padding: 16px 20px;
+  border-radius: var(--radius-sm);
+  margin: 16px 0 24px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--card-bg);
+  border-left: 4px solid var(--accent);
+  box-shadow: var(--card-shadow);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.callout .icon { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+.callout.warning { border-left-color: var(--warning); background: #fffdf5; }
+.callout.critical { border-left-color: var(--critical); background: #fef2f2; }
+.callout.success { border-left-color: var(--success); background: #f0fdf4; }
+.callout.info { border-left-color: var(--info); background: #eff6ff; }
+
+/* ===== Timeline ===== */
+.timeline {
+  position: relative;
+  padding-left: 32px;
+  margin: 16px 0 24px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--border);
+}
+.timeline-item {
+  position: relative;
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+}
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--card-bg);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.timeline-item .time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+.timeline-item .content {
+  font-size: 14px;
+  color: var(--fg);
+  margin-top: 2px;
+}
+
+/* ===== Progress Bars ===== */
+.progress-bar {
+  height: 8px;
+  background: var(--bg-alt);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+.progress-bar .fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.progress-bar .fill.critical { background: var(--critical); }
+.progress-bar .fill.warning { background: var(--warning); }
+.progress-bar .fill.success { background: var(--success); }
+.progress-bar .fill.info { background: var(--info); }
+
+/* ===== UV & Wind Charts ===== */
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+.compare-item {
+  background: var(--card-bg);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  border: 1px solid var(--border);
+  text-align: center;
+  box-shadow: var(--card-shadow);
+}
+.compare-item .day-tag {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.compare-item .main-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.compare-item .main-value .sub { font-size: 14px; font-weight: 400; color: var(--fg-secondary); }
+.compare-item .desc {
+  font-size: 12px;
+  color: var(--fg-secondary);
+  margin-top: 6px;
+}
+
+/* ===== Pillar Rows ===== */
+.pillar-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+.pillar {
+  background: var(--card-bg);
+  border-radius: var(--radius-sm);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  transition: var(--transition);
+}
+.pillar:hover { border-color: var(--accent); }
+.pillar .ic { font-size: 28px; flex-shrink: 0; line-height: 1; }
+.pillar .t { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.pillar .d { font-size: 13px; color: var(--fg-secondary); line-height: 1.6; }
+
+/* ===== KPI Grid ===== */
+.kpi-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.kpi-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.kpi-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* ===== Sub-section table labels ===== */
+.table-caption {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  margin: 20px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== Highlight box ===== */
+.highlight-box {
+  background: var(--accent-light);
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+  margin: 16px 0 24px;
+  border: 1px solid #9bc1e8;
+}
+.highlight-box h4 {
+  color: var(--accent-dark);
+  margin: 0 0 8px;
+}
+.highlight-box ul {
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--fg);
+  line-height: 1.8;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .report-container { padding: 16px 12px 32px; }
+  .report-header { padding: 28px 20px; }
+  .report-header h1 { font-size: 22px; }
+  .day-cards { grid-template-columns: 1fr; }
+  .compare-grid { grid-template-columns: 1fr; }
+  .kpi-2, .kpi-3, .kpi-4 { grid-template-columns: 1fr 1fr; }
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .pillar-row { grid-template-columns: 1fr; }
+  .stat-card-lg { grid-column: span 1; }
+}
+@media (max-width: 480px) {
+  .kpi-2, .kpi-3, .kpi-4 { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ===== Scrollbar ===== */
+.table-wrapper::-webkit-scrollbar { height: 6px; }
+.table-wrapper::-webkit-scrollbar-track { background: var(--bg-alt); }
+.table-wrapper::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.table-wrapper::-webkit-scrollbar-thumb:hover { background: var(--fg-secondary); }
+</style>
+</head>
+<body data-theme="weather">
+<div class="report-container">
+
+  <!-- ==================== HEADER ==================== -->
+  <div class="report-header">
+    <h1>🌤 潍坊市未来3天天气分析报告</h1>
+    <div class="subtitle">基于 wttr.in 实时气象数据 · 涵盖逐小时详细预报</div>
+    <div class="meta">
+      <span>📅 2026年5月3日 (周日) — 5月5日 (周二)</span>
+      <span>📍 山东省·潍坊市</span>
+      <span>⏱ 数据更新: 2026-05-03 00:00 CST</span>
+      <span>📊 来源: wttr.in API</span>
+    </div>
+  </div>
+
+  <div class="report-body">
+
+    <!-- ==================== 1. 报告概览 ==================== -->
+    <div class="section-title"><span class="emoji">📊</span> 报告概览</div>
+
+    <!-- KPI 统计卡片 -->
+    <div class="stat-row">
+      <div class="stat-card"><div class="n">3<span class="unit"> 天</span></div><div class="l">预报周期</div></div>
+      <div class="stat-card critical"><div class="n">31<span class="unit">°C</span></div><div class="l">期间最高温度<br>(5月5日)</div></div>
+      <div class="stat-card info"><div class="n">9<span class="unit">°C</span></div><div class="l">期间最低温度<br>(5月4日晨)</div></div>
+      <div class="stat-card warning"><div class="n">22<span class="unit">°C</span></div><div class="l">最大昼夜温差</div></div>
+      <div class="stat-card"><div class="n">37.8<span class="unit">h</span></div><div class="l">累计日照时长</div></div>
+      <div class="stat-card success"><div class="n">25.2<span class="unit">°C</span></div><div class="l">3日平均最高温</div></div>
+    </div>
+
+    <!-- 关键标签 -->
+    <div class="tag-group">
+      <span class="tag success">☀️ 晴好升温</span>
+      <span class="tag warning">🌡 昼夜温差大</span>
+      <span class="tag info">🌬 风力变化明显</span>
+      <span class="tag critical">☀️ 紫外线强烈</span>
+      <span class="tag">⛅ 5月3日有雨</span>
+      <span class="tag">🌡 5月5日高温31°C</span>
+    </div>
+
+    <!-- 概览说明 -->
+    <div class="callout info">
+      <span class="icon">ℹ️</span>
+      <div><strong>三天天气趋势：</strong>受冷空气和暖高压脊交替影响，潍坊市将经历一次明显的"降雨降温→晴好回暖→大幅升温"过程。5月3日（周日）受冷空气影响，有零星小雨和雷阵雨，北风较大；随后两天气温逐步回升，5月5日（周二）最高气温达31°C，需注意防暑防晒。</div>
+    </div>
+
+    <!-- ==================== 2. 每日天气详情 ==================== -->
+    <div class="section-title"><span class="emoji">☀️</span> 每日天气详情</div>
+
+    <div class="day-cards">
+      <!-- 5月3日 -->
+      <div class="day-card">
+        <div class="day-card-head day-1">
+          <div class="date-label">5月3日 · 周日</div>
+          <div class="day-name">今天</div>
+          <div class="weather-icon-big">🌦</div>
+        </div>
+        <div class="day-card-body">
+          <div class="temp-range">
+            <span class="high">21°C</span>
+            <span class="separator">/</span>
+            <span class="low">10°C</span>
+          </div>
+          <div class="weather-summary">
+            <span class="weather-emoji">🌧→☀️→⛈</span><br>
+            上午零星小雨，午后转晴<br>
+            傍晚雷阵雨，北风较大
+          </div>
+          <div class="day-card-detail-row">
+            <span><span class="label">日出</span><span class="value">05:08</span></span>
+            <span><span class="label">日落</span><span class="value">18:53</span></span>
+            <span><span class="label">日照</span><span class="value">10.8h</span></span>
+            <span><span class="label">紫外线</span><span class="value">7 高</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5月4日 -->
+      <div class="day-card">
+        <div class="day-card-head day-2">
+          <div class="date-label">5月4日 · 周一</div>
+          <div class="day-name">明天</div>
+          <div class="weather-icon-big">☀️</div>
+        </div>
+        <div class="day-card-body">
+          <div class="temp-range">
+            <span class="high">25°C</span>
+            <span class="separator">/</span>
+            <span class="low">9°C</span>
+          </div>
+          <div class="weather-summary">
+            <span class="weather-emoji">☀️</span><br>
+            全天晴好，暖意融融<br>
+            夜间风力增大至22km/h
+          </div>
+          <div class="day-card-detail-row">
+            <span><span class="label">日出</span><span class="value">05:07</span></span>
+            <span><span class="label">日落</span><span class="value">18:54</span></span>
+            <span><span class="label">日照</span><span class="value">13.0h</span></span>
+            <span><span class="label">紫外线</span><span class="value">8 很高</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5月5日 -->
+      <div class="day-card">
+        <div class="day-card-head day-3">
+          <div class="date-label">5月5日 · 周二</div>
+          <div class="day-name">后天</div>
+          <div class="weather-icon-big">☀️</div>
+        </div>
+        <div class="day-card-body">
+          <div class="temp-range">
+            <span class="high">31°C</span>
+            <span class="separator">/</span>
+            <span class="low">14°C</span>
+          </div>
+          <div class="weather-summary">
+            <span class="weather-emoji">☀️🔥</span><br>
+            持续晴好，显著升温<br>
+            白天偏南风17~29km/h
+          </div>
+          <div class="day-card-detail-row">
+            <span><span class="label">日出</span><span class="value">05:06</span></span>
+            <span><span class="label">日落</span><span class="value">18:55</span></span>
+            <span><span class="label">日照</span><span class="value">13.0h</span></span>
+            <span><span class="label">紫外线</span><span class="value">8 很高</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 3. 温度趋势分析 ==================== -->
+    <div class="section-title"><span class="emoji">🌡️</span> 温度趋势分析</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>最高温</th>
+            <th>最低温</th>
+            <th>平均温</th>
+            <th>温差</th>
+            <th>温度走势</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>5月3日 (周日)</strong>🌦</td>
+            <td style="color:var(--warning); font-weight:700;">21°C</td>
+            <td style="color:var(--info); font-weight:600;">10°C</td>
+            <td>14°C</td>
+            <td style="font-weight:600;">11°C</td>
+            <td>
+              <div class="progress-bar" style="width:140px;">
+                <div class="fill info" style="width:48%;"></div>
+              </div>
+              <span style="font-size:12px;color:var(--fg-secondary);">偏凉</span>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>5月4日 (周一)</strong>☀️</td>
+            <td style="color:var(--warning); font-weight:700;">25°C</td>
+            <td style="color:var(--info); font-weight:600;">9°C</td>
+            <td>17°C</td>
+            <td style="font-weight:600;">16°C</td>
+            <td>
+              <div class="progress-bar" style="width:140px;">
+                <div class="fill success" style="width:64%;"></div>
+              </div>
+              <span style="font-size:12px;color:var(--fg-secondary);">舒适</span>
+            </td>
+          </tr>
+          <tr>
+            <td><strong>5月5日 (周二)</strong>☀️🔥</td>
+            <td style="color:var(--critical); font-weight:700;">31°C</td>
+            <td style="color:var(--info); font-weight:600;">14°C</td>
+            <td>22°C</td>
+            <td style="font-weight:600;">17°C</td>
+            <td>
+              <div class="progress-bar" style="width:140px;">
+                <div class="fill critical" style="width:85%;"></div>
+              </div>
+              <span style="font-size:12px;color:var(--fg-secondary);">炎热</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warning">
+      <span class="icon">🌡️</span>
+      <div><strong>温差预警：</strong>三天内最高气温从21°C飙升至31°C，升温幅度达10°C。昼夜温差普遍在11~17°C之间，尤其是5月4日最低温仅9°C而最高25°C，早出晚归需注意添衣保暖。</div>
+    </div>
+
+    <!-- ==================== 4. 逐日详细数据 ==================== -->
+    <div class="section-title"><span class="emoji">🕐</span> 逐日详细小时数据</div>
+
+    <!-- 5月3日 -->
+    <h3>📅 5月3日（周日）— 多云转晴，有雷阵雨</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>🌤 天气</th>
+            <th>🌡 温度</th>
+            <th>💨 风力</th>
+            <th>🌧 降雨概率</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>00:00</td><td>⛅ 局部多云</td><td>14°C</td><td>NNW 7km/h</td><td>0%</td><td>—</td></tr>
+          <tr><td>03:00</td><td>🌦 细雨</td><td>14°C</td><td>NW 11km/h</td><td><span style="color:var(--critical);font-weight:600;">100% (0.6mm)</span></td><td>夜间阵雨</td></tr>
+          <tr><td>06:00</td><td>🌦 小雨</td><td>11°C</td><td>NNW 24km/h</td><td><span style="color:var(--critical);font-weight:600;">100% (0.9mm)</span></td><td>晨间降雨</td></tr>
+          <tr><td>09:00</td><td>🌦 零星小雨</td><td>12°C</td><td>NNW 26km/h</td><td><span style="color:var(--warning);font-weight:600;">84%</span></td><td>上午持续降雨可能</td></tr>
+          <tr><td>12:00</td><td>☀️ 晴天</td><td>18°C</td><td>N 24km/h</td><td>0%</td><td>午后转晴</td></tr>
+          <tr><td>15:00</td><td>⛈ 雷阵雨</td><td>20°C</td><td>N 22km/h</td><td><span style="color:var(--critical);font-weight:600;">100% (0.2mm)</span></td><td><span style="color:var(--critical);">⚠️ 有雷暴</span></td></tr>
+          <tr><td>18:00</td><td>🌦 零星小雨</td><td>13°C</td><td>NNE 8km/h</td><td><span style="color:var(--warning);font-weight:600;">100% (0.4mm)</span></td><td>傍晚阵雨</td></tr>
+          <tr><td>21:00</td><td>☀️ 晴朗</td><td>11°C</td><td>W 8km/h</td><td>0%</td><td>夜间转晴</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 5月4日 -->
+    <h3>📅 5月4日（周一）— 全天晴好</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>🌤 天气</th>
+            <th>🌡 温度</th>
+            <th>💨 风力</th>
+            <th>🌧 降雨概率</th>
+            <th>💧 湿度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>00:00</td><td>☀️ 晴朗</td><td>10°C</td><td>W 13km/h</td><td>0%</td><td>—</td></tr>
+          <tr><td>03:00</td><td>☀️ 晴朗</td><td>10°C</td><td>W 10km/h</td><td>0%</td><td>—</td></tr>
+          <tr><td>06:00</td><td>☀️ 晴天</td><td>10°C</td><td>W 8km/h</td><td>0%</td><td>—</td></tr>
+          <tr><td>09:00</td><td>☀️ 晴天</td><td>18°C</td><td>WNW 9km/h</td><td>0%</td><td>26%</td></tr>
+          <tr><td>12:00</td><td>☀️ 晴天</td><td>22°C</td><td>WSW 9km/h</td><td>0%</td><td>15%</td></tr>
+          <tr><td>15:00</td><td>☀️ 晴天</td><td>24°C</td><td>SW 9km/h</td><td>0%</td><td>13%</td></tr>
+          <tr><td>18:00</td><td>☀️ 晴天</td><td>22°C</td><td>SE 9km/h</td><td>0%</td><td>22%</td></tr>
+          <tr><td>21:00</td><td>☀️ 晴朗</td><td>16°C</td><td>SSE 22km/h</td><td>0%</td><td>35%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 5月5日 -->
+    <h3>📅 5月5日（周二）— 晴热升温，最高31°C</h3>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>🌤 天气</th>
+            <th>🌡 温度</th>
+            <th>💨 风力</th>
+            <th>🌧 降雨概率</th>
+            <th>💧 湿度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>00:00</td><td>☀️ 晴朗</td><td>15°C</td><td>S 21km/h</td><td>0%</td><td>36%</td></tr>
+          <tr><td>03:00</td><td>☀️ 晴朗</td><td>14°C</td><td>S 22km/h</td><td>0%</td><td>50%</td></tr>
+          <tr><td>06:00</td><td>☀️ 晴天</td><td>15°C</td><td>S 25km/h</td><td>0%</td><td>59%</td></tr>
+          <tr><td>09:00</td><td>☀️ 晴天</td><td>21°C</td><td>S 29km/h</td><td>0%</td><td>46%</td></tr>
+          <tr><td>12:00</td><td>☀️ 晴天</td><td>28°C</td><td>SSW 25km/h</td><td>0%</td><td>30%</td></tr>
+          <tr><td>15:00</td><td style="color:var(--critical);font-weight:600;">☀️ 晴天 🔥</td><td style="color:var(--critical);font-weight:700;">31°C</td><td>SW 23km/h</td><td>0%</td><td>21%</td></tr>
+          <tr><td>18:00</td><td>☀️ 晴天</td><td>27°C</td><td>SSW 17km/h</td><td>0%</td><td>30%</td></tr>
+          <tr><td>21:00</td><td>☀️ 晴朗</td><td>21°C</td><td>S 18km/h</td><td>0%</td><td>49%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==================== 5. 风力与风向分析 ==================== -->
+    <div class="section-title"><span class="emoji">💨</span> 风力与风向分析</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>5月3日 (周日)</th>
+            <th>5月4日 (周一)</th>
+            <th>5月5日 (周二)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>白天风向</strong></td>
+            <td>🌬 北北西 (NNW/N)</td>
+            <td>🌤 西转西南 (W→WSW→SW)</td>
+            <td>🌬 南风 (S/SSW/SW)</td>
+          </tr>
+          <tr>
+            <td><strong>白天风力</strong></td>
+            <td><span style="font-weight:600;">24~26km/h</span><br><span style="font-size:12px;color:var(--fg-secondary);">中等偏强</span></td>
+            <td>8~13km/h<br><span style="font-size:12px;color:var(--fg-secondary);">轻柔</span></td>
+            <td><span style="font-weight:600;">23~29km/h</span><br><span style="font-size:12px;color:var(--warning);">偏强</span></td>
+          </tr>
+          <tr>
+            <td><strong>夜间风向</strong></td>
+            <td>NW→W</td>
+            <td>W→SSE</td>
+            <td>S 持续</td>
+          </tr>
+          <tr>
+            <td><strong>夜间风力</strong></td>
+            <td>7~11km/h<br><span style="font-size:12px;color:var(--fg-secondary);">较小</span></td>
+            <td><span style="font-weight:600;">22km/h (21:00)</span><br><span style="font-size:12px;color:var(--warning);">夜间增大</span></td>
+            <td>18~22km/h<br><span style="font-size:12px;color:var(--fg-secondary);">持续有风</span></td>
+          </tr>
+          <tr>
+            <td><strong>风力特征</strong></td>
+            <td><span style="color:var(--info);">白天风大，夜间减弱</span></td>
+            <td><span style="color:var(--success);">白天柔和，夜间转大</span></td>
+            <td><span style="color:var(--warning);">全天持续偏南大风</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="highlight-box">
+      <h4>💡 风力出行提示</h4>
+      <ul>
+        <li><strong>5月3日：</strong>北北西风24~26km/h（4~5级），体感较凉，户外活动注意防风保暖；午后风力仍较大。</li>
+        <li><strong>5月4日：</strong>白天风力柔和（8~13km/h），适宜户外活动；但夜间21时后风力突增至22km/h，晚归注意。</li>
+        <li><strong>5月5日：</strong>全天偏南风17~29km/h（4~5级），午后阵风可能更强，户外活动注意防风；但南风送暖，体感舒适。</li>
+      </ul>
+    </div>
+
+    <!-- ==================== 6. 紫外线与出行建议 ==================== -->
+    <div class="section-title"><span class="emoji">☀️</span> 紫外线与出行建议</div>
+
+    <!-- 紫外线对比 -->
+    <h3>紫外线指数对比</h3>
+    <div class="compare-grid">
+      <div class="compare-item">
+        <div class="day-tag">5月3日 (周日) 🌦</div>
+        <div class="main-value">7.0</div>
+        <div class="desc" style="color:var(--warning);font-weight:600;">☀️ 高</div>
+        <div class="desc">指数偏高 · 建议防晒</div>
+        <div class="progress-bar" style="margin-top:8px;"><div class="fill warning" style="width:70%;"></div></div>
+      </div>
+      <div class="compare-item">
+        <div class="day-tag">5月4日 (周一) ☀️</div>
+        <div class="main-value">8.0</div>
+        <div class="desc" style="color:var(--critical);font-weight:600;">☀️☀️ 很高</div>
+        <div class="desc">强烈建议防晒措施</div>
+        <div class="progress-bar" style="margin-top:8px;"><div class="fill critical" style="width:80%;"></div></div>
+      </div>
+      <div class="compare-item">
+        <div class="day-tag">5月5日 (周二) ☀️🔥</div>
+        <div class="main-value">8.0</div>
+        <div class="desc" style="color:var(--critical);font-weight:600;">☀️☀️ 很高</div>
+        <div class="desc">高温+强紫外线</div>
+        <div class="progress-bar" style="margin-top:8px;"><div class="fill critical" style="width:80%;"></div></div>
+      </div>
+    </div>
+
+    <!-- 3天综合建议 -->
+    <h3>📌 3天综合出行与健康建议</h3>
+
+    <div class="pillar-row">
+      <div class="pillar">
+        <div class="ic">🌂</div>
+        <div>
+          <div class="t">5月3日 · 带伞出行</div>
+          <div class="d">上午和傍晚有阵雨/雷暴，建议随身携带雨具。午后短暂放晴可安排户外活动，但需警惕傍晚雷阵雨。北风较大，体感偏凉，建议穿着薄外套。</div>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">🧴</div>
+        <div>
+          <div class="t">5月4日 · 防晒补水</div>
+          <div class="d">全天晴好，紫外线指数高达8（很高），10:00~16:00时段尤其强烈。建议涂抹SPF30+防晒霜、佩戴遮阳帽和太阳镜。白天湿度低（13%~26%），需及时补水。</div>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">🔥</div>
+        <div>
+          <div class="t">5月5日 · 防暑降温</div>
+          <div class="d">最高温达31°C，体感炎热。建议穿着透气轻便衣物，避免中午长时间暴晒。偏南风较大，户外活动注意防风。紫外线极高，防晒霜需及时补涂。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout critical">
+      <span class="icon">⚠️</span>
+      <div>
+        <strong>健康风险提示：</strong>
+        <ul style="margin:6px 0 0 16px; padding-left:0;">
+          <li><strong>温差风险：</strong>三天内温差从11°C扩大到17°C，早晚凉、中午热，易引发感冒，建议采用"洋葱式"穿衣法。</li>
+          <li><strong>紫外线风险：</strong>5月4日~5日紫外线指数均为8（很高级别），未防护皮肤15分钟内即可晒伤。</li>
+          <li><strong>扬尘风险：</strong>5月5日南风较大（最高29km/h），干燥天气下可能有扬沙浮尘，敏感人群建议佩戴口罩。</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== 附录：气象指标汇总 ==================== -->
+    <div class="section-title"><span class="emoji">📋</span> 附录：气象指标汇总</div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>气象指标</th>
+            <th>5月3日 (周日)</th>
+            <th>5月4日 (周一)</th>
+            <th>5月5日 (周二)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>天气状况</strong></td><td>🌦 多云转晴，有雷阵雨</td><td>☀️ 晴好</td><td>☀️ 晴好炎热</td></tr>
+          <tr><td><strong>最高/最低温</strong></td><td>21°C / 10°C</td><td>25°C / 9°C</td><td>31°C / 14°C</td></tr>
+          <tr><td><strong>平均温度</strong></td><td>14°C</td><td>17°C</td><td>22°C</td></tr>
+          <tr><td><strong>体感范围</strong></td><td>偏凉~舒适</td><td>凉爽~温暖</td><td>温暖~炎热</td></tr>
+          <tr><td><strong>日出/日落</strong></td><td>05:08 / 18:53</td><td>05:07 / 18:54</td><td>05:06 / 18:55</td></tr>
+          <tr><td><strong>日照时长</strong></td><td>10.8h</td><td>13.0h</td><td>13.0h</td></tr>
+          <tr><td><strong>紫外线指数</strong></td><td><span style="color:var(--warning);font-weight:600;">7 (高)</span></td><td><span style="color:var(--critical);font-weight:600;">8 (很高)</span></td><td><span style="color:var(--critical);font-weight:600;">8 (很高)</span></td></tr>
+          <tr><td><strong>白天风力</strong></td><td>NNW 24~26km/h</td><td>柔和 8~13km/h</td><td>S 23~29km/h</td></tr>
+          <tr><td><strong>降雨概率</strong></td><td><span style="color:var(--critical);font-weight:600;">有阵雨/雷暴</span></td><td><span style="color:var(--success);font-weight:600;">无降雨</span></td><td><span style="color:var(--success);font-weight:600;">无降雨</span></td></tr>
+          <tr><td><strong>湿度范围</strong></td><td>35%~91%</td><td>13%~35%</td><td>21%~59%</td></tr>
+          <tr><td><strong>月相</strong></td><td>🌖 亏凸月 (98%)</td><td>🌖 亏凸月</td><td>🌖 亏凸月</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 最后提醒 -->
+    <div class="callout success">
+      <span class="icon">✅</span>
+      <div>
+        <strong>总体评估：</strong>潍坊未来3天以晴好升温趋势为主，5月3日阵雨过后天气迅速转好。5月4日~5日非常适宜户外活动和假期出行，但需特别注意<strong>防晒、补水和防风</strong>。5月3日出行建议携带雨具并注意雷暴。祝您在潍坊度过愉快的五一假期！🎉
+      </div>
+    </div>
+
+  </div><!-- /report-body -->
+
+  <div class="report-footer">
+    <p>📊 潍坊市未来3天天气分析报告 · 数据来源: wttr.in API · 生成时间: 2026-05-03</p>
+    <p style="margin-top:4px;opacity:0.7;">Generated by <strong>AIOpsOS Report Agent</strong> — 数字洞察的装帧师</p>
+  </div>
+
+</div><!-- /report-container -->
+</body>
+</html>

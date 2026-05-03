@@ -8,7 +8,7 @@ import hashlib
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -22,7 +22,7 @@ def _wiki_dir() -> str:
 
 
 def _read_file(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -96,7 +96,7 @@ async def summarize_raw_file(
     from src.core.model_factory import get_default_model
     llm = await get_default_model()
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     user_msg = (
         f"## Raw source: {fname}\n\n"
         f"{content[:12000]}\n"
@@ -173,7 +173,7 @@ def update_index(pages: list[dict]) -> None:
 def append_log(action: str, subject: str, files: list[str]) -> None:
     """Append an entry to log.md."""
     log_path = os.path.join(_wiki_dir(), "log.md")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
 
     if not os.path.exists(log_path):
         _write_file(log_path, "# Wiki Log\n\n> Chronological record of all wiki actions. Append-only.\n")
@@ -204,7 +204,7 @@ def add_raw_frontmatter(filepath: str, source_url: str = "") -> str:
 
     body = content
     content_hash = _compute_sha256(body)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     fm = (
         f"---\n"
         f"source_url: {source_url}\n"
@@ -218,7 +218,6 @@ def add_raw_frontmatter(filepath: str, source_url: str = "") -> str:
 
 async def compile_pipeline(filepath: str) -> dict:
     """Formal 5-stage compile pipeline: ingest → summarize → crossref → finalize → index."""
-    import json as _json
 
     result: dict = {
         "filepath": filepath,
@@ -288,7 +287,7 @@ def _record_compile_meta(source_name: str, result: dict) -> None:
 
     record = {
         "source": source_name,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "ok": result["ok"],
         "stages": result.get("stages", {}),
         "wiki_pages_created": result.get("wiki_pages_created", 0),
@@ -322,7 +321,7 @@ def get_compile_history(source_name: str = "") -> list[dict]:
 
     records = []
     try:
-        with open(history_path, "r", encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

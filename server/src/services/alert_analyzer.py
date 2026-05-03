@@ -20,7 +20,6 @@ async def analyze(alert, triggers) -> None:
     analysis_result with structured output, and transitions
     to 'awaiting_review' on completion.
     """
-    from src.agent.deep_agent import get_deep_agent
 
     alert.status = "analyzing"
 
@@ -55,9 +54,9 @@ async def analyze(alert, triggers) -> None:
 
 async def _run_analysis_for_trigger(alert, trigger) -> dict:
     """Run a single analysis pass for one trigger."""
-    from src.models.base import async_session_factory
+
     from src.models.agent import Scenario
-    from sqlalchemy import select
+    from src.models.base import async_session_factory
 
     scenario_name = "unknown"
     async with async_session_factory() as db:

@@ -3,8 +3,8 @@
 revision = "011_session_review_flags"
 down_revision = "010_agent_user_prompt"
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 
 def upgrade():

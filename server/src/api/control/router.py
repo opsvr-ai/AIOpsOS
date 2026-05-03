@@ -2,25 +2,25 @@ from fastapi import APIRouter
 
 from src.api.control.agents import router as agents_router
 from src.api.control.assistant import router as assistant_router
-from src.api.control.permissions import router as permissions_router
 from src.api.control.branding import router as branding_router
+from src.api.control.channels import router as channels_router
+from src.api.control.cmdb import cmdb_router
+from src.api.control.cron import router as cron_router
+from src.api.control.dashboard import router as dashboard_router
+from src.api.control.docs import router as docs_router
+from src.api.control.events import router as events_router
+from src.api.control.feedback import router as feedback_router
+from src.api.control.knowledge import router as knowledge_router
 from src.api.control.ldap import router as ldap_router
 from src.api.control.logs import router as logs_router
-from src.api.control.model_providers import router as model_providers_router
-from src.api.control.channels import router as channels_router
-from src.api.control.cron import router as cron_router
-from src.api.control.knowledge import router as knowledge_router
-from src.api.control.docs import router as docs_router
 from src.api.control.memory import router as memory_router
+from src.api.control.model_providers import router as model_providers_router
+from src.api.control.permissions import router as permissions_router
+from src.api.control.reports import router as reports_router
 from src.api.control.schedules import router as schedules_router
 from src.api.control.sleep_management import router as sleep_router
-from src.api.control.feedback import router as feedback_router
 from src.api.control.spaces import router as spaces_router
 from src.api.control.tools import router as tools_router
-from src.api.control.events import router as events_router
-from src.api.control.reports import router as reports_router
-from src.api.control.cmdb import cmdb_router
-from src.api.control.dashboard import router as dashboard_router
 from src.api.control.users import router as users_router
 
 router = APIRouter(prefix="/api/v1")

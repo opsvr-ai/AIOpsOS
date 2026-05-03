@@ -12,9 +12,10 @@ import logging
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from src.core.model_factory import get_default_model
 
 from src.agent.sub_agents.base import BaseSubAgent
+from src.config import settings
+from src.core.model_factory import get_default_model
 from src.services.kb_tools import list_wiki_pages
 from src.services.tool_manager import tool_manager
 

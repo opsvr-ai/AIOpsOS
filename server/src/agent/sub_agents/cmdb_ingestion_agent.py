@@ -14,21 +14,21 @@ from __future__ import annotations
 import json as _json
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 import httpx
 from langchain_core.messages import HumanMessage, SystemMessage
-from sqlalchemy import select, delete, func
+from sqlalchemy import delete, func, select
 
 from src.models.base import async_session_factory
 from src.models.cmdb import (
-    CmdbNode,
     CmdbEdge,
-    CmdbSyncLog,
     CmdbMappingRule,
+    CmdbNode,
     CmdbReviewItem,
+    CmdbSyncLog,
 )
 from src.models.datasource import DataSource
 
@@ -195,16 +195,16 @@ class CmdbIngestionAgent:
 
         try:
             # Phase 1: Fetch
-            phase_start = datetime.now(timezone.utc)
+            phase_start = datetime.now(UTC)
             raw_data = await self._fetch(ds)
             logger.info(
                 "Sync %s: fetched %d CI records in %.1fs",
                 sync_log.id, len(raw_data),
-                (datetime.now(timezone.utc) - phase_start).total_seconds(),
+                (datetime.now(UTC) - phase_start).total_seconds(),
             )
 
             # Phase 2: Transform
-            phase_start = datetime.now(timezone.utc)
+            phase_start = datetime.now(UTC)
             if mode == "discover":
                 rule = await self._discover_schema(raw_data[:50], ds)
                 if rule.get("data", {}).get("nodes") or rule.get("data", {}).get("new_rules"):
@@ -217,11 +217,11 @@ class CmdbIngestionAgent:
             logger.info(
                 "Sync %s: transformed -> %d nodes, %d edges in %.1fs",
                 sync_log.id, len(nodes), len(edges),
-                (datetime.now(timezone.utc) - phase_start).total_seconds(),
+                (datetime.now(UTC) - phase_start).total_seconds(),
             )
 
             # Phase 3: Validate
-            phase_start = datetime.now(timezone.utc)
+            phase_start = datetime.now(UTC)
             struct_errors = self._validate_structure(nodes, edges)
             if struct_errors:
                 logger.warning(
@@ -250,12 +250,12 @@ class CmdbIngestionAgent:
             logger.info(
                 "Sync %s: validation done in %.1fs — %d review items, %d anomalies",
                 sync_log.id,
-                (datetime.now(timezone.utc) - phase_start).total_seconds(),
+                (datetime.now(UTC) - phase_start).total_seconds(),
                 review_count, anomaly_count,
             )
 
             # Phase 4: Write
-            phase_start = datetime.now(timezone.utc)
+            phase_start = datetime.now(UTC)
             node_stats = await self._upsert_nodes(nodes, datasource_id, effective_space)
             edge_stats = await self._upsert_edges(edges, datasource_id)
             cleaned = await self._cleanup_stale(
@@ -264,7 +264,7 @@ class CmdbIngestionAgent:
             logger.info(
                 "Sync %s: write done in %.1fs — nodes +%d/~%d/-%d, edges +%d",
                 sync_log.id,
-                (datetime.now(timezone.utc) - phase_start).total_seconds(),
+                (datetime.now(UTC) - phase_start).total_seconds(),
                 node_stats["created"], node_stats["updated"], cleaned,
                 edge_stats["created"],
             )
@@ -554,7 +554,7 @@ class CmdbIngestionAgent:
                     existing.name = node.get("name", existing.name)
                     existing.ci_type = node.get("ci_type", existing.ci_type)
                     existing.properties = node.get("properties", existing.properties)
-                    existing.synced_at = datetime.now(timezone.utc)
+                    existing.synced_at = datetime.now(UTC)
                     updated += 1
                 else:
                     db.add(CmdbNode(
@@ -565,7 +565,7 @@ class CmdbIngestionAgent:
                         properties=node.get("properties", {}),
                         datasource_id=datasource_id,
                         space_id=space_id,
-                        synced_at=datetime.now(timezone.utc),
+                        synced_at=datetime.now(UTC),
                     ))
                     created += 1
             await db.commit()
@@ -636,7 +636,7 @@ class CmdbIngestionAgent:
                 return {"success": False, "error": "Review item not found"}
             item.status = "approved"
             item.reviewer = reviewer
-            item.reviewed_at = datetime.now(timezone.utc)
+            item.reviewed_at = datetime.now(UTC)
             await db.commit()
             return {"success": True, "status": "approved"}
 
@@ -654,7 +654,7 @@ class CmdbIngestionAgent:
             item.status = "rejected"
             item.reviewer = reviewer
             item.review_note = note
-            item.reviewed_at = datetime.now(timezone.utc)
+            item.reviewed_at = datetime.now(UTC)
             await db.commit()
             return {"success": True, "status": "rejected"}
 
@@ -700,7 +700,7 @@ class CmdbIngestionAgent:
                 datasource_id=datasource_id,
                 mode=mode,
                 status="running",
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 space_id=space_id,
             )
             db.add(sync_log)
@@ -724,7 +724,7 @@ class CmdbIngestionAgent:
                 log.nodes_deleted = cleaned
                 log.edges_count = edge_stats.get("created", 0)
                 log.review_count = review_count
-                log.finished_at = datetime.now(timezone.utc)
+                log.finished_at = datetime.now(UTC)
                 await db.commit()
 
     async def _mark_sync_failed(self, sync_log_id: Any, error: str) -> None:
@@ -736,7 +736,7 @@ class CmdbIngestionAgent:
             if log:
                 log.status = "failed"
                 log.errors_detail = {"error": error}
-                log.finished_at = datetime.now(timezone.utc)
+                log.finished_at = datetime.now(UTC)
                 await db.commit()
 
     async def _create_review_item(

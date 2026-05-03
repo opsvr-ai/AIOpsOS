@@ -8,7 +8,6 @@ DeepSeek's ``reasoning_content`` field, which the automated ReAct loop
 doesn't handle correctly.
 """
 
-import json
 import logging
 from pathlib import Path
 from typing import Any

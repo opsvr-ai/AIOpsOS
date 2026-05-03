@@ -1,7 +1,16 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Button, Spin, Typography, Space, App, Segmented } from 'antd';
-import { ArrowLeftOutlined, ShareAltOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Button, Spin, Typography, Space, App, Segmented, Tag, Tooltip, Divider } from 'antd';
+import {
+  ArrowLeftOutlined,
+  ShareAltOutlined,
+  DownloadOutlined,
+  MessageOutlined,
+  GlobalOutlined,
+  TeamOutlined,
+  LockOutlined,
+  ClockCircleOutlined,
+} from '@ant-design/icons';
 import api from '@/services/api';
 
 interface Report {
@@ -12,7 +21,36 @@ interface Report {
   theme: string;
   created_at: string;
   visibility: 'private' | 'space' | 'public';
+  session_id: string | null;
 }
+
+const THEME_COLORS: Record<string, string> = {
+  ink: '#64748b',
+  ops: '#3b82f6',
+  security: '#ef4444',
+  performance: '#f59e0b',
+  incident: '#8b5cf6',
+  capacity: '#06b6d4',
+  compliance: '#10b981',
+};
+
+const VIS_ICON: Record<string, React.ReactNode> = {
+  public: <GlobalOutlined />,
+  space: <TeamOutlined />,
+  private: <LockOutlined />,
+};
+
+const VIS_LABEL: Record<string, string> = {
+  public: '公开',
+  space: '空间内',
+  private: '不分享',
+};
+
+const VIS_COLOR: Record<string, string> = {
+  public: '#22c55e',
+  space: '#3b82f6',
+  private: '#ef4444',
+};
 
 export default function ReportViewerPage() {
   const { reportId } = useParams<{ reportId: string }>();
@@ -20,29 +58,14 @@ export default function ReportViewerPage() {
   const { message } = App.useApp();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     api
       .get(`/reports/${reportId}`)
       .then((res) => setReport(res.data))
-      .catch(() => message.error('Report not found'))
+      .catch(() => message.error('报告未找到'))
       .finally(() => setLoading(false));
   }, [reportId]);
-
-  useEffect(() => {
-    if (!report || !iframeRef.current) return;
-    const timer = setTimeout(() => {
-      try {
-        const doc = iframeRef.current?.contentDocument;
-        const height = doc?.body?.scrollHeight;
-        if (height && iframeRef.current) iframeRef.current.style.height = `${height + 32}px`;
-      } catch {
-        /* cross-origin guard */
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [report]);
 
   const handleCopyLink = () => {
     const publicUrl = `${window.location.origin}/pub/reports/${reportId}`;
@@ -61,6 +84,18 @@ export default function ReportViewerPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleVisibility = async (val: string) => {
+    if (!report) return;
+    await api.put(`/reports/${reportId}`, { visibility: val });
+    setReport({ ...report, visibility: val as Report['visibility'] });
+    const labels: Record<string, string> = {
+      private: '已设为不分享',
+      space: '已设为空间内可见',
+      public: '已设为公开访问',
+    };
+    message.success(labels[val] || '已更新');
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 100 }}>
@@ -71,72 +106,123 @@ export default function ReportViewerPage() {
 
   if (!report) {
     return (
-      <div style={{ textAlign: 'center', paddingTop: 100, color: 'var(--fg-secondary)' }}>
-        Report not found
+      <div style={{ textAlign: 'center', paddingTop: 100 }}>
+        <Typography.Text type="secondary">报告未找到</Typography.Text>
+        <br />
+        <Button style={{ marginTop: 16 }} onClick={() => navigate('/ops/reports')}>
+          返回列表
+        </Button>
       </div>
     );
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-elevated)',
+      }}
+    >
+      {/* Toolbar */}
       <div
         style={{
-          padding: '8px 16px',
+          padding: '10px 20px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'var(--bg-elevated)',
+          background: 'var(--bg-base)',
           flexShrink: 0,
+          flexWrap: 'wrap',
+          gap: 8,
         }}
       >
-        <Space>
-          <Button icon={<ArrowLeftOutlined />} type="text" onClick={() => navigate(-1)} />
-          <Typography.Text strong>{report.title}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {new Date(report.created_at).toLocaleString('zh-CN')}
+        <Space wrap>
+          <Button icon={<ArrowLeftOutlined />} type="text" onClick={() => navigate('/ops/reports')}>
+            返回
+          </Button>
+          <Divider type="vertical" />
+          <Typography.Text strong style={{ fontSize: 15, maxWidth: 360 }} ellipsis>
+            {report.title}
           </Typography.Text>
-          <Segmented
-            value={report.visibility}
-            onChange={async (val) => {
-              await api.put(`/reports/${reportId}`, { visibility: val });
-              setReport({ ...report, visibility: val as 'private' | 'space' | 'public' });
-              const labels: Record<string, string> = {
-                private: '已设为不分享',
-                space: '已设为空间内可见',
-                public: '已设为公开访问',
-              };
-              message.success(labels[val as string] || '已更新');
+          {report.theme && (
+            <Tag color={THEME_COLORS[report.theme] || '#64748b'} style={{ borderRadius: 6 }}>
+              {report.theme}
+            </Tag>
+          )}
+          <Tooltip title={new Date(report.created_at).toLocaleString('zh-CN')}>
+            <Space size={4} style={{ fontSize: 12, color: 'var(--fg-secondary)' }}>
+              <ClockCircleOutlined />
+              {new Date(report.created_at).toLocaleDateString('zh-CN')}
+            </Space>
+          </Tooltip>
+          <span
+            style={{
+              fontSize: 12,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              color: VIS_COLOR[report.visibility],
             }}
+          >
+            {VIS_ICON[report.visibility]}
+            {VIS_LABEL[report.visibility]}
+          </span>
+          <Segmented
+            size="small"
+            value={report.visibility}
             options={[
-              { value: 'private', label: '🔒 不分享' },
-              { value: 'space', label: '👥 空间内' },
-              { value: 'public', label: '🌐 公开' },
+              { value: 'private', label: '不分享' },
+              { value: 'space', label: '空间内' },
+              { value: 'public', label: '公开' },
             ]}
+            onChange={(val) => handleVisibility(val as string)}
           />
         </Space>
+
         <Space>
+          {report.session_id && (
+            <Button
+              icon={<MessageOutlined />}
+              onClick={() => navigate(`/ops/chat?session=${report.session_id}`)}
+            >
+              对话
+            </Button>
+          )}
           <Button icon={<ShareAltOutlined />} onClick={handleCopyLink}>
-            Share
+            分享
           </Button>
           <Button icon={<DownloadOutlined />} onClick={handleDownload}>
-            Download
+            下载
           </Button>
         </Space>
       </div>
 
-      <iframe
-        ref={iframeRef}
-        srcDoc={report.html_content}
-        title={report.title}
-        sandbox="allow-scripts"
-        style={{
-          flex: 1,
-          width: '100%',
-          border: 'none',
-          minHeight: 'calc(100vh - 49px)',
-        }}
-      />
+      {/* Report body — inline rendered */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px 64px' }}>
+          <Typography.Title level={3} style={{ marginBottom: 4 }}>
+            {report.title}
+          </Typography.Title>
+          {report.description && (
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 24, fontSize: 14 }}>
+              {report.description}
+            </Typography.Paragraph>
+          )}
+
+          <div
+            className="report-content"
+            dangerouslySetInnerHTML={{ __html: report.html_content }}
+            style={{
+              fontSize: 15,
+              lineHeight: 1.8,
+              color: 'var(--fg-primary)',
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

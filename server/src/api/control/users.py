@@ -1,7 +1,7 @@
 import secrets
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -43,7 +43,7 @@ async def _send_email(db, recipient: str, title: str, body: str):
         result = await db.execute(
             select(NotificationChannel).where(
                 NotificationChannel.channel_type == "email",
-                NotificationChannel.is_active == True,
+                NotificationChannel.is_active,
             )
         )
         ch = result.scalars().first()
@@ -95,7 +95,7 @@ async def register(body: UserCreate, db: DbSession):
     # LDAP overlap check
     ldap_config = await _get_ldap_config(db)
     if ldap_config.get("server_url"):
-        ldap_users = await db.execute(select(User).where(User.is_ldap == True))
+        ldap_users = await db.execute(select(User).where(User.is_ldap))
         for ldap_user in ldap_users.scalars().all():
             if ldap_user.username.lower() == body.username.lower():
                 raise HTTPException(
@@ -264,7 +264,7 @@ async def refresh_token(body: RefreshRequest, response: Response, db: DbSession)
     try:
         payload = decode_refresh_token(body.refresh_token)
     except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token") from None
     user_id = payload.get("sub")
     result = await db.execute(
         select(User).where(User.id == user_id).options(selectinload(User.roles))
@@ -290,9 +290,10 @@ async def get_me(user: CurrentUser, db: DbSession):
     role_names = {r.name for r in user.roles}
     if "admin" in role_names:
         from sqlalchemy import func
+
         from src.models.model_provider import ModelProvider
         count = await db.scalar(
-            select(func.count(ModelProvider.id)).where(ModelProvider.is_active == True)
+            select(func.count(ModelProvider.id)).where(ModelProvider.is_active)
         )
         setup_required = (count or 0) == 0
     result = UserOut.model_validate(user)

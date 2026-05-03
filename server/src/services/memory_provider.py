@@ -180,7 +180,7 @@ class DatabaseMemoryProvider(MemoryProvider):
         """
         try:
             personal = await self._fetch_memories(scope="personal", limit=5, filter_space=False)
-            team = await self._fetch_memories(scope="team", limit=5, filter_space=False)
+            team = await self._fetch_memories(scope="team", limit=5, filter_space=True)
         except Exception:
             logger.debug("system_prompt_block fetch failed", exc_info=True)
             return ""
@@ -266,6 +266,7 @@ class DatabaseMemoryProvider(MemoryProvider):
 
         async def _extract():
             from langchain_core.messages import HumanMessage, SystemMessage
+
             from src.core.model_factory import get_default_model
             from src.services.memory_service import memory_service
 
@@ -305,7 +306,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                     await memory_service.store(
                         session_id=sid, user_id=uid,
                         content=item.get("content", ""),
-                        title=item.get("title", f"[Session] Memory"),
+                        title=item.get("title", "[Session] Memory"),
                         scope="personal", tags=["per-turn"],
                         space_id=self._space_id,
                     )

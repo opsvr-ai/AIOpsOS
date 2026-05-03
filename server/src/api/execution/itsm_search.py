@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, or_
+from sqlalchemy import func, or_, select
 
-from src.api.deps import DbSession
+from src.api.deps import DbSession, get_current_user, get_optional_space_id
 from src.models.itsm import ItsmTicket
 
 itsm_search_router = APIRouter(prefix="/api/v1/itsm", tags=["ITSM Search"])
@@ -22,8 +22,14 @@ async def search_tickets(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
+    _=Depends(get_current_user),
 ):
     query = select(ItsmTicket)
+    if space_id:
+        query = query.where(
+            (ItsmTicket.space_id == space_id) | (ItsmTicket.space_id.is_(None))
+        )
     if service:
         query = query.where(ItsmTicket.affected_service == service)
     if ticket_type:
@@ -74,14 +80,21 @@ async def search_tickets(
 async def get_ticket_detail(
     ticket_id: str,
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
+    _=Depends(get_current_user),
 ):
     from uuid import UUID
 
+    base_query = select(ItsmTicket)
+    if space_id:
+        base_query = base_query.where(
+            (ItsmTicket.space_id == space_id) | (ItsmTicket.space_id.is_(None))
+        )
     try:
         uid = UUID(ticket_id)
-        result = await db.execute(select(ItsmTicket).where(ItsmTicket.id == uid))
+        result = await db.execute(base_query.where(ItsmTicket.id == uid))
     except ValueError:
-        result = await db.execute(select(ItsmTicket).where(ItsmTicket.external_id == ticket_id))
+        result = await db.execute(base_query.where(ItsmTicket.external_id == ticket_id))
 
     ticket = result.scalar_one_or_none()
     if not ticket:
@@ -108,8 +121,14 @@ async def get_service_timeline(
     time_start: str | None = Query(None),
     time_end: str | None = Query(None),
     db: DbSession = None,
+    space_id: str | None = Depends(get_optional_space_id),
+    _=Depends(get_current_user),
 ):
     query = select(ItsmTicket).where(ItsmTicket.affected_service == service)
+    if space_id:
+        query = query.where(
+            (ItsmTicket.space_id == space_id) | (ItsmTicket.space_id.is_(None))
+        )
     if time_start:
         query = query.where(ItsmTicket.created_at >= datetime.fromisoformat(time_start))
     if time_end:

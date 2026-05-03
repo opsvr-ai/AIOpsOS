@@ -7,8 +7,7 @@ orchestrates the summarization pipeline to keep wiki pages current.
 import asyncio
 import logging
 import os
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.config import settings
@@ -150,7 +149,7 @@ class KBMonitor:
             out.append(WatchedFile(
                 path=os.path.relpath(path, _wiki_dir()),
                 status=status,
-                last_modified=datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat() if mtime else None,
+                last_modified=datetime.fromtimestamp(mtime, tz=UTC).isoformat() if mtime else None,
                 size=size,
             ))
         out.sort(key=lambda w: w.path)
@@ -179,7 +178,6 @@ class KBMonitor:
     def _scan_changes(self) -> list[str]:
         """Return list of changed raw/ file paths."""
         changed = []
-        raw_dir = os.path.join(_wiki_dir(), "raw")
 
         seen = set()
 
@@ -216,7 +214,7 @@ class KBMonitor:
         while self._running:
             try:
                 changed = self._scan_changes()
-                self._last_check = datetime.now(timezone.utc).isoformat()
+                self._last_check = datetime.now(UTC).isoformat()
                 for fp in changed:
                     logger.info("KB change detected: %s", fp)
                     result = await self.process_document(fp)

@@ -21,7 +21,11 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup_logging() -> None:
-    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    root = logging.getLogger()
+    if root.handlers:
+        return  # already configured
+
+    level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
 
     if settings.log_format == "json":
         formatter = JsonFormatter()
@@ -31,7 +35,6 @@ def setup_logging() -> None:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-    root = logging.getLogger()
     root.setLevel(level)
 
     stream_handler = logging.StreamHandler(sys.stdout)
@@ -41,6 +44,7 @@ def setup_logging() -> None:
 
     log_dir = settings.log_dir
     os.makedirs(log_dir, exist_ok=True)
+
     file_handler = TimedRotatingFileHandler(
         filename=os.path.join(log_dir, "server.log"),
         when="midnight",
@@ -51,6 +55,15 @@ def setup_logging() -> None:
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
     root.addHandler(file_handler)
+
+    # Capture uvicorn's internal loggers to the same file + stdout
+    for uvicorn_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        uv_logger = logging.getLogger(uvicorn_name)
+        uv_logger.handlers.clear()
+        uv_logger.addHandler(stream_handler)
+        uv_logger.addHandler(file_handler)
+        uv_logger.setLevel(level)
+        uv_logger.propagate = False
 
     for lib in (
         "httpx", "httpcore", "urllib3", "asyncio",

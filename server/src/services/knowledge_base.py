@@ -7,14 +7,12 @@ import asyncio
 import hashlib
 import logging
 import os
-import uuid
 from dataclasses import dataclass
 from typing import BinaryIO
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import func, or_, select, text
 
-from src.config import settings
 from src.models.base import async_session_factory
 from src.models.knowledge import KnowledgeChunk, KnowledgeDocument
 
@@ -42,20 +40,20 @@ class KnowledgeBaseService:
     # ── public API ─────────────────────────────────────────────────
 
     async def retrieve(
-        self, query: str, top_k: int = 5, source: str | None = None
+        self, query: str, top_k: int = 5, source: str | None = None, space_id: str | None = None
     ) -> list[SearchResult]:
         """End-to-end LLM-WIKI retrieval: rewrite → hybrid search → rerank."""
         rewritten = await self._rewrite_queries(query)
         queries = [query] + rewritten
-        raw = await self._hybrid_search(queries, top_k * 3, source)
+        raw = await self._hybrid_search(queries, top_k * 3, source, space_id)
         reranked = self._rerank(raw, top_k)
         return reranked
 
     async def retrieve_context(
-        self, query: str, top_k: int = 5, source: str | None = None
+        self, query: str, top_k: int = 5, source: str | None = None, space_id: str | None = None
     ) -> str:
         """Retrieve and format context for LLM injection."""
-        results = await self.retrieve(query, top_k, source=source)
+        results = await self.retrieve(query, top_k, source=source, space_id=space_id)
         return self._format_context(results)
 
     async def add_document(
@@ -266,16 +264,16 @@ class KnowledgeBaseService:
         return self._parse_json_list(resp.content)
 
     async def _hybrid_search(
-        self, queries: list[str], top_k: int = 15, source: str | None = None
+        self, queries: list[str], top_k: int = 15, source: str | None = None, space_id: str | None = None
     ) -> list[SearchResult]:
         """Run keyword + vector search for each query and merge results."""
         results: list[SearchResult] = []
         for query in queries:
-            keyword_results = await self._keyword_search(query, top_k, source)
+            keyword_results = await self._keyword_search(query, top_k, source, space_id)
             results.extend(keyword_results)
             if self._embeddings_available:
                 try:
-                    vector_results = await self._vector_search(query, top_k, source)
+                    vector_results = await self._vector_search(query, top_k, source, space_id)
                     results.extend(vector_results)
                 except Exception:
                     logger.warning("Vector search failed, disabling embeddings")
@@ -283,7 +281,7 @@ class KnowledgeBaseService:
         return results
 
     async def _vector_search(
-        self, query: str, top_k: int = 10, source: str | None = None
+        self, query: str, top_k: int = 10, source: str | None = None, space_id: str | None = None
     ) -> list[SearchResult]:
         """Search by vector similarity with title boost."""
         try:
@@ -293,7 +291,7 @@ class KnowledgeBaseService:
             title_emb = await asyncio.wait_for(
                 self._get_embeddings().aembed_query(f"title: {query}"), timeout=15
             )
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             logger.warning("Embedding API unreachable, disabling vector search")
             self._embeddings_available = False
             return []
@@ -306,8 +304,11 @@ class KnowledgeBaseService:
             "threshold": 0.5,
         }
         if source:
-            source_clause = "AND d.source = :source_filter"
+            source_clause += "AND d.source = :source_filter"
             params["source_filter"] = source
+        if space_id:
+            source_clause += "AND d.space_id = :space_id"
+            params["space_id"] = space_id
 
         async with async_session_factory() as db:
             stmt = text(
@@ -344,15 +345,21 @@ class KnowledgeBaseService:
             ]
 
     async def _keyword_search(
-        self, query: str, top_k: int = 10, source: str | None = None
+        self, query: str, top_k: int = 10, source: str | None = None, space_id: str | None = None
     ) -> list[SearchResult]:
         """Full-text keyword search with Chinese tokenisation and title bonus."""
         tsquery_str = self._tokenise(query)
         source_clause = ""
         params: dict = {"tsquery": tsquery_str, "top_k": top_k}
+        if space_id:
+            source_clause += "AND d.space_id = :space_id"
+            params["space_id"] = space_id
         if source:
-            source_clause = "AND d.source = :source_filter"
+            source_clause += "AND d.source = :source_filter"
             params["source_filter"] = source
+        if space_id:
+            source_clause += "AND d.space_id = :space_id"
+            params["space_id"] = space_id
 
         async with async_session_factory() as db:
             stmt = text(
@@ -524,7 +531,7 @@ class KnowledgeBaseService:
                 )
 
         # Stats section
-        lines.append(f"\n## Stats\n")
+        lines.append("\n## Stats\n")
         lines.append(f"- Total documents: {len(docs)}")
         lines.append(f"- Total chunks: {sum(d.chunk_count for d in docs)}")
         lines.append(f"- Sources: {len(by_source)}")
@@ -672,7 +679,7 @@ class KnowledgeBaseService:
         if not _os.path.isfile(filepath):
             return None
 
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             content = f.read()
 
         stem = _os.path.splitext(_os.path.basename(filepath))[0]

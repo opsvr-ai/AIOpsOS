@@ -251,12 +251,18 @@ async function streamChat(opts: {
   }
 }
 
+export interface AttachedFile {
+  id: string;
+  filename: string;
+}
+
 export function useChatStream(opts: { spaceId?: string }) {
   const { spaceId } = opts;
   const modelProviderRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const [input, setInput] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const isRunning = useChatStore((s) => s.isRunning);
   const messages = useChatStore((s) => s.messages);
 
@@ -290,7 +296,12 @@ export function useChatStream(opts: { spaceId?: string }) {
     async (text?: string) => {
       const msgText = (text ?? input).trim();
       if (!msgText || isRunning) return;
-      setInput('');
+
+      // Build file refs from attached files
+      const fileRefs = attachedFiles.map((f) => `@[${f.filename}](ref:${f.id})`).join('\n');
+      const fullText = fileRefs ? `${fileRefs}\n${msgText}` : msgText;
+
+      setAttachedFiles([]);
       abortRef.current?.abort();
       abortRef.current = new AbortController();
 
@@ -298,7 +309,7 @@ export function useChatStream(opts: { spaceId?: string }) {
       store.addMessage({
         id: uuid(),
         role: 'user',
-        content: msgText,
+        content: fullText,
         type: 'text',
         timestamp: Date.now(),
       });
@@ -306,13 +317,17 @@ export function useChatStream(opts: { spaceId?: string }) {
 
       try {
         await streamChat({
-          msgText,
+          msgText: fullText,
           spaceId,
           modelProviderId: modelProviderRef.current,
           signal: abortRef.current.signal,
         });
+        setInput('');
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setInput('');
+          return;
+        }
         store.addMessage({
           id: uuid(),
           role: 'system',
@@ -325,7 +340,7 @@ export function useChatStream(opts: { spaceId?: string }) {
         store.refreshSessions();
       }
     },
-    [input, isRunning, spaceId],
+    [input, isRunning, spaceId, attachedFiles],
   );
 
   const stop = useCallback(() => {
@@ -383,6 +398,8 @@ export function useChatStream(opts: { spaceId?: string }) {
   return {
     input,
     setInput,
+    attachedFiles,
+    setAttachedFiles,
     isRunning,
     sendMessage,
     stop,

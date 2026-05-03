@@ -1,10 +1,10 @@
 """Unified callback endpoint for notification channel callbacks (no JWT)."""
 
-import hashlib
-import hmac
 import json
 import logging
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, Request
+
 from src.services.interrupt_manager import interrupt_manager
 
 logger = logging.getLogger(__name__)

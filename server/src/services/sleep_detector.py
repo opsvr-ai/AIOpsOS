@@ -116,7 +116,7 @@ class SleepDetector:
         async with async_session_factory() as db:
             result = await db.execute(
                 select(Session.id, Session.user_id)
-                .where(Session.skill_review_due == True)
+                .where(Session.skill_review_due)
                 .limit(5)
             )
             due_sessions = list(result.fetchall())
