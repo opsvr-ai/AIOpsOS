@@ -21,7 +21,7 @@ from src.agent.deep_agent import get_deep_agent
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
 from src.models.user import User
-from src.services.memory_provider import MemoryManager
+from src.services.memory_provider import get_memory_manager
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -155,8 +155,7 @@ async def handle_wecom_message(
     set_current_space(space_id=str(session.space_id) if session.space_id else "")
 
     # 5. Initialize memory
-    mm = MemoryManager()
-    mm.initialize(
+    mm = get_memory_manager(
         session_id,
         user_id=str(user.id),
         platform="wecom",

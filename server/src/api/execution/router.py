@@ -24,7 +24,7 @@ from src.models.session import Message, Session
 from src.models.space import Space, SpaceMember
 from src.schemas.alert import AlertActionRequest, AlertCreate, AlertListParams, AlertOut, BatchActionRequest
 from src.schemas.chat import ChatRequest, ChatResponse, ChatEvent, MessageOut, SessionDetailOut, SessionOut
-from src.services.memory_provider import MemoryManager
+from src.services.memory_provider import get_memory_manager, invalidate_memory_manager
 from src.services.sleep_detector import sleep_detector
 from src.services.tool_manager import tool_manager
 
@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 # TTL cache for tool_manager.reload() — avoid DB hit on every request
 _last_tool_reload: float = 0.0
-_TOOL_RELOAD_TTL: float = 60.0
+_TOOL_RELOAD_TTL: float = 300.0
+
+# TTL cache for space context resolution — space membership rarely changes
+_space_ctx_cache: dict[str, tuple[tuple[str, str], float]] = {}
+_SPACE_CTX_TTL: float = 300.0
 
 # Keyword-based intent classifier — sub-microsecond, no LLM call needed
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
@@ -95,9 +99,20 @@ def _get_user_context() -> SystemMessage | None:
 
 
 async def _resolve_space_context(user_id: str, space_id: str | None) -> None:
-    """Resolve space name and member role from space_id, then set context."""
+    """Resolve space name and member role from space_id, then set context.
+    Cached per user+space pair — membership rarely changes mid-session."""
     if not space_id:
         return
+
+    cache_key = f"{user_id}:{space_id}"
+    now = time.monotonic()
+    cached = _space_ctx_cache.get(cache_key)
+    if cached:
+        (space_name, space_role), expires = cached
+        if now < expires:
+            set_current_space(space_id=str(space_id), space_name=space_name, space_role=space_role)
+            return
+
     async with async_session_factory() as db:
         result = await db.execute(
             select(Space.name, SpaceMember.role)
@@ -106,6 +121,7 @@ async def _resolve_space_context(user_id: str, space_id: str | None) -> None:
         )
         row = result.one_or_none()
         if row:
+            _space_ctx_cache[cache_key] = ((row[0], row[1]), now + _SPACE_CTX_TTL)
             set_current_space(space_id=str(space_id), space_name=row[0], space_role=row[1])
 
 
@@ -217,9 +233,8 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
     if user_ctx:
         messages.append(user_ctx)
     # Inject recent memory context into agent messages
-    mm = MemoryManager()
-    mm.initialize(str(session.id), user_id=str(user.id), platform="web",
-                  space_id=str(space_id) if space_id else "")
+    mm = get_memory_manager(str(session.id), user_id=str(user.id), platform="web",
+                            space_id=str(space_id) if space_id else "")
     memory_block = await mm.system_prompt_block()
     if memory_block:
         from langchain_core.messages import SystemMessage
@@ -355,16 +370,28 @@ Return ONLY a JSON array: [{{"label": "...", "prompt": "..."}}, ...]. No other t
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 async def get_session(
-    session_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    session_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    from sqlalchemy import func
+    total = await db.scalar(
+        select(func.count(Message.id)).where(Message.session_id == session_id)
+    )
+
     msg_result = await db.execute(
         select(Message)
         .where(Message.session_id == session_id)
         .order_by(Message.created_at)
+        .offset(offset)
+        .limit(limit)
     )
     msgs = msg_result.scalars().all()
     return SessionDetailOut(
@@ -384,6 +411,7 @@ async def get_session(
             extra_metadata=m.extra_metadata,
             created_at=m.created_at,
         ) for m in msgs],
+        total_messages=total or 0,
     )
 
 
@@ -407,11 +435,12 @@ async def delete_session(
             {"role": m.role, "content": m.content}
             for m in msgs_result.scalars().all()
         ]
-        mm = MemoryManager()
-        mm.initialize(session_id, user_id=str(user.id))
+        mm = get_memory_manager(session_id, user_id=str(user.id))
         await mm.on_session_end(session_msgs)
     except Exception:
         logger.exception("on_session_end failed for session %s", session_id)
+
+    invalidate_memory_manager(session_id)
 
     await db.execute(sa_delete(Message).where(Message.session_id == session_id))
     await db.execute(sa_delete(Session).where(Session.id == session_id))
@@ -694,8 +723,7 @@ async def chat_stream(
                 set_session_model(_build_model_from_provider(provider))
 
         # Initialize memory providers for this session
-        mm = MemoryManager()
-        mm.initialize(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
+        mm = get_memory_manager(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
 
         # Load session message history for conversational context
         history_messages: list = []

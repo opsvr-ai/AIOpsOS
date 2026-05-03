@@ -158,6 +158,7 @@ class DatabaseMemoryProvider(MemoryProvider):
         self._user_id: str = ""
         self._space_id: str = ""
         self._pending_tasks: list[_asyncio.Task] = []
+        self._turn_buffer: list[tuple[str, str]] = []
 
     @property
     def name(self) -> str:
@@ -247,14 +248,21 @@ class DatabaseMemoryProvider(MemoryProvider):
         return "\n".join(lines)
 
     async def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "") -> None:
-        """LLM-based per-turn memory extraction for both personal and team scope.
+        """Buffer turns; extract via LLM every 5 turns (batch)."""
+        self._turn_buffer.append((user_content, assistant_content))
+        if len(self._turn_buffer) >= 5:
+            await self.flush()
 
-        Runs as a background task — never blocks the chat response.
-        """
+    async def flush(self) -> None:
+        """Force-extract memories from all buffered turns."""
+        if not self._turn_buffer:
+            return
         import json as _json
 
-        sid = session_id or self._session_id
+        sid = self._session_id
         uid = self._user_id
+        buffered = self._turn_buffer[:]
+        self._turn_buffer.clear()
 
         async def _extract():
             from langchain_core.messages import HumanMessage, SystemMessage
@@ -264,14 +272,16 @@ class DatabaseMemoryProvider(MemoryProvider):
             try:
                 llm = await get_default_model()
             except Exception:
-                logger.warning("Per-turn memory extraction: failed to get LLM model")
+                logger.warning("Batch memory extraction: failed to get LLM model")
                 return
 
+            turns_text = "\n---\n".join(
+                f"用户：{u[:300]}\n助手：{a[:500]}" for u, a in buffered
+            )
             prompt = (
-                "从以下运维对话中提取有价值的操作经验和决策信息，"
+                "从以下多轮运维对话中提取有价值的操作经验和决策信息，"
                 "区分个人记忆和团队记忆：\n\n"
-                f"用户：{user_content[:500]}\n"
-                f"助手：{assistant_content[:800]}\n\n"
+                f"{turns_text}\n\n"
                 "返回JSON，包含personal和team两个数组。\n"
                 "- personal: 用户的操作行为、决策偏好、配置习惯，每条有title和content\n"
                 "- team: 通用工作流程、工具使用模式、问题解决思路（去除敏感信息），每条有title和content\n"
@@ -309,7 +319,7 @@ class DatabaseMemoryProvider(MemoryProvider):
                         space_id=self._space_id,
                     )
             except Exception:
-                logger.warning("Per-turn LLM extraction failed", exc_info=True)
+                logger.warning("Batch LLM extraction failed", exc_info=True)
 
         task = _asyncio.create_task(_extract())
         self._pending_tasks.append(task)
@@ -317,6 +327,7 @@ class DatabaseMemoryProvider(MemoryProvider):
 
     async def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         """Heavy session summarization via LLM. Runs on session close."""
+        await self.flush()  # catch remaining buffered turns
         if not messages:
             return
 
@@ -368,6 +379,8 @@ class DatabaseMemoryProvider(MemoryProvider):
         self._pending_tasks = [t for t in self._pending_tasks if not t.done()]
 
     def shutdown(self) -> None:
+        if self._turn_buffer:
+            _asyncio.create_task(self.flush())
         for task in self._pending_tasks:
             if not task.done():
                 task.cancel()
@@ -475,3 +488,48 @@ class MemoryManager:
                 p.shutdown()
             except Exception:
                 logger.exception("Memory provider '%s' shutdown failed", p.name)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Session-Scoped MemoryManager Cache
+# ═══════════════════════════════════════════════════════════════════════
+
+import time as _time
+
+_mm_cache: dict[str, tuple[MemoryManager, float]] = {}
+_MM_CACHE_TTL: float = 60.0
+
+
+def get_memory_manager(
+    session_id: str,
+    *,
+    user_id: str = "",
+    platform: str = "web",
+    space_id: str = "",
+    data_dir: str = "data",
+) -> MemoryManager:
+    """Get or create a cached MemoryManager for the session.
+
+    Eliminates redundant filesystem reads (MEMORY.md, USER.md) on every
+    turn by reusing the manager for 60s. After TTL expires, a fresh
+    instance picks up new file/memory changes.
+    """
+    now = _time.time()
+    cached = _mm_cache.get(session_id)
+    if cached:
+        mm, expires = cached
+        if now < expires:
+            return mm
+        mm.shutdown()
+
+    mm = MemoryManager(data_dir=data_dir)
+    mm.initialize(session_id, user_id=user_id, platform=platform, space_id=space_id)
+    _mm_cache[session_id] = (mm, now + _MM_CACHE_TTL)
+    return mm
+
+
+def invalidate_memory_manager(session_id: str) -> None:
+    """Remove a session from the cache (call on session delete/end)."""
+    cached = _mm_cache.pop(session_id, None)
+    if cached:
+        cached[0].shutdown()

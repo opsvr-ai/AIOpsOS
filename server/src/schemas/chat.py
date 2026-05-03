@@ -44,6 +44,7 @@ class SessionOut(BaseModel):
 
 class SessionDetailOut(SessionOut):
     messages: list[MessageOut] = []
+    total_messages: int = 0
 
 
 class ChatRequest(BaseModel):
