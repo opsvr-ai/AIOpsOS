@@ -33,6 +33,7 @@ from .monitor import (
     stop_all_monitors,
 )
 from .webhook_handler import create_webhook_router
+from .agent_bridge import handle_wecom_message
 
 logger = logging.getLogger(__name__)
 
@@ -204,13 +205,27 @@ class WeComChannel(NotificationChannelBase):
         bot_secret: str,
         ws_url: str | None = None,
         account_id: str = "default",
+        channel_config: dict | None = None,
     ) -> WeComMonitor:
+        # Build agent bridge callback with config closure
+        cfg = channel_config or {}
+        async def _agent_callback(parsed_msg, ws, frame):
+            await handle_wecom_message(parsed_msg, cfg, ws, frame)
+        callback = self._message_callback or _agent_callback
+        if self._message_callback and cfg:
+            # Use both: user callback + agent bridge
+            original = self._message_callback
+            async def _combined(parsed_msg, ws, frame):
+                await original(parsed_msg, ws, frame)
+                await handle_wecom_message(parsed_msg, cfg, ws, frame)
+            callback = _combined
+
         monitor = await start_monitor(
             bot_id=bot_id,
             bot_secret=bot_secret,
             ws_url=ws_url or CLOUD_WS_BASE,
             account_id=account_id,
-            on_message=self._message_callback,
+            on_message=callback,
         )
         logger.info("WeCom bot monitor started: account=%s", account_id)
         return monitor

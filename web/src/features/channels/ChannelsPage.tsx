@@ -28,6 +28,11 @@ import {
   ExperimentOutlined,
   MailOutlined,
   ApiOutlined,
+  StopOutlined,
+  CaretRightOutlined,
+  MessageOutlined,
+  UsergroupAddOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
 
@@ -265,6 +270,26 @@ const WECOM_SUB_FIELDS: Record<string, FieldDef[]> = {
       placeholder: '单聊填 userid，群聊填 chatid',
       section: '发送配置',
     },
+    {
+      key: 'callback_token',
+      label: '回调 Token (可选)',
+      placeholder: '用于 Webhook 回调 URL 验证',
+      type: 'password',
+      section: 'Webhook 回调 (可选)',
+    },
+    {
+      key: 'callback_encoding_aes_key',
+      label: '回调 EncodingAESKey (可选)',
+      placeholder: '43 位随机字符串',
+      type: 'password',
+      section: 'Webhook 回调 (可选)',
+    },
+    {
+      key: 'callback_receive_id',
+      label: '回调 ReceiveId (可选)',
+      placeholder: '默认为 corp_id，留空自动推断',
+      section: 'Webhook 回调 (可选)',
+    },
   ],
   app: [
     {
@@ -344,6 +369,124 @@ export default function ChannelsPage() {
   useEffect(() => {
     fetch();
   }, [fetch]);
+
+  // Monitor connection status for WeCom WebSocket channels
+  const [monitorStatuses, setMonitorStatuses] = useState<Record<string, boolean>>({});
+  const [monitorLoading, setMonitorLoading] = useState<Record<string, boolean>>({});
+
+  const fetchMonitorStatus = useCallback(async () => {
+    const wecomSockets = items.filter(
+      (ch) =>
+        ch.channel_type === 'wecom' &&
+        (ch.config as Record<string, unknown>)?.wecom_sub_type === 'bot_websocket',
+    );
+    if (wecomSockets.length === 0) return;
+    const statuses: Record<string, boolean> = {};
+    for (const ch of wecomSockets) {
+      try {
+        const res = await api.get(`/channels/${ch.id}/monitor/status`);
+        statuses[ch.id] = res.data?.connected ?? false;
+      } catch {
+        statuses[ch.id] = false;
+      }
+    }
+    setMonitorStatuses((prev) => ({ ...prev, ...statuses }));
+  }, [items]);
+
+  useEffect(() => {
+    if (items.length > 0) fetchMonitorStatus();
+  }, [items, fetchMonitorStatus]);
+
+  const handleMonitorAction = async (ch: Channel, action: 'start' | 'stop') => {
+    setMonitorLoading((prev) => ({ ...prev, [ch.id]: true }));
+    try {
+      const res = await api.post(`/channels/${ch.id}/monitor/${action}`);
+      if (res.data?.ok) {
+        msg.success(action === 'start' ? '已启动' : '已停止');
+        await fetchMonitorStatus();
+      } else {
+        msg.error(res.data?.message || '操作失败');
+      }
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        '操作失败';
+      msg.error(detail);
+    } finally {
+      setMonitorLoading((prev) => ({ ...prev, [ch.id]: false }));
+    }
+  };
+
+  // ── App operations ────────────────────────────────────────────────────
+
+  const [appModalOpen, setAppModalOpen] = useState(false);
+  const [appModalType, setAppModalType] = useState<'send' | 'create_chat' | 'chat_send'>('send');
+  const [appTargetId, setAppTargetId] = useState<string | null>(null);
+  const [appLoading, setAppLoading] = useState(false);
+  const [appForm] = Form.useForm();
+
+  const openAppModal = (ch: Channel, type: 'send' | 'create_chat' | 'chat_send') => {
+    setAppTargetId(ch.id);
+    setAppModalType(type);
+    appForm.resetFields();
+    if (type === 'send') {
+      appForm.setFieldsValue({ msgtype: 'text' });
+    } else if (type === 'chat_send') {
+      appForm.setFieldsValue({ msgtype: 'text' });
+    }
+    setAppModalOpen(true);
+  };
+
+  const handleAppAction = async (values: Record<string, unknown>) => {
+    if (!appTargetId) return;
+    setAppLoading(true);
+    try {
+      let res;
+      if (appModalType === 'send') {
+        res = await api.post(`/channels/${appTargetId}/app/send`, {
+          msgtype: values.msgtype || 'text',
+          content: values.content || '',
+          touser: values.touser || '',
+          toparty: values.toparty || '',
+          totag: values.totag || '',
+        });
+      } else if (appModalType === 'create_chat') {
+        const userlistStr = (values.userlist as string) || '';
+        res = await api.post(`/channels/${appTargetId}/app/chat/create`, {
+          name: values.name || '',
+          owner: values.owner || '',
+          userlist: userlistStr
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+          chatid: values.chatid || '',
+        });
+      } else {
+        res = await api.post(`/channels/${appTargetId}/app/chat/send`, {
+          chatid: values.chatid || '',
+          msgtype: values.msgtype || 'text',
+          content: values.content || '',
+        });
+      }
+      if (res.data?.ok) {
+        msg.success(
+          appModalType === 'create_chat'
+            ? `群聊创建成功: ${res.data?.data?.chatid || ''}`
+            : '发送成功',
+        );
+        setAppModalOpen(false);
+      } else {
+        msg.error(res.data?.data?.errmsg || '操作失败');
+      }
+    } catch (err: unknown) {
+      msg.error(
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          '请求失败',
+      );
+    } finally {
+      setAppLoading(false);
+    }
+  };
 
   const buildConfig = (values: Record<string, unknown>): Record<string, unknown> | null => {
     const config: Record<string, unknown> = {};
@@ -511,9 +654,26 @@ export default function ChannelsPage() {
       render: (v: string) => (v ? new Date(v).toLocaleString('zh-CN') : '-'),
     },
     {
+      title: '连接',
+      key: 'monitor_status',
+      width: 80,
+      render: (_: unknown, r: Channel) => {
+        const isWebsocket =
+          r.channel_type === 'wecom' &&
+          (r.config as Record<string, unknown>)?.wecom_sub_type === 'bot_websocket';
+        if (!isWebsocket) return <span style={{ color: '#999', fontSize: 12 }}>-</span>;
+        const connected = monitorStatuses[r.id] ?? false;
+        return (
+          <Tag color={connected ? 'success' : 'default'} style={{ borderRadius: 4, fontSize: 11 }}>
+            {connected ? '已连接' : '未连接'}
+          </Tag>
+        );
+      },
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 200,
       render: (_: unknown, r: Channel) => (
         <Space size={4}>
           <Tooltip title="测试发送">
@@ -542,6 +702,61 @@ export default function ChannelsPage() {
           >
             <Button type="text" danger icon={<DeleteOutlined />} size="small" />
           </Popconfirm>
+          {r.channel_type === 'wecom' &&
+            (r.config as Record<string, unknown>)?.wecom_sub_type === 'bot_websocket' && (
+              <>
+                {(monitorStatuses[r.id] ?? false) ? (
+                  <Tooltip title="断开连接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<StopOutlined />}
+                      loading={monitorLoading[r.id]}
+                      onClick={() => handleMonitorAction(r, 'stop')}
+                    />
+                  </Tooltip>
+                ) : (
+                  <Tooltip title="连接">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CaretRightOutlined />}
+                      loading={monitorLoading[r.id]}
+                      onClick={() => handleMonitorAction(r, 'start')}
+                    />
+                  </Tooltip>
+                )}
+              </>
+            )}
+          {r.channel_type === 'wecom' &&
+            (r.config as Record<string, unknown>)?.wecom_sub_type === 'app' && (
+              <>
+                <Tooltip title="发送应用消息">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<SendOutlined />}
+                    onClick={() => openAppModal(r, 'send')}
+                  />
+                </Tooltip>
+                <Tooltip title="创建群聊">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<UsergroupAddOutlined />}
+                    onClick={() => openAppModal(r, 'create_chat')}
+                  />
+                </Tooltip>
+                <Tooltip title="发送群聊消息">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MessageOutlined />}
+                    onClick={() => openAppModal(r, 'chat_send')}
+                  />
+                </Tooltip>
+              </>
+            )}
         </Space>
       ),
     },
@@ -823,6 +1038,110 @@ export default function ChannelsPage() {
             <Switch />
           </Form.Item>
           {renderFormContent()}
+        </Form>
+      </Modal>
+
+      {/* App operations modal */}
+      <Modal
+        title={
+          appModalType === 'send'
+            ? '发送应用消息'
+            : appModalType === 'create_chat'
+              ? '创建应用群聊'
+              : '发送群聊消息'
+        }
+        open={appModalOpen}
+        onCancel={() => setAppModalOpen(false)}
+        onOk={() => appForm.submit()}
+        confirmLoading={appLoading}
+        okText={appModalType === 'create_chat' ? '创建' : '发送'}
+        destroyOnHidden
+        width={480}
+      >
+        <Form form={appForm} layout="vertical" onFinish={handleAppAction}>
+          {appModalType === 'send' && (
+            <>
+              <Form.Item name="msgtype" label="消息类型" initialValue="text">
+                <Select
+                  options={[
+                    { value: 'text', label: '纯文本' },
+                    { value: 'markdown', label: 'Markdown' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="content"
+                label="消息内容"
+                rules={[{ required: true, message: '请输入内容' }]}
+              >
+                <Input.TextArea rows={4} placeholder="消息内容" />
+              </Form.Item>
+              <Form.Item name="touser" label="接收用户 (touser)">
+                <Input placeholder="userid1|userid2，留空则使用 '@all'" />
+              </Form.Item>
+              <Form.Item name="toparty" label="接收部门 (toparty)">
+                <Input placeholder="partyid1|partyid2" />
+              </Form.Item>
+              <Form.Item name="totag" label="接收标签 (totag)">
+                <Input placeholder="tagid1|tagid2" />
+              </Form.Item>
+            </>
+          )}
+          {appModalType === 'create_chat' && (
+            <>
+              <Form.Item
+                name="name"
+                label="群聊名称"
+                rules={[{ required: true, message: '请输入群聊名称' }]}
+              >
+                <Input placeholder="测试群聊" />
+              </Form.Item>
+              <Form.Item
+                name="owner"
+                label="群主 UserID"
+                rules={[{ required: true, message: '请输入群主 UserID' }]}
+              >
+                <Input placeholder="zhangsan" />
+              </Form.Item>
+              <Form.Item
+                name="userlist"
+                label="成员列表"
+                rules={[{ required: true, message: '请输入成员' }]}
+                extra="逗号分隔的 UserID 列表，至少 2 人（含群主）"
+              >
+                <Input placeholder="zhangsan, lisi, wangwu" />
+              </Form.Item>
+              <Form.Item name="chatid" label="指定群聊 ID (可选)">
+                <Input placeholder="留空自动生成" />
+              </Form.Item>
+            </>
+          )}
+          {appModalType === 'chat_send' && (
+            <>
+              <Form.Item
+                name="chatid"
+                label="群聊 ID"
+                rules={[{ required: true, message: '请输入群聊 ID' }]}
+              >
+                <Input placeholder="从创建群聊返回的 chatid" />
+              </Form.Item>
+              <Form.Item name="msgtype" label="消息类型" initialValue="text">
+                <Select
+                  options={[
+                    { value: 'text', label: '纯文本' },
+                    { value: 'markdown', label: 'Markdown' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="content"
+                label="消息内容"
+                rules={[{ required: true, message: '请输入内容' }]}
+              >
+                <Input.TextArea rows={4} placeholder="群聊消息内容" />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
     </div>

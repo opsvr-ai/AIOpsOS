@@ -5,7 +5,7 @@ CHANNEL_ID = "wecom"
 # ── WebSocket 命令 ──────────────────────────────────────────────────────────
 
 WECOM_CMD_SUBSCRIBE = "aibot_subscribe"
-WECOM_CMD_CALLBACK = "aibot_callback"
+WECOM_CMD_CALLBACK = "aibot_msg_callback"
 WECOM_CMD_EVENT_CALLBACK = "aibot_event_callback"
 WECOM_CMD_RESPONSE = "aibot_response"
 WECOM_CMD_SEND_MSG = "aibot_send_msg"

@@ -44,6 +44,8 @@ class Session(Base, TimestampMixin):
     model_provider_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("model_providers.id", ondelete="SET NULL"), nullable=True
     )
+    source_platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_chat_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 

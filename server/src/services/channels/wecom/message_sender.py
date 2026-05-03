@@ -36,7 +36,7 @@ async def reply_stream(
     frame 是接收到的 aibot_callback 原始帧 dict。
     返回 stream_id。
     """
-    if not text:
+    if not text and not finish:
         return stream_id
 
     headers: dict[str, Any] = frame.get("headers", {})
@@ -66,7 +66,7 @@ async def reply_stream(
     except TimeoutError:
         raise StreamExpiredError(f"Reply stream send timed out (streamId={stream_id})")
 
-    logger.debug("replyStream streamId=%s finish=%s len=%d", stream_id, finish, len(text))
+    logger.info("replyStream streamId=%s finish=%s len=%d", stream_id, finish, len(text))
     return stream_id
 
 
@@ -78,7 +78,7 @@ async def reply_stream_non_blocking(
     finish: bool = False,
 ) -> str:
     """非阻塞流式回复 — 直接发送不等待 ack。"""
-    if not text:
+    if not text and not finish:
         return stream_id
 
     headers: dict[str, Any] = frame.get("headers", {})
@@ -101,7 +101,7 @@ async def reply_stream_non_blocking(
     }
 
     await ws.send_str(_json.dumps(response, ensure_ascii=False))
-    logger.debug("replyStreamNonBlocking streamId=%s finish=%s len=%d", stream_id, finish, len(text))
+    logger.info("replyStreamNonBlocking streamId=%s finish=%s len=%d", stream_id, finish, len(text))
     return stream_id
 
 

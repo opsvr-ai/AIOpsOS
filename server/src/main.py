@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import time
@@ -208,7 +209,7 @@ async def _init_database(app: FastAPI) -> bool:
     return True
 
 
-async def _start_background_services():
+async def _start_background_services(app: FastAPI):
     """Start all background services with individual error handling."""
     if settings.kb_monitor_enabled:
         try:
@@ -216,6 +217,108 @@ async def _start_background_services():
             await kb_monitor.start(poll_interval=settings.kb_monitor_poll_interval)
         except Exception:
             logger.exception("KB monitor failed to start")
+
+    # Auto-start WeCom WebSocket monitors for active bot_websocket channels
+    try:
+        from sqlalchemy import select
+        from src.models.channel import NotificationChannel
+        from src.models.base import async_session_factory
+        from src.services.channels.wecom.agent_bridge import handle_wecom_message
+        from src.services.channels.wecom.monitor import start_monitor
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(NotificationChannel).where(
+                    NotificationChannel.is_active == True,
+                    NotificationChannel.channel_type == "wecom",
+                )
+            )
+            channels = result.scalars().all()
+
+        started = 0
+        for ch in channels:
+            config = ch.config or {}
+            if config.get("wecom_sub_type") != "bot_websocket":
+                continue
+            bot_id = config.get("bot_id", "")
+            bot_secret = config.get("bot_secret", "")
+            if not bot_id or not bot_secret:
+                logger.warning("WeCom auto-start: channel %s missing bot_id/bot_secret", ch.id)
+                continue
+
+            async def _make_callback(cfg):
+                async def cb(parsed_msg, ws, frame):
+                    await handle_wecom_message(parsed_msg, cfg, ws, frame)
+                return cb
+
+            await start_monitor(
+                bot_id=bot_id,
+                bot_secret=bot_secret,
+                ws_url=config.get("ws_api_base") or "",
+                account_id="default",
+                on_message=await _make_callback(config),
+            )
+            started += 1
+            logger.info("WeCom bot monitor auto-started for channel %s (%s)", ch.name, ch.id)
+
+        if started > 0:
+            logger.info("Auto-started %d WeCom bot monitor(s)", started)
+    except Exception:
+        logger.exception("WeCom monitor auto-start failed")
+
+    # Auto-register WeCom webhook callback routes for channels with callback config
+    try:
+        from src.services.channels.wecom.webhook_handler import create_webhook_router
+        from src.services.channels.wecom.agent_bridge import handle_wecom_message
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(NotificationChannel).where(
+                    NotificationChannel.is_active == True,
+                    NotificationChannel.channel_type == "wecom",
+                )
+            )
+            channels = result.scalars().all()
+
+        for ch in channels:
+            config = ch.config or {}
+            callback_token = config.get("callback_token", "")
+            callback_aes_key = config.get("callback_encoding_aes_key", "")
+            if not callback_token or not callback_aes_key:
+                continue
+
+            receive_id = config.get("callback_receive_id", config.get("corp_id", ""))
+
+            async def _webhook_handler(parsed_msg, message, _cfg=dict(config)):
+                try:
+                    reply_text = await asyncio.wait_for(
+                        handle_wecom_message(parsed_msg, _cfg),
+                        timeout=_cfg.get("webhook_timeout", 4.0),
+                    )
+                    if reply_text:
+                        return {"msgtype": "markdown", "markdown": {"content": reply_text}}
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[wecom-webhook] agent reply timed out for chatid=%s (limit=%.1fs)",
+                        parsed_msg.chatid, _cfg.get("webhook_timeout", 4.0),
+                    )
+                except Exception:
+                    logger.exception("[wecom-webhook] agent error for chatid=%s", parsed_msg.chatid)
+                return None
+
+            webhook_router = create_webhook_router(
+                token=callback_token,
+                encoding_aes_key=callback_aes_key,
+                receive_id=receive_id,
+                on_message=_webhook_handler,
+            )
+            app.include_router(webhook_router)
+            logger.info(
+                "WeCom webhook callback router registered for channel %s (%s)", ch.name, ch.id
+            )
+            break  # Only one webhook router — callback URL is per-server
+    except Exception:
+        logger.exception("WeCom webhook router registration failed")
 
     try:
         from src.services.cron_scheduler import cron_scheduler
@@ -296,7 +399,7 @@ async def lifespan(app: FastAPI):
 
     # Start background services independently of DB init success
     if db_ok:
-        await _start_background_services()
+        await _start_background_services(app)
 
     yield
 

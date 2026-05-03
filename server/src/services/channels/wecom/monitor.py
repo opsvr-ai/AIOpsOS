@@ -58,7 +58,7 @@ class WeComMonitor:
     ):
         self.bot_id = bot_id
         self.bot_secret = bot_secret
-        self.ws_url = ws_url
+        self.ws_url = ws_url or CLOUD_WS_BASE
         self.account_id = account_id
         self._on_message = on_message
 
@@ -68,6 +68,7 @@ class WeComMonitor:
         self._connected = False
         self._auth_failures = 0
         self._task: asyncio.Task | None = None
+        self._ping_task: asyncio.Task | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -97,6 +98,10 @@ class WeComMonitor:
 
     async def _disconnect(self):
         self._connected = False
+        # Cancel ping task
+        pt = getattr(self, '_ping_task', None)
+        if pt and not pt.done():
+            pt.cancel()
         ws = self._ws
         self._ws = None
         if ws and not ws.closed:
@@ -120,7 +125,7 @@ class WeComMonitor:
             self._ws = await self._session.ws_connect(
                 self.ws_url,
                 timeout=aiohttp.ClientTimeout(total=30),
-                heartbeat=WS_HEARTBEAT_INTERVAL,
+                autoping=False,
             )
         except Exception as exc:
             logger.error("[wecom:%s] WS connect failed: %s", self.account_id, exc)
@@ -150,7 +155,21 @@ class WeComMonitor:
         self._auth_failures = 0
         self._connected = True
         logger.info("[wecom:%s] Connected and authenticated", self.account_id)
+        # Start WeCom protocol ping keepalive
+        if self._session:
+            self._ping_task = asyncio.create_task(self._ping_loop())
         return True
+
+    async def _ping_loop(self):
+        """Send WeCom protocol ping to keep connection alive."""
+        while self._connected and self._ws and not self._ws.closed:
+            await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
+            if not self._connected or not self._ws or self._ws.closed:
+                break
+            try:
+                await self._ws.send_str('{"cmd":"ping"}')
+            except Exception:
+                break
 
     async def _run_loop(self):
         reconnect_delay = WS_RECONNECT_DELAY_MIN
@@ -185,11 +204,17 @@ class WeComMonitor:
                 logger.info("[wecom:%s] WS closed by server", self.account_id)
                 break
             if msg.type == aiohttp.WSMsgType.ERROR:
-                logger.error("[wecom:%s] WS error", self.account_id)
+                logger.error("[wecom:%s] WS error (extra=%s data=%s)",
+                             self.account_id, msg.extra, str(msg.data)[:200] if msg.data else 'None')
                 break
             if msg.type in (aiohttp.WSMsgType.PING, aiohttp.WSMsgType.PONG):
                 continue
+            if msg.type == aiohttp.WSMsgType.CLOSING:
+                logger.info("[wecom:%s] WS closing (code=%s)", self.account_id, msg.data)
+                continue
             if msg.type != aiohttp.WSMsgType.TEXT:
+                logger.info("[wecom:%s] WS non-text msg: type=%s data=%s",
+                            self.account_id, msg.type, str(msg.data)[:200] if msg.data else 'None')
                 continue
 
             try:
@@ -208,9 +233,10 @@ class WeComMonitor:
         parsed = parse_message(body)
         parsed.req_id = frame.get("headers", {}).get("req_id", "")
 
-        logger.debug(
-            "[wecom:%s] callback msgtype=%s chatid=%s sender=%s text_len=%d",
-            self.account_id, parsed.msgtype, parsed.chatid, parsed.sender_userid, len(parsed.text),
+        logger.info(
+            "[wecom:%s] RECEIVED msgtype=%s chatid=%s sender=%s text_len=%d text_preview=%s",
+            self.account_id, parsed.msgtype, parsed.chatid, parsed.sender_userid,
+            len(parsed.text), parsed.text[:80] if parsed.text else "(empty)",
         )
 
         if not parsed.text and not parsed.image_urls and not parsed.file_urls:
