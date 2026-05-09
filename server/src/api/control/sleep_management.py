@@ -123,7 +123,7 @@ async def wake_session(
     user=Depends(get_current_user),
 ):
     """Manually wake a sleeping session."""
-    from src.services.sleep_detector import sleep_detector
+    from datetime import UTC, datetime
 
     async with async_session_factory() as db:
         result = await db.execute(
@@ -134,5 +134,15 @@ async def wake_session(
         if result.one_or_none() is None:
             raise HTTPException(status_code=404, detail="Session not found")
 
-    await sleep_detector.wake_session(session_id)
+        await db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(
+                sleep_status="awake",
+                last_active_at=datetime.now(UTC),
+            )
+        )
+        await db.commit()
+
+    logger.debug("Session %s awakened", session_id)
     return {"detail": "awakened"}

@@ -18,6 +18,7 @@ from src.agent.deep_agent import get_deep_agent, set_session_model
 from src.agent.human_interrupt import parse_interrupt_marker
 from src.api.deps import get_current_user, get_db, get_optional_space_id
 from src.core.model_factory import _build_model_from_provider
+from src.core.rate_limiter import chat_limiter
 from src.models.alert import Alert
 from src.models.base import async_session_factory
 from src.models.session import Message, Session
@@ -39,6 +40,15 @@ from src.schemas.chat import (
 from src.services.interrupt_manager import interrupt_manager
 from src.services.memory_provider import get_memory_manager, invalidate_memory_manager
 from src.services.tool_manager import tool_manager
+
+# Phase G part 3: RuntimeGateway wiring. Imported at module scope so we
+# don't pay the cost of re-resolving the singleton on every request; the
+# singleton itself is lazy so this is cheap.
+from src.services.agent_runtime.gateway import (  # noqa: E402
+    GatewayContext,
+    GatewayResult,
+    get_runtime_gateway,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +96,7 @@ async def _reload_tools_if_stale() -> None:
 
 async def _increment_turn(session_id: str) -> None:
     """Increment session turn_count and set skill_review_due every N turns."""
-    from src.services.sleep_detector import REVIEW_INTERVAL_TURNS
+    from src.agent.sub_agents.skill_review_agent import REVIEW_INTERVAL_TURNS
 
     async with async_session_factory() as db:
         result = await db.execute(select(Session).where(Session.id == session_id))
@@ -176,9 +186,10 @@ def _make_title(text: str, max_chars: int = 60) -> str:
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db), _rate=Depends(chat_limiter)):
     from datetime import UTC, datetime
 
+    _started_at = time.time()
     space_id = body.space_id
 
     if body.session_id:
@@ -240,7 +251,6 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
             await db.commit()
             set_session_model(_build_model_from_provider(provider))
 
-    agent = await get_deep_agent()
     messages: list = []
     user_ctx = _get_user_context()
     if user_ctx:
@@ -259,8 +269,45 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
         messages.append(SystemMessage(content=recall_context))
     resolved_message = await _resolve_file_refs(body.message, str(session.id))
     messages.append(HumanMessage(content=resolved_message))
-    result = await agent.ainvoke({"messages": messages}, config={"recursion_limit": 150})
-    reply = result["messages"][-1].content if result.get("messages") else "Agent produced no output."
+
+    # Phase G.3: RuntimeGateway decision. The gateway is feature-flagged
+    # internally — a disabled gateway / failing router simply returns
+    # ``route="full_agent"`` with the legacy graph, so we can always
+    # route through it safely.
+    gw_result: GatewayResult | None = None
+    agent: Any
+    try:
+        gw = await get_runtime_gateway()
+        gw_ctx = GatewayContext(
+            user_id=str(user.id),
+            username=user.username,
+            email=user.email,
+            session_id=str(session.id),
+            space_id=str(space_id) if space_id else None,
+            platform="web",
+        )
+        gw_result = await gw.handle(
+            gw_ctx,
+            body.message,
+            hot_block=memory_block or "",
+            history=[],
+            last_assistant_sha="",
+        )
+    except Exception:
+        logger.debug("gateway handle failed in /chat; using legacy agent", exc_info=True)
+        gw_result = None
+
+    if gw_result is not None and gw_result.route == "direct" and gw_result.direct_answer:
+        # Short-circuit: RouterLLM already produced the final answer.
+        reply = gw_result.direct_answer
+    else:
+        agent = (
+            gw_result.agent_graph
+            if gw_result is not None and gw_result.agent_graph is not None
+            else await get_deep_agent()
+        )
+        result = await agent.ainvoke({"messages": messages}, config={"recursion_limit": 150})
+        reply = result["messages"][-1].content if result.get("messages") else "Agent produced no output."
 
     assistant_msg = Message(session_id=session.id, role="assistant", content=reply,
                             extra_metadata={"execution_steps": []})
@@ -272,6 +319,39 @@ async def chat(body: ChatRequest, user=Depends(get_current_user), db: AsyncSessi
         await mm.sync_turn(body.message, reply)
     except Exception:
         logger.exception("sync_turn failed in /chat")
+
+    # Phase C: emit TrajectoryEvent for this turn (guarded by feature flag).
+    # Failure here must never affect the user-visible response path.
+    try:
+        from src.schemas.trajectory import TrajectoryEvent
+        from src.services.agent_runtime.trajectory import get_trajectory_sink
+        from src.services.feature_flags import get_feature_flags
+
+        flags = await get_feature_flags()
+        if flags.is_enabled("trajectory_enabled", str(user.id)):
+            _space_uuid = space_id if isinstance(space_id, _uuid.UUID) else (
+                _uuid.UUID(str(space_id)) if space_id else None
+            )
+            _sink = await get_trajectory_sink()
+            _sink.emit(
+                TrajectoryEvent(
+                    id=_uuid.uuid4(),
+                    session_id=session.id,
+                    user_id=user.id,
+                    space_id=_space_uuid,
+                    kind="turn",
+                    ts=datetime.now(UTC),
+                    latency_ms=int((time.time() - _started_at) * 1000),
+                    tokens_in=None,
+                    tokens_out=None,
+                    outcome="ok",
+                    data={"message_preview": body.message[:200]},
+                    tags=["platform:web"],
+                    metadata={},
+                )
+            )
+    except Exception:
+        logger.debug("trajectory emit (chat) failed", exc_info=True)
 
     # improve session title via LLM summarization if it is still short (background)
     if len(session.title or "") < 10:
@@ -671,10 +751,13 @@ async def chat_stream(
     body: ChatRequest,
     request: Request,
     user=Depends(get_current_user),
+    _rate=Depends(chat_limiter),
     db: AsyncSession = Depends(get_db),
 ):
     import traceback as _setup_tb
     from datetime import UTC, datetime
+
+    _stream_started_at = time.time()
 
     try:
         space_id = body.space_id
@@ -751,7 +834,13 @@ async def chat_stream(
         # Initialize memory providers for this session
         mm = get_memory_manager(str(session.id), user_id=str(user.id), platform="web", space_id=str(space_id) if space_id else "")
 
-        # Load session message history for conversational context
+        # Load session message history for conversational context.
+        #
+        # As of task 25.3 we no longer cache this list in Redis — the
+        # `chat:msgs:*` key was a narrow optimisation that predates the
+        # MemoryTier HOT block and added cache-invalidation surface for
+        # minimal win. Reads go straight to Postgres; it is indexed on
+        # ``(session_id, created_at)`` and the query is bounded at 30 rows.
         history_messages: list = []
         if body.session_id:
             result = await db.execute(
@@ -856,6 +945,119 @@ async def chat_stream(
 
             resolved_message = await _resolve_file_refs(body.message, str(session.id))
             agent_messages.append(HumanMessage(content=resolved_message))
+
+            # Phase G.3: RuntimeGateway decision. Runs AFTER memory prefetch
+            # so the router sees the same `hot_block` the agent would have
+            # seen. Gateway errors fall back silently to the legacy `_agent`.
+            gw_result: GatewayResult | None = None
+            try:
+                gw = await get_runtime_gateway()
+                gw_ctx = GatewayContext(
+                    user_id=str(user.id),
+                    username=user.username,
+                    email=user.email,
+                    session_id=session_id,
+                    space_id=str(space_id) if space_id else None,
+                    platform="web",
+                )
+                gw_result = await gw.handle(
+                    gw_ctx,
+                    body.message,
+                    hot_block=memory_block or "",
+                    history=[
+                        str(getattr(h, "content", h))
+                        for h in history_messages[-4:]
+                    ],
+                    last_assistant_sha="",
+                )
+            except Exception:
+                logger.debug("gateway handle failed; using legacy agent", exc_info=True)
+                gw_result = None
+
+            if (
+                gw_result is not None
+                and gw_result.route == "direct"
+                and gw_result.direct_answer
+            ):
+                # Short-circuit: stream the direct answer as a single token.
+                direct_reply = gw_result.direct_answer
+                yield _sse_event("token", {
+                    "content": direct_reply,
+                    "session_id": session_id,
+                })
+
+                # Persist assistant message mirroring the regular-path code
+                # below so downstream consumers (message history, trajectory)
+                # see the same shape whichever branch produced the reply.
+                async with async_session_factory() as _db:
+                    assistant_msg = Message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=direct_reply,
+                        extra_metadata={
+                            "execution_steps": [],
+                            "route": "direct",
+                        },
+                        delivery_status="pending",
+                    )
+                    _db.add(assistant_msg)
+                    _res = await _db.execute(
+                        select(Session).where(Session.id == session_id)
+                    )
+                    s = _res.scalar_one_or_none()
+                    if s and (not s.title or len(s.title) < 10):
+                        asyncio.create_task(_update_session_title(
+                            str(s.id), body.message, direct_reply,
+                        ))
+                    await _db.commit()
+
+                try:
+                    await mm.sync_turn(body.message, direct_reply)
+                except Exception:
+                    logger.exception("sync_turn failed in gateway direct path")
+
+                # Phase C-style trajectory turn event.
+                try:
+                    await gw.emit_turn(
+                        gw_ctx,
+                        trajectory_id=gw_result.trajectory_id,
+                        started_at=_stream_started_at,
+                        outcome="ok",
+                        message_preview=body.message,
+                        route="direct",
+                    )
+                except Exception:
+                    logger.debug(
+                        "gateway.emit_turn failed in direct path",
+                        exc_info=True,
+                    )
+
+                await _increment_turn(session_id)
+
+                yield _sse_event("done", {
+                    "session_id": session_id,
+                    "reply": direct_reply,
+                })
+
+                async with async_session_factory() as _db:
+                    _res = await _db.execute(
+                        select(Message).where(Message.id == assistant_msg.id)
+                    )
+                    _msg = _res.scalar_one_or_none()
+                    if _msg:
+                        _msg.delivery_status = "delivered"
+                        await _db.commit()
+                return
+
+            # Non-direct path: prefer the gateway's narrow graph when one
+            # is available, otherwise stay on the legacy `_agent` we
+            # gathered earlier.
+            if (
+                gw_result is not None
+                and gw_result.agent_graph is not None
+                and gw_result.route != "full_agent"
+            ):
+                _agent = gw_result.agent_graph
 
             async for event in _agent.astream_events(
                 {"messages": agent_messages},
@@ -1147,6 +1349,39 @@ async def chat_stream(
             except Exception:
                 logger.exception("sync_turn failed in chat_stream")
 
+            # Phase C: emit TrajectoryEvent for this turn (guarded by feature flag).
+            # Any failure here is swallowed so the SSE stream keeps flowing.
+            try:
+                from src.schemas.trajectory import TrajectoryEvent
+                from src.services.agent_runtime.trajectory import get_trajectory_sink
+                from src.services.feature_flags import get_feature_flags
+
+                _flags = await get_feature_flags()
+                if _flags.is_enabled("trajectory_enabled", str(user.id)):
+                    _space_uuid = space_id if isinstance(space_id, _uuid.UUID) else (
+                        _uuid.UUID(str(space_id)) if space_id else None
+                    )
+                    _sink = await get_trajectory_sink()
+                    _sink.emit(
+                        TrajectoryEvent(
+                            id=_uuid.uuid4(),
+                            session_id=session.id,
+                            user_id=user.id,
+                            space_id=_space_uuid,
+                            kind="turn",
+                            ts=datetime.now(UTC),
+                            latency_ms=int((time.time() - _stream_started_at) * 1000),
+                            tokens_in=None,
+                            tokens_out=None,
+                            outcome="ok",
+                            data={"message_preview": body.message[:200]},
+                            tags=["platform:web"],
+                            metadata={},
+                        )
+                    )
+            except Exception:
+                logger.debug("trajectory emit (chat_stream) failed", exc_info=True)
+
             # Increment turn counter and flag for periodic skill review
             await _increment_turn(session_id)
 
@@ -1194,7 +1429,7 @@ _UPLOAD_ROOT = "uploads/sessions"
 
 async def _verify_session_owner(session_id: str, user, db: AsyncSession) -> None:
     """Raise 403 if the session does not belong to the current user."""
-    result = await db.execute(select(Session.user_id).where(Session.id == session_id))
+    result = await db.execute(select(Session).where(Session.id == session_id))
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -1205,10 +1440,21 @@ async def _verify_session_owner(session_id: str, user, db: AsyncSession) -> None
 @router.get("/sessions/{session_id}/files", response_model=list[SessionFileOut])
 async def list_session_files(
     session_id: str,
+    scope: str = Query("session", description="'session' or 'space'"),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
     await _verify_session_owner(session_id, user, db)
+    if scope == "space":
+        session = await db.get(Session, session_id)
+        if session and session.space_id:
+            result = await db.execute(
+                select(SessionFile)
+                .join(Session, SessionFile.session_id == Session.id)
+                .where(Session.space_id == session.space_id, Session.user_id == user.id)
+                .order_by(SessionFile.created_at.desc())
+            )
+            return result.scalars().all()
     result = await db.execute(
         select(SessionFile)
         .where(SessionFile.session_id == session_id)
@@ -1269,7 +1515,13 @@ async def list_session_files_tree(
 
 
 @router.post("/sessions/{session_id}/folders")
-async def create_session_folder(session_id: str, folder_path: str = Query(...)):
+async def create_session_folder(
+    session_id: str,
+    folder_path: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    await _verify_session_owner(session_id, user, db)
     """Validate folder path — actual folder is implicit via file uploads."""
     if not folder_path.startswith("/"):
         raise HTTPException(status_code=400, detail="folder_path must start with /")
@@ -1282,7 +1534,9 @@ async def move_session_file(
     file_id: str,
     target_folder: str = Query(..., description="Target folder path"),
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile).where(
             SessionFile.id == file_id,
@@ -1303,7 +1557,9 @@ async def rename_session_file(
     file_id: str,
     new_name: str = Query(..., description="New filename"),
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile).where(
             SessionFile.id == file_id,
@@ -1381,6 +1637,10 @@ async def upload_session_file(
     )
     db.add(session_file)
 
+    # Inherit space_id from parent session
+    if session.space_id:
+        session_file.space_id = session.space_id
+
     # Parse document content with markitdown
     from src.services.document_parser import (
         SYNC_PARSE_SIZE_LIMIT,
@@ -1419,7 +1679,9 @@ async def delete_session_file(
     session_id: str,
     file_id: str,
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile).where(
             SessionFile.id == file_id,
@@ -1447,7 +1709,9 @@ async def download_session_file(
     session_id: str,
     file_id: str,
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
+    await _verify_session_owner(session_id, user, db)
     result = await db.execute(
         select(SessionFile).where(
             SessionFile.id == file_id,
@@ -1464,7 +1728,7 @@ async def download_session_file(
 
 
 async def _resolve_file_refs(message: str, session_id: str) -> str:
-    """Replace @[filename](ref:file_id) references with file content."""
+    """Replace @[filename](ref:file_id) references with file metadata and content."""
     import re as _re
 
     refs = _re.findall(r'@\[([^\]]+)\]\(ref:([^)]+)\)', message)
@@ -1477,13 +1741,37 @@ async def _resolve_file_refs(message: str, session_id: str) -> str:
         files = {str(sf.id): sf for sf in result.scalars().all()}
 
     resolved = message
+
+    def _fmt_size(n: int) -> str:
+        if n < 1024:
+            return f"{n}B"
+        if n < 1024 * 1024:
+            return f"{n / 1024:.1f}KB"
+        return f"{n / (1024 * 1024):.1f}MB"
+
     for filename, file_id in refs:
         sf = files.get(file_id)
-        if sf and sf.content_text:
-            ctx = f"\n\n--- 文件: {filename} ---\n{sf.content_text[:8000]}\n--- 文件结束 ---"
-            resolved = resolved.replace(f'@[{filename}](ref:{file_id})', ctx)
-        else:
-            resolved = resolved.replace(f'@[{filename}](ref:{file_id})', f'[已引用文件: {filename}]')
+        if not sf:
+            resolved = resolved.replace(
+                f'@[{filename}](ref:{file_id})', f'[未找到文件: {filename}]'
+            )
+            continue
+
+        dl_url = f"/api/v1/sessions/{sf.session_id}/files/{sf.id}/download"
+        meta = (
+            f"\n\n--- 引用文件: {filename} ---\n"
+            f"类型: {sf.mime_type or '未知'}\n"
+            f"大小: {_fmt_size(sf.file_size)}\n"
+            f"下载: {dl_url}"
+        )
+
+        if sf.content_text:
+            meta += f"\n\n{sf.content_text[:8000]}"
+        elif sf.mime_type and sf.mime_type.startswith("image/"):
+            meta += f"\n展示: ![{filename}]({dl_url})"
+
+        meta += "\n--- 文件结束 ---"
+        resolved = resolved.replace(f'@[{filename}](ref:{file_id})', meta)
 
     return resolved
 

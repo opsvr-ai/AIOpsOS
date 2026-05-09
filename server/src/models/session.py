@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import ARRAY, Boolean, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import ARRAY, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +47,20 @@ class Session(Base, TimestampMixin):
     source_platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_chat_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
+    # --- columns added by migration 202605041810 --------------------------
+    # Extended by the Agent Runtime Optimization & Evolution spec to track
+    # async consolidation state for the three-tier memory system. See
+    # server/migrations/versions/202605041810_extend_memories_and_sessions.py.
+    last_consolidation_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consolidation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    hot_memory_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 
 
@@ -83,6 +97,9 @@ class SessionFile(Base, TimestampMixin):
     content_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     folder_path: Mapped[str] = mapped_column(
         String(512), nullable=False, default="/", server_default="/"
+    )
+    space_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
     )
 
 

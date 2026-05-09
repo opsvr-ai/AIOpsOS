@@ -1,4 +1,17 @@
-# AIOpsOS Server — Python FastAPI backend
+# AIOpsOS Server — Python FastAPI backend + Celery worker.
+#
+# This single image is reused for two roles:
+#   1. API / control-plane (default CMD):
+#        uvicorn src.main:app --host 0.0.0.0 --port 8000
+#   2. Celery worker (compose override):
+#        celery -A src.workers.app worker -Q memory,wiki,evolution -c 4 -l info
+#
+# Because Poetry runs with virtualenvs.create=false, every dependency —
+# including the `celery` console script — lands in the system Python's
+# /usr/local/bin (already on $PATH), so the worker entrypoint resolves
+# without any venv activation.
+#
+# Spec: .kiro/specs/agent-runtime-optimization-evolution — tasks 3.3 / 29.2.
 # Build: docker build -f deploy/Dockerfile.server -t aiopsos-server .
 FROM docker.1ms.run/python:3.11-slim
 
@@ -26,16 +39,41 @@ WORKDIR /app
 COPY server/pyproject.toml server/poetry.lock ./
 
 # Install dependencies (no virtualenv in container)
+#RUN poetry config virtualenvs.create false \
+#    && poetry install --only main --no-interaction --no-ansi --no-root
+
+# 安装依赖（强制使用清华源，解决超时）
 RUN poetry config virtualenvs.create false \
+    && poetry config repositories.default https://pypi.tuna.tsinghua.edu.cn/simple \
+    && poetry config installer.max-workers 1 \
     && poetry install --only main --no-interaction --no-ansi --no-root
+
+#RUN poetry config virtualenvs.create false \
+#    # 配置 Poetry 国内清华源（解决超时）
+#    && poetry config repositories.pypi https://pypi.tuna.tsinghua.edu.cn/simple \
+#    && poetry config pypi-token.pypi "" \
+#    && poetry install --only main --no-interaction --no-ansi --no-root
+
+# Sanity check: the `celery` CLI must be on PATH and importable — the
+# worker service in docker-compose depends on this.
+RUN python -c "import celery; print('celery', celery.__version__)" \
+    && celery --version
 
 # Copy application code
 COPY server/ .
+
+# Copy the server entrypoint script and make it executable.
+# The script runs ``alembic upgrade head`` then hands off to uvicorn.
+COPY deploy/entrypoint-server.sh /usr/local/bin/entrypoint-server.sh
+RUN chmod +x /usr/local/bin/entrypoint-server.sh
 
 # Create data directories
 RUN mkdir -p data/knowledge/wiki data/knowledge/raw data/knowledge/meta data/skills uploads
 
 EXPOSE 8000
 
-# Run migrations then start server
-CMD ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+# Default CMD runs the API via the entrypoint script (alembic + uvicorn).
+# Override with the worker command via docker-compose `command:` for the
+# `worker` service:
+#   celery -A src.workers.app worker -Q memory,wiki,evolution -c 4 -l info
+CMD ["/usr/local/bin/entrypoint-server.sh"]

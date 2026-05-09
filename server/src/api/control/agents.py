@@ -337,6 +337,7 @@ async def reload_agents(_=Depends(require_perm("agents", "update"))):
 @router.post("/agents/seed")
 async def seed_agents(db: DbSession, _=Depends(get_current_user)):
     from src.agent.deep_agent import (
+        A2UI_GENERATOR_SYSTEM_PROMPT,
         AI_OPS_SYSTEM_PROMPT,
         ANALYSIS_SYSTEM_PROMPT,
         CMDB_SYSTEM_PROMPT,
@@ -345,6 +346,7 @@ async def seed_agents(db: DbSession, _=Depends(get_current_user)):
         MEMORY_SYSTEM_PROMPT,
         MONITOR_SYSTEM_PROMPT,
         OPS_SYSTEM_PROMPT,
+        REPORT_GENERATOR_SYSTEM_PROMPT,
         SUBAGENTS,
     )
 
@@ -400,6 +402,8 @@ async def seed_agents(db: DbSession, _=Depends(get_current_user)):
         "analysis": ANALYSIS_SYSTEM_PROMPT,
         "memory": MEMORY_SYSTEM_PROMPT,
         "cmdb_ingestion": CMDB_SYSTEM_PROMPT,
+        "report_generator": REPORT_GENERATOR_SYSTEM_PROMPT,
+        "a2ui_generator": A2UI_GENERATOR_SYSTEM_PROMPT,
     }
     for sa in SUBAGENTS:
         sub = await _upsert_agent(

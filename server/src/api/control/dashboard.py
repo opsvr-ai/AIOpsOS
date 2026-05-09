@@ -25,7 +25,16 @@ async def get_dashboard_summary(
     user=Depends(get_current_user),
     space_id: str | None = Depends(get_optional_space_id),
 ):
-    """Aggregated dashboard stats in a single response."""
+    """Aggregated dashboard stats in a single response, cached in Redis (30s TTL)."""
+    from src.core.redis import cache_get, cache_set
+
+    cache_key = f"dashboard:summary:{space_id or '__all__'}"
+    try:
+        cached = await cache_get(cache_key)
+    except Exception:
+        cached = None
+    if cached is not None:
+        return cached
 
     params: dict = {}
     if space_id:
@@ -215,7 +224,7 @@ async def get_dashboard_summary(
         elif ds_enabled == 0 and ds_total and ds_total > 0:
             overall = "warning"
 
-    return {
+    result = {
         "system_status": {
             "overall": overall,
             "online_agents": agent_online or 0,
@@ -252,3 +261,8 @@ async def get_dashboard_summary(
         },
         "recent_activities": activities,
     }
+    try:
+        await cache_set(cache_key, result, ttl=30)
+    except Exception:
+        pass
+    return result

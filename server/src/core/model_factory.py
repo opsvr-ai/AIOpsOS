@@ -4,22 +4,39 @@ import time as _time
 from langchain_openai import ChatOpenAI
 from sqlalchemy import select
 
+from src.core.redis import cache_delete, cache_get, cache_set
 from src.models.base import async_session_factory
 from src.models.model_provider import ModelProvider
 
 logger = logging.getLogger(__name__)
 
-# TTL cache for built model objects — avoids DB query + ChatModel construction per call
-_model_cache: dict[str, tuple[object, float]] = {}
-_MODEL_CACHE_TTL: float = 300.0
+_MODEL_CACHE_TTL: int = 300
 
 
-def invalidate_model_cache(model_type: str | None = None) -> None:
-    """Invalidate cached models. If model_type is None, clear all."""
+async def invalidate_model_cache(model_type: str | None = None) -> None:
+    """Invalidate cached model provider configs in Redis."""
     if model_type:
-        _model_cache.pop(model_type, None)
+        try:
+            await cache_delete(f"model:provider:{model_type}")
+        except Exception:
+            pass
     else:
-        _model_cache.clear()
+        try:
+            from src.core.redis import cache_delete_pattern
+            await cache_delete_pattern("model:provider:*")
+        except Exception:
+            pass
+
+
+def _serialize_provider(p: ModelProvider) -> dict:
+    return {
+        "id": str(p.id),
+        "provider_type": p.provider_type,
+        "api_key": p.api_key,
+        "base_url": p.base_url,
+        "model_name": p.model_name,
+        "config": p.config or {},
+    }
 
 
 def _build_model_from_provider(provider: ModelProvider):
@@ -66,12 +83,15 @@ class NoModelProviderError(Exception):
 
 
 async def get_default_model(model_type: str = "llm"):
-    now = _time.time()
-    cached = _model_cache.get(model_type)
-    if cached:
-        model, expires = cached
-        if now < expires:
-            return model
+    cache_key = f"model:provider:{model_type}"
+
+    try:
+        cached_cfg = await cache_get(cache_key)
+    except Exception:
+        cached_cfg = None
+
+    if cached_cfg:
+        return _build_model_from_config(cached_cfg)
 
     async with async_session_factory() as db:
         result = await db.execute(
@@ -84,12 +104,47 @@ async def get_default_model(model_type: str = "llm"):
 
     if provider:
         logger.info("using model provider: %s (%s/%s)", provider.name, provider.provider_type, provider.model_name)
-        model = _build_model_from_provider(provider)
-        _model_cache[model_type] = (model, now + _MODEL_CACHE_TTL)
-        return model
+        try:
+            await cache_set(cache_key, _serialize_provider(provider), ttl=_MODEL_CACHE_TTL)
+        except Exception:
+            pass
+        return _build_model_from_provider(provider)
 
     raise NoModelProviderError(
         "未配置模型服务商。请在控制中心 > 模型配置中添加并激活一个模型服务商。"
+    )
+
+
+def _build_model_from_config(cfg: dict):
+    """Build a model from a cached provider config dict."""
+    provider_type = cfg["provider_type"]
+    api_key = cfg["api_key"]
+    base_url = cfg["base_url"]
+    model_name = cfg["model_name"]
+    config = cfg.get("config", {})
+    temperature = config.get("temperature", 0.2)
+    max_tokens = config.get("max_tokens", None)
+    max_retries = config.get("max_retries", 1)
+    timeout = config.get("timeout", 120)
+    connect_timeout = config.get("connect_timeout", 10)
+    request_timeout = (connect_timeout, timeout) if connect_timeout else timeout
+
+    if provider_type == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            api_key=api_key, base_url=base_url or None,
+            model_name=model_name, temperature=temperature,
+            max_tokens=max_tokens or 4096, timeout=request_timeout,
+            max_retries=max_retries,
+        )
+
+    is_deepseek = base_url and "deepseek" in base_url.lower()
+    cls = _get_deepseek_class() if is_deepseek else ChatOpenAI
+    return cls(
+        api_key=api_key, base_url=base_url, model=model_name,
+        temperature=temperature, timeout=request_timeout,
+        max_retries=max_retries,
+        **(dict(max_completion_tokens=max_tokens) if max_tokens else {}),
     )
 
 
@@ -103,11 +158,23 @@ async def get_rerank_model():
 
 async def get_model_for_agent(agent):
     if agent.model_provider_id:
+        cache_key = f"model:agent:{agent.model_provider_id}"
+        try:
+            cached_cfg = await cache_get(cache_key)
+        except Exception:
+            cached_cfg = None
+        if cached_cfg:
+            return _build_model_from_config(cached_cfg)
+
         async with async_session_factory() as db:
             result = await db.execute(
                 select(ModelProvider).where(ModelProvider.id == agent.model_provider_id)
             )
             provider = result.scalar_one_or_none()
             if provider:
+                try:
+                    await cache_set(cache_key, _serialize_provider(provider), ttl=_MODEL_CACHE_TTL)
+                except Exception:
+                    pass
                 return _build_model_from_provider(provider)
     return await get_default_model()

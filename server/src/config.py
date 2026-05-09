@@ -5,7 +5,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://aiopsos:aiopsos123@localhost:5432/aiopsos"
     sync_database_url: str = "postgresql://aiopsos:aiopsos123@localhost:5432/aiopsos"
     redis_url: str = "redis://localhost:6379"
-    kafka_bootstrap_servers: str = "localhost:9092"
+    # Default points at the docker-compose.dev.yml EXTERNAL listener (9094),
+    # which advertises "localhost" and is reachable from WSL / host processes.
+    # Container-to-container traffic should override with the PLAINTEXT
+    # listener (KAFKA_BOOTSTRAP_SERVERS=kafka:9092).
+    kafka_bootstrap_servers: str = "localhost:9094"
     secret_key: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30

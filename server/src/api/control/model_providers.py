@@ -57,7 +57,7 @@ async def create_provider(
     db.add(provider)
     await db.commit()
     await db.refresh(provider)
-    invalidate_model_cache(provider.model_type)
+    await invalidate_model_cache(provider.model_type)
     return provider
 
 
@@ -80,7 +80,7 @@ async def update_provider(
         setattr(provider, k, v)
     await db.commit()
     await db.refresh(provider)
-    invalidate_model_cache(provider.model_type)
+    await invalidate_model_cache(provider.model_type)
     return provider
 
 
@@ -96,7 +96,7 @@ async def delete_provider(
         raise HTTPException(status_code=404, detail="not found")
     await db.delete(provider)
     await db.commit()
-    invalidate_model_cache(provider.model_type)
+    await invalidate_model_cache(provider.model_type)
     return {"detail": "deleted"}
 
 
@@ -135,7 +135,7 @@ async def set_default(
     await _unset_defaults(db, provider.model_type)
     provider.is_default = True
     await db.commit()
-    invalidate_model_cache(provider.model_type)
+    await invalidate_model_cache(provider.model_type)
     return {"detail": "set as default"}
 
 

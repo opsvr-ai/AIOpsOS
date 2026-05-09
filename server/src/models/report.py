@@ -43,3 +43,8 @@ class Report(Base, TimestampMixin):
     visibility: Mapped[str] = mapped_column(
         String(16), nullable=False, default="space", server_default="space"
     )
+    report_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="general", server_default="general"
+    )
+    date_range_start: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    date_range_end: Mapped[str | None] = mapped_column(String(10), nullable=True)

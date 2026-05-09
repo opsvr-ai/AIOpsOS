@@ -9,6 +9,7 @@ import logging
 import os
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -353,3 +354,150 @@ def _parse_page_list(text: str) -> list[dict]:
     except json.JSONDecodeError:
         logger.warning("Failed to parse summarizer output as JSON")
     return []
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for WikiCompilerWorker (Phase F, task 12)
+# ---------------------------------------------------------------------------
+
+
+def compute_sha256(path: str) -> str:
+    """Return the hex sha256 digest of the raw bytes at ``path``.
+
+    Used by :mod:`src.services.kb.compile_logic` to decide whether a raw
+    file has changed since the last compile. The hash is over raw bytes
+    (not normalised text) so any whitespace/newline flip counts as "changed".
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+_FRONTMATTER_RE = re.compile(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n", re.DOTALL)
+
+
+def extract_frontmatter_and_body(md_text: str) -> tuple[dict, str]:
+    """Split a markdown document into ``(frontmatter_dict, body_text)``.
+
+    Accepts both standard ``---`` delimited YAML frontmatter and bodies
+    with no frontmatter (in which case the dict is empty and ``body``
+    equals the input). Parsing falls back to a naive scanner when PyYAML
+    is unavailable so the helper works in constrained environments.
+    """
+    if not md_text:
+        return {}, ""
+
+    match = _FRONTMATTER_RE.match(md_text)
+    if not match:
+        return {}, md_text
+    fm_block = match.group(1)
+    body = md_text[match.end():]
+
+    data: dict = {}
+    try:
+        import yaml  # PyYAML (transitive via markitdown)
+    except Exception:
+        data = _naive_frontmatter(fm_block)
+    else:
+        try:
+            loaded = yaml.safe_load(fm_block)
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = _naive_frontmatter(fm_block)
+    return data, body
+
+
+def _naive_frontmatter(block: str) -> dict:
+    """Last-resort frontmatter parser (``key: value`` + ``key: |`` blocks)."""
+    result: dict = {}
+    lines = block.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.match(r"^([A-Za-z0-9_\-]+):[ \t]*(.*)$", line)
+        if not m:
+            i += 1
+            continue
+        key, rest = m.group(1), m.group(2).strip()
+        if rest == "|":
+            block_lines: list[str] = []
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                if nxt.startswith("  "):
+                    block_lines.append(nxt[2:])
+                    i += 1
+                elif nxt.strip() == "":
+                    block_lines.append("")
+                    i += 1
+                else:
+                    break
+            result[key] = "\n".join(block_lines).strip()
+            continue
+        result[key] = rest
+        i += 1
+    return result
+
+
+def _dump_frontmatter(fm: dict) -> str:
+    """Serialise ``fm`` to YAML. ``precomputed_summary`` uses block scalar form."""
+    try:
+        import yaml
+    except Exception:
+        yaml = None
+
+    if yaml is None:
+        return _naive_dump_frontmatter(fm)
+
+    # yaml.safe_dump with default_flow_style=False produces the form we want;
+    # for ``precomputed_summary`` we want a ``|`` literal block for readability.
+    summary = fm.pop("precomputed_summary", None)
+    rendered = yaml.safe_dump(fm, allow_unicode=True, sort_keys=False).rstrip("\n")
+    if summary is not None:
+        fm["precomputed_summary"] = summary  # restore on the caller's dict
+        indented = "\n".join("  " + ln for ln in str(summary).splitlines())
+        rendered += "\nprecomputed_summary: |\n" + indented
+    return rendered + "\n"
+
+
+def _naive_dump_frontmatter(fm: dict) -> str:
+    """Minimal YAML emitter — ``key: value`` and ``key: |`` block scalars."""
+    parts: list[str] = []
+    for k, v in fm.items():
+        if k == "precomputed_summary" and v is not None:
+            indented = "\n".join("  " + ln for ln in str(v).splitlines())
+            parts.append(f"{k}: |\n{indented}")
+        elif isinstance(v, list):
+            inner = ", ".join(str(x) for x in v)
+            parts.append(f"{k}: [{inner}]")
+        elif v is None:
+            parts.append(f"{k}:")
+        else:
+            parts.append(f"{k}: {v}")
+    return "\n".join(parts) + "\n"
+
+
+def add_precomputed_summary(
+    frontmatter: dict, body: str, summary: str
+) -> str:
+    """Inject ``precomputed_summary: |`` into ``frontmatter`` and re-serialise.
+
+    Returns the complete markdown document (``--- fm --- body``) ready to
+    be written to disk. ``frontmatter`` is mutated in place so callers that
+    already have a reference keep it in sync.
+    """
+    fm = dict(frontmatter or {})
+    # Trim to the 300-char budget; keep UTF-8 safe.
+    trimmed = (summary or "").strip()
+    if len(trimmed) > 300:
+        trimmed = trimmed[:300].rstrip()
+    fm["precomputed_summary"] = trimmed
+    frontmatter["precomputed_summary"] = trimmed
+
+    body_text = body or ""
+    if body_text and not body_text.startswith("\n"):
+        body_text = "\n" + body_text
+    return "---\n" + _dump_frontmatter(fm) + "---" + body_text

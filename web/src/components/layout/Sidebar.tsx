@@ -21,6 +21,7 @@ import {
   ClockCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BarChartOutlined,
   HddOutlined,
   MoonOutlined,
   SafetyCertificateOutlined,
@@ -82,6 +83,7 @@ const adminMenuItems = [
       { key: '/control/users', icon: <UserOutlined />, label: '用户管理' },
       { key: '/control/system', icon: <SettingOutlined />, label: '系统管理' },
       { key: '/control/logs', icon: <ReadOutlined />, label: '日志查看' },
+      { key: '/control/analytics', icon: <BarChartOutlined />, label: '运营分析' },
     ],
   },
 ];

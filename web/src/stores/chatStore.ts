@@ -122,12 +122,17 @@ interface ChatState {
   sessions: SessionInfo[];
   messages: ChatMessage[];
   isRunning: boolean;
+  loadingHistory: boolean;
   refreshSessions: () => void;
   /** bumped after each session change, sidebar watches this to refetch */
   _refreshTick: number;
+  /** bumped after each file upload/delete/rename, InputBar watches this to refresh @mention list */
+  _fileRefreshTick: number;
+  bumpFileRefresh: () => void;
   setSessionId: (id: string | null) => void;
   setSessions: (sessions: SessionInfo[]) => void;
   setMessages: (messages: ChatMessage[]) => void;
+  setLoadingHistory: (loading: boolean) => void;
   addMessage: (msg: ChatMessage) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   addExecutionStep: (msgId: string, step: ExecutionStep) => void;
@@ -140,11 +145,15 @@ export const useChatStore = create<ChatState>((set) => ({
   sessions: [],
   messages: [],
   isRunning: false,
+  loadingHistory: false,
   _refreshTick: 0,
+  _fileRefreshTick: 0,
   refreshSessions: () => set((s) => ({ _refreshTick: s._refreshTick + 1 })),
+  bumpFileRefresh: () => set((s) => ({ _fileRefreshTick: s._fileRefreshTick + 1 })),
   setSessionId: (id) => set({ sessionId: id }),
   setSessions: (sessions) => set({ sessions }),
   setMessages: (messages) => set({ messages }),
+  setLoadingHistory: (loading) => set({ loadingHistory: loading }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   updateMessage: (id, updates) =>
     set((s) => ({

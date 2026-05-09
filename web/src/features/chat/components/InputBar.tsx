@@ -81,6 +81,7 @@ export default function InputBar({
   const mode = useThemeStore((s) => s.mode);
   const isDark = mode === 'dark';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionDropdownRef = useRef<HTMLDivElement>(null);
   const [slashOpen, setSlashOpen] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionFiles, setMentionFiles] = useState<Array<{ id: string; filename: string }>>([]);
@@ -88,12 +89,14 @@ export default function InputBar({
 
   const canSend = input.trim().length > 0 && !loading;
 
+  const fileRefreshTick = useChatStore((s) => s._fileRefreshTick);
+
   // Fetch context files when @ is typed
   const fetchMentionFiles = useCallback(async () => {
     const sid = useChatStore.getState().sessionId;
     if (!sid) return;
     try {
-      const res = await api.get(`/sessions/${sid}/files`);
+      const res = await api.get(`/sessions/${sid}/files?scope=space`);
       const files = (res.data || []).map((f: { id: string; filename: string }) => ({
         id: f.id,
         filename: f.filename,
@@ -103,6 +106,11 @@ export default function InputBar({
       setMentionFiles([]);
     }
   }, []);
+
+  // Refetch @mention file list when files are mutated in ContextPanel
+  useEffect(() => {
+    if (fileRefreshTick > 0) fetchMentionFiles();
+  }, [fileRefreshTick, fetchMentionFiles]);
 
   // Detect @ trigger in input
   const checkMentionTrigger = useCallback(
@@ -182,6 +190,18 @@ export default function InputBar({
     }
   }, []);
 
+  // Close mention dropdown on outside click
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (mentionDropdownRef.current && !mentionDropdownRef.current.contains(e.target as Node)) {
+        setMentionOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mentionOpen]);
+
   return (
     <div
       style={{
@@ -246,16 +266,62 @@ export default function InputBar({
         <div />
       </Popover>
 
-      {/* @mention popover */}
-      <Popover
-        open={mentionOpen}
-        onOpenChange={(v) => {
-          if (!v) setMentionOpen(false);
+      {loading && (
+        <div
+          style={{
+            textAlign: 'center',
+            marginBottom: 10,
+            fontSize: 12,
+            color: token.colorPrimary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            fontWeight: 500,
+            padding: '4px 0',
+          }}
+        >
+          <LoadingOutlined spin style={{ fontSize: 13 }} />
+          AI 正在处理中
+        </div>
+      )}
+
+      {/* Input card */}
+      <div
+        style={{
+          position: 'relative',
+          background: token.colorBgContainer,
+          border: `1px solid ${canSend ? token.colorPrimary : token.colorBorderSecondary}`,
+          borderRadius: 18,
+          padding: '10px 14px 10px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'border-color 0.2s, box-shadow 0.2s',
+          boxShadow: isDark
+            ? '0 4px 24px rgba(0,0,0,0.35)'
+            : '0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
         }}
-        placement="topLeft"
-        trigger="click"
-        content={
-          <div style={{ width: 280 }}>
+      >
+        {/* @mention dropdown — positioned above the input card */}
+        {mentionOpen && (
+          <div
+            ref={mentionDropdownRef}
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              right: 0,
+              marginBottom: 8,
+              background: token.colorBgElevated,
+              borderRadius: 10,
+              boxShadow: token.boxShadowSecondary,
+              border: `1px solid ${token.colorBorderSecondary}`,
+              maxHeight: 320,
+              overflowY: 'auto',
+              padding: 8,
+              zIndex: 1050,
+            }}
+          >
             <div
               style={{
                 fontSize: 11,
@@ -314,46 +380,8 @@ export default function InputBar({
                 ))
             )}
           </div>
-        }
-      >
-        <div />
-      </Popover>
+        )}
 
-      {loading && (
-        <div
-          style={{
-            textAlign: 'center',
-            marginBottom: 10,
-            fontSize: 12,
-            color: token.colorPrimary,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            fontWeight: 500,
-            padding: '4px 0',
-          }}
-        >
-          <LoadingOutlined spin style={{ fontSize: 13 }} />
-          AI 正在处理中
-        </div>
-      )}
-
-      {/* Input card */}
-      <div
-        style={{
-          background: token.colorBgContainer,
-          border: `1px solid ${canSend ? token.colorPrimary : token.colorBorderSecondary}`,
-          borderRadius: 18,
-          padding: '10px 14px 10px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          transition: 'border-color 0.2s, box-shadow 0.2s',
-          boxShadow: isDark
-            ? '0 4px 24px rgba(0,0,0,0.35)'
-            : '0 2px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
-        }}
-      >
         {!loading && !input && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             {SUGGESTED_PILLS.map((pill) => (

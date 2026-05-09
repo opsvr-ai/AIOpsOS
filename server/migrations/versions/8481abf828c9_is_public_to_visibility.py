@@ -18,6 +18,22 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            space_id UUID REFERENCES spaces(id) ON DELETE SET NULL,
+            title VARCHAR(500) NOT NULL DEFAULT 'Untitled Report',
+            description TEXT,
+            html_content TEXT NOT NULL,
+            theme VARCHAR(50) NOT NULL DEFAULT 'ink',
+            status VARCHAR(20) NOT NULL DEFAULT 'draft',
+            is_public BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
     op.add_column('reports', sa.Column('visibility', sa.String(length=16), server_default='space', nullable=False))
     op.execute("UPDATE reports SET visibility = 'public' WHERE is_public = true")
     op.execute("UPDATE reports SET visibility = 'space' WHERE is_public = false")

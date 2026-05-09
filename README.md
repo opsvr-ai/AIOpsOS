@@ -10,8 +10,8 @@
 │  运维中心 (总览/对话/告警/场景/数据接入/事件/自动化/CMDB/            │
 │           日志检索/ITSM/分析报告/定时任务)                           │
 │  AI中心 (智能体/工具市场/知识库/睡眠管理/记忆管理/我的助理)           │
-│  控制中心 (空间/渠道/模型/权限/用户/系统/日志) [Admin]               │
-│  文档中心 │ 多空间管理 │ 深色/浅色主题                               │
+│  控制中心 (空间/渠道/模型/权限/用户/系统/日志/分析/演进/特性开关)     │
+│  文档中心 │ 多空间管理 │ 深色/浅色主题                                │
 └───────────────────────────┬──────────────────────────────────────┘
                     HTTPS   │
 ┌───────────────────────────┼──────────────────────────────────────┐
@@ -25,10 +25,12 @@
 │  用户/权限/RBAC                  对话/智能体/流式                   │
 │  场景/工具 CRUD                  告警/执行                         │
 │  知识库管理                      通知/渠道回调                     │
-│  记忆系统（两层级）               Worker (Celery)                  │
-│  睡眠检测/自动记忆沉淀            Kafka Consumer                  │
+│  记忆系统（两层级）               Worker (Celery — 独立服务)         │
+│  睡眠管理/自动记忆沉淀            Kafka Consumer / Admin           │
 │  模型供应商管理                   文档中心 API                      │
-│  系统审计                        日志/ITSM/CMDB 检索               │
+│  分析报表 / PDF 导出             日志/ITSM/CMDB 检索                │
+│  演进管线 (工具版本管理)          运行时特性开关                      │
+│  可观测性 (OpenTelemetry/Prom)   系统审计                           │
 └───────────────────────────┬──────────────────────────────────────┘
                             │
 ┌───────────────────────────▼──────────────────────────────────────┐
@@ -51,18 +53,18 @@
 | **CMDB** | 配置节点管理，属性图存储，LLM 自动发现映射规则，审核队列与同步日志 |
 | **日志检索** | PG 分区表存储，Agent 智能检索，时间范围过滤，全文搜索 |
 | **ITSM** | 工单流程接入，Jira/ServiceNow/自定义脚本适配器，告警关联与工作流引擎 |
-| **分析报告** | 智能体对话生成 HTML 报告，三级可见性（私有/空间/公开），公开 URL 直接访问，报告管理页 |
-| **定时任务** | Cron + RedBeat 动态调度，内置运维场景任务模板 |
+| **分析报告** | 智能体对话生成 HTML 报告，三级可见性（私有/空间/公开），公开 URL 直接访问，报告管理页，LLM 驱动的 PPT 风格 PDF 导出（WeasyPrint），报告类型与日期范围元数据 |
+| **定时任务** | Cron + RedBeat 动态调度，内置运维场景任务模板，超时/重试机制 |
 
 ### AI 中心
 
 | 模块 | 功能 |
 |------|------|
 | **智能体管理** | 主智能体 + 子智能体 CRUD，系统提示词定制，模型选择，子智能体关联配置 |
-| **工具市场** | Skill（Python 函数）+ MCP（多协议客户端连接池）双协议，MCP 服务器管理（CRUD），技能文件上传、AI 生成、版本管理与同步 |
+| **工具市场** | Skill（Python 函数）+ MCP（多协议客户端连接池）双协议，MCP 服务器管理（CRUD），技能文件上传、AI 生成、演进管线版本管理与同步 |
 | **知识库** | LLM-Wiki 三层存储（raw/wiki/meta），预编译去 RAG 化，文件监控自动同步，跨引用检测 |
 | **睡眠管理** | 会话空闲自动检测（>5 分钟），自动/手动触发记忆沉淀，标记已整理状态 |
-| **记忆管理** | 两层级记忆：个人记忆（跨会话，用户隔离）+ 团队记忆（跨用户，经验提炼，自动脱敏），记忆图谱可视化，跨会话检索 |
+| **记忆管理** | 两层级记忆：个人记忆（跨会话，用户隔离）+ 团队记忆（跨用户，经验提炼，自动脱敏），记忆图谱可视化，跨会话检索，Celery 后台异步沉淀 |
 | **我的助理** | 侧边抽屉式快捷助手，快速问答与操作入口 |
 
 ### 控制中心（管理员）
@@ -75,6 +77,10 @@
 | **权限矩阵** | RBAC 角色权限（admin/user），资源级操作权限控制 |
 | **用户管理** | 用户 CRUD，角色分配，邀请注册 |
 | **系统管理** | 全局配置，种子数据，品牌定制 |
+| **分析中心** | 运营分析仪表盘（概览卡片 + 趋势图表 + Top 排行），LLM 多步分析 + PPT 风格 PDF 报告导出 |
+| **演进管线** | 工具/Skill 版本全生命周期管理（Draft → Review → Active → Archived + Rollback），版本差异对比 |
+| **Kafka 管理** | Topic CRUD、Schema Registry、消费者组监控、消息浏览、健康检查 |
+| **运行时特性** | 动态特性开关，渐进式发布，安全回滚 |
 | **日志查看** | 在线日志文件浏览，级别/模块/关键词过滤，JSON/文本双格式支持 |
 
 ### 平台特性
@@ -84,6 +90,9 @@
 - **深色/浅色主题** — 全局主题切换，持久化偏好
 - **文档中心** — 内置用户指南、管理员指南、API 文档、部署文档
 - **引导向导** — 首次使用接入引导
+- **可观测性** — OpenTelemetry 分布式追踪（OTLP），Prometheus 指标导出
+- **演进管线** — 工具/Skill 版本化发布，Draft → Review → Active 生命周期
+- **运行时特性开关** — 渐进式功能发布，安全回滚
 - **操作审计** — 关键操作日志记录
 - **用户反馈** — 反馈收集与管理
 
@@ -94,9 +103,10 @@
 | **前端** | React 18, TypeScript, Vite, Ant Design 5, Zustand, React Router 6 |
 | **后端** | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), Alembic |
 | **智能体** | LangGraph 状态图, LangChain, DeepAgents 子智能体, MCP 协议 |
-| **任务队列** | Celery + Redis (Beat 定时调度) |
-| **消息流** | Kafka (事件消费与流处理) |
+| **任务队列** | Celery + Redis (Beat 定时调度, 独立 worker 服务) |
+| **消息流** | Kafka (事件消费与流处理, aiokafka 管理 API) |
 | **数据** | PostgreSQL 15 + pgvector (向量检索), Redis 7 |
+| **可观测性** | OpenTelemetry (分布式追踪), Prometheus (指标) |
 | **部署** | Docker, Docker Compose, Nginx, Poetry, pnpm |
 
 ## 快速开始
@@ -118,7 +128,12 @@ docker compose up -d
 ### 开发模式
 
 ```bash
-# 启动基础设施
+# 一键启动（Windows / Linux 均提供脚本）
+cd scripts
+# Windows: .\start-all.ps1
+# Linux:   ./start-all.sh
+
+# 或手动启动各服务
 docker compose -f deploy/docker-compose.dev.yml up -d
 
 # 后端
@@ -150,7 +165,12 @@ pnpm dev
 | `LOG_DIR` | `data/logs` | 日志存放目录 |
 | `LOG_FORMAT` | `text` | 日志格式 (text/json) |
 | `LOG_RETENTION_DAYS` | `30` | 日志保留天数 |
-| `SERVICE_TYPE` | `allinone` | 服务模式 |
+| `SERVICE_TYPE` | `server` | 服务模式（server/worker/allinone） |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OpenTelemetry 导出端点 |
+| `PROMETHEUS_PORT` | `9090` | Prometheus 指标端口 |
+| `CELERY_BROKER_URL` | — | Celery Broker 连接串 |
+| `CELERY_RESULT_BACKEND` | — | Celery 结果后端 |
+| `SYNC_DATABASE_URL` | — | 同步数据库连接（Celery Worker 用） |
 
 ### 镜像构建
 
@@ -174,9 +194,10 @@ AIOpsOS/
 │   │   ├── schemas/               # Pydantic 请求/响应模型
 │   │   ├── services/              # 业务服务 (memory/knowledge/cron/channels/...)
 │   │   ├── consumers/             # Kafka 消费者 (告警/归一化/去重)
-│   │   └── core/                  # 核心配置/模型工厂/日志
+│   │   ├── workers/               # Celery Worker 应用 (memory/wiki/evolution 队列)
+│   │   └── core/                  # 核心配置/模型工厂/日志/Redis
 │   ├── migrations/                # Alembic 数据库迁移
-│   ├── scripts/                   # 运维脚本 (seed/import/recovery)
+│   ├── scripts/                   # 运维脚本 (seed/eval/evolution/rollout/backfill)
 │   ├── tests/                     # 测试
 │   └── data/                      # 运行时数据 (知识库/Skills/日志/报告)
 ├── web/                           # 前端 (React + Vite)
@@ -187,13 +208,18 @@ AIOpsOS/
 │       ├── services/              # API 客户端
 │       └── router/                # 路由配置
 ├── deploy/                        # 部署配置
-│   ├── docker-compose.yml         # 生产环境
+│   ├── docker-compose.yml         # 生产环境 (server + worker + web)
 │   ├── docker-compose.dev.yml     # 开发环境
-│   ├── Dockerfile.server          # 后端镜像
+│   ├── Dockerfile.server          # 后端镜像 (API + Worker 共用)
 │   ├── Dockerfile.web             # 前端镜像
+│   ├── entrypoint-server.sh       # 服务入口脚本 (alembic + uvicorn)
 │   ├── nginx.conf                 # Nginx 反向代理
 │   ├── build.sh                   # 镜像构建脚本
 │   └── README.md                  # 部署文档
+├── scripts/                       # 开发环境启停脚本
+│   ├── start-all.ps1 / start-all.sh
+│   ├── start-backend.ps1 / start-backend.sh
+│   └── start-frontend.ps1 / start-frontend.sh
 ├── docs/                          # 平台文档
 │   ├── superpowers/specs/         # 设计规格文档
 │   ├── roadmap.md                 # 路线图
@@ -229,10 +255,17 @@ AIOpsOS/
 - [x] 操作审计日志
 - [x] 在线日志查看
 - [x] 用户反馈收集
-- [x] Docker Compose 部署
+- [x] Docker Compose 部署 (server + worker + web)
 - [x] 深色/浅色主题
 - [x] 接入引导向导
 - [x] 日志集中管理（data/logs，.env 控制级别）
+- [x] 运营分析仪表盘 + LLM 驱动 PDF 报告导出
+- [x] 演进管线 (工具/Skill 版本管理)
+- [x] Kafka 管理 API (Topic CRUD + Schema Registry)
+- [x] 运行时特性开关
+- [x] OpenTelemetry 分布式追踪 + Prometheus 指标
+- [x] Celery 独立 Worker 服务 (memory/wiki/evolution 队列)
+- [x] 开发环境启停脚本 (Windows + Linux)
 
 ### v0.2.0 — 人工介入
 - [ ] human_interrupt 挂起/恢复

@@ -116,6 +116,19 @@ class Tool(Base, TimestampMixin):
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Safety classification consumed by ToolDispatcher (design.md § ToolDispatcher).
+    # Values: 'parallel-safe' | 'sequential' | 'destructive'. A CHECK constraint
+    # enforces the domain at the DB layer (migration 202605041830). The DDL-level
+    # server_default was dropped after backfill, so a Python-level ``default`` is
+    # supplied here to keep SQLAlchemy-managed inserts consistent even when the
+    # caller omits the field. ``server_default`` is still declared for the sake
+    # of tooling that introspects the model (Alembic autogenerate, tests, etc.).
+    safety: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="sequential",
+        server_default="sequential",
+    )
     space_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
     )
@@ -124,24 +137,6 @@ class Tool(Base, TimestampMixin):
     scenarios: Mapped[list["Scenario"]] = relationship(
         secondary="scenario_tools", back_populates="tools"
     )
-    versions: Mapped[list["SkillVersion"]] = relationship(
-        back_populates="tool", order_by="SkillVersion.created_at.desc()",
-        cascade="all, delete-orphan",
-    )
-
-
-class SkillVersion(Base, TimestampMixin):
-    __tablename__ = "skill_versions"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tool_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tools.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    config: Mapped[dict] = mapped_column(JSONB, default=dict)
-
-    tool: Mapped["Tool"] = relationship(back_populates="versions")
 
 
 class AgentVersion(Base, TimestampMixin):

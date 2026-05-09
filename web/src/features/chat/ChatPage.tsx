@@ -19,14 +19,14 @@ import type { A2UIClientEvent } from './a2ui/types';
 import { FolderOpenOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
 export default function ChatPage() {
-  const { sessionId, messages, setSessionId, setMessages } = useChatStore();
+  const { sessionId, messages, setSessionId, setMessages, setLoadingHistory, loadingHistory } =
+    useChatStore();
   const currentSpace = useSpaceStore((s) => s.currentSpace);
   const [searchParams] = useSearchParams();
 
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Support /ops/chat?session=<id> to auto-select a session
   useEffect(() => {
@@ -68,6 +68,46 @@ export default function ChatPage() {
         .finally(() => setLoadingHistory(false));
     }
   }, [searchParams]);
+
+  // Restore persisted session on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('aiops_persisted_session_id');
+    if (stored && !sessionId) {
+      setLoadingHistory(true);
+      api
+        .get(`/sessions/${stored}`)
+        .then((res) => {
+          setSessionId(stored);
+          const raw = res.data?.messages ?? [];
+          const msgs = raw
+            .filter(
+              (m: { role: string; type?: string }) =>
+                m.role !== 'system' || m.type === 'intent' || m.type === 'plan',
+            )
+            .map(
+              (m: {
+                id: string;
+                role: string;
+                content: string;
+                type?: string;
+                created_at: string;
+              }) => ({
+                id: m.id,
+                role: m.role as ChatMessage['role'],
+                content: m.content,
+                type: (m.type as ChatMessage['type']) || 'text',
+                timestamp: new Date(m.created_at).getTime(),
+              }),
+            );
+          setMessages(msgs);
+        })
+        .catch(() => {
+          localStorage.removeItem('aiops_persisted_session_id');
+        })
+        .finally(() => setLoadingHistory(false));
+    }
+  }, []); // run once on mount
+
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const atBottomRef = useRef(true);
 
@@ -256,6 +296,9 @@ export default function ChatPage() {
                   onSend={() => sendMessage()}
                   onStop={stop}
                   onOpenContext={() => setContextOpen(true)}
+                  attachedFiles={attachedFiles}
+                  onAttachFile={(f) => setAttachedFiles((prev) => [...prev, f])}
+                  onRemoveFile={(id) => setAttachedFiles((prev) => prev.filter((f) => f.id !== id))}
                 />
               </motion.div>
             )}

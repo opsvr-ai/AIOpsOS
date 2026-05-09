@@ -42,11 +42,43 @@ class KnowledgeBaseService:
     async def retrieve(
         self, query: str, top_k: int = 5, source: str | None = None, space_id: str | None = None
     ) -> list[SearchResult]:
-        """End-to-end LLM-WIKI retrieval: rewrite → hybrid search → rerank."""
+        """End-to-end LLM-WIKI retrieval: rewrite → hybrid search → rerank.
+
+        Results are cached in Redis (300s TTL) to avoid expensive re-computation
+        of query rewriting + embedding + vector search + reranking.
+        """
+        from hashlib import sha256
+
+        from src.core.redis import cache_get, cache_set
+
+        cache_key = (
+            f"kb:retrieve:{sha256(query.encode()).hexdigest()[:16]}"
+            f":{top_k}:{source or '__all__'}:{space_id or '__none__'}"
+        )
+        try:
+            cached = await cache_get(cache_key)
+        except Exception:
+            cached = None
+        if cached is not None:
+            return [SearchResult(**r) for r in cached]
+
         rewritten = await self._rewrite_queries(query)
         queries = [query] + rewritten
         raw = await self._hybrid_search(queries, top_k * 3, source, space_id)
         reranked = self._rerank(raw, top_k)
+
+        try:
+            serializable = [
+                {
+                    "content": r.content, "score": r.score,
+                    "chunk_index": r.chunk_index, "document_id": r.document_id,
+                    "title": r.title, "source": r.source,
+                }
+                for r in reranked
+            ]
+            await cache_set(cache_key, serializable, ttl=300)
+        except Exception:
+            pass
         return reranked
 
     async def retrieve_context(
@@ -120,6 +152,7 @@ class KnowledgeBaseService:
                 )
             await db.commit()
             await db.refresh(doc)
+            await self._invalidate_cache()
             return doc
 
     async def add_document_from_file(
@@ -213,6 +246,7 @@ class KnowledgeBaseService:
 
             total_chunks += len(new_chunks)
 
+        await self._invalidate_cache()
         return len(docs), total_chunks
 
     async def delete_document(self, document_id: str) -> bool:
@@ -226,6 +260,7 @@ class KnowledgeBaseService:
                 return False
             await db.delete(doc)
             await db.commit()
+            await self._invalidate_cache()
             return True
 
     async def list_documents(self, space_id: str | None = None) -> list[KnowledgeDocument]:
@@ -572,6 +607,16 @@ class KnowledgeBaseService:
         if doc is None:
             return []
         return await self.retrieve(doc.title, top_k=top_k)
+
+    # ── cache ────────────────────────────────────────────────────────
+
+    async def _invalidate_cache(self) -> None:
+        """Invalidate all KB retrieval caches after document mutation."""
+        try:
+            from src.core.redis import cache_delete_pattern
+            await cache_delete_pattern("kb:retrieve:*")
+        except Exception:
+            pass
 
     # ── LLM-Wiki file storage ─────────────────────────────────────────
 

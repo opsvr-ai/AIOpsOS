@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 
 from src.api.deps import DbSession, get_current_user, get_optional_space_id, require_perm
-from src.models.agent import MCPServer, SkillVersion, Tool
+from src.models.agent import MCPServer, Tool
 from src.schemas.agent import (
     BatchConsistencyOut,
     BatchDeleteRequest,
@@ -162,6 +162,7 @@ async def create_tool(
         store_file_hash(tool, hash_val)
     await db.commit()
     await db.refresh(tool)
+    await tool_manager.invalidate_cache()
     return tool
 
 
@@ -313,6 +314,7 @@ async def update_tool(
                 tool.config.pop("_file_hash", None)
     await db.commit()
     await db.refresh(tool)
+    await tool_manager.invalidate_cache()
     return tool
 
 
@@ -331,6 +333,7 @@ async def delete_tool(
     source_path = tool.source_path
     await db.delete(tool)
     await db.commit()
+    await tool_manager.invalidate_cache()
     if is_skill:
         remove_skill_file(tool_name)
         if source_path:
@@ -719,13 +722,14 @@ async def sync_tool_to_fs(
 async def list_versions(
     tool_id: str, db: DbSession, _=Depends(get_current_user)
 ):
-    """List version history for a skill tool."""
-    result = await db.execute(
-        select(SkillVersion)
-        .where(SkillVersion.tool_id == tool_id)
-        .order_by(SkillVersion.created_at.desc())
-    )
-    return result.scalars().all()
+    """List version history for a skill tool.
+
+    Version-snapshot storage for skill tools was migrated to the evolution
+    pipeline. Until the UI-side history is re-implemented on the new schema,
+    this endpoint returns an empty list to keep the API contract stable.
+    """
+    _ = (tool_id, db)
+    return []
 
 
 @router.post("/tools/{tool_id}/rollback", response_model=ToolOut)
@@ -735,38 +739,20 @@ async def rollback_tool(
     db: DbSession,
     _=Depends(require_perm("tools", "update")),
 ):
-    """Roll back a tool to a previous version. Current state is saved as a version first."""
-    result = await db.execute(select(Tool).where(Tool.id == tool_id))
-    tool = result.scalar_one_or_none()
-    if tool is None:
-        raise HTTPException(status_code=404, detail="Tool not found")
+    """Roll back a tool to a previous version.
 
-    result = await db.execute(
-        select(SkillVersion).where(
-            SkillVersion.id == body.version_id,
-            SkillVersion.tool_id == tool_id,
-        )
+    Version-snapshot storage for skill tools was migrated to the evolution
+    pipeline. Rollback via the legacy version history is temporarily
+    disabled; the evolution promoter exposes its own rollback surface.
+    """
+    _ = (body, db)
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Skill-tool version rollback is temporarily unavailable: "
+            "history storage is being migrated to the evolution pipeline."
+        ),
     )
-    target_version = result.scalar_one_or_none()
-    if target_version is None:
-        raise HTTPException(status_code=404, detail="Version not found")
-
-    # Save current state as a version before rollback
-    await create_version_snapshot(db, tool)
-
-    # Restore from target version
-    tool.name = target_version.name
-    tool.description = target_version.description
-    tool.config = dict(target_version.config)
-
-    await db.flush()
-    if tool.type == "skill" and tool.is_active:
-        _filepath, hash_val = write_skill_file(tool)
-        store_file_hash(tool, hash_val)
-
-    await db.commit()
-    await db.refresh(tool)
-    return tool
 
 
 # ── File Management for Skills ─────────────────────────────
@@ -1251,6 +1237,7 @@ async def create_mcp_server(
     db.add(server)
     await db.commit()
     await db.refresh(server)
+    await tool_manager.invalidate_cache()
     return server
 
 
@@ -1269,6 +1256,7 @@ async def update_mcp_server(
         setattr(server, key, value)
     await db.commit()
     await db.refresh(server)
+    await tool_manager.invalidate_cache()
     return server
 
 
@@ -1283,4 +1271,5 @@ async def delete_mcp_server(
         raise HTTPException(status_code=404, detail="MCP server not found")
     await db.delete(server)
     await db.commit()
+    await tool_manager.invalidate_cache()
     return None

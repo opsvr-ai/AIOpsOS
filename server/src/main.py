@@ -21,6 +21,8 @@ from src.api.execution.workflow import workflow_router
 from src.api.public import router as public_router
 from src.config import settings
 from src.core.logging import setup_logging
+from src.core.metrics import metrics_router
+from src.core.tracing import init_tracing
 from src.models.base import Base, engine
 
 logger = logging.getLogger(__name__)
@@ -174,13 +176,38 @@ async def _auto_seed_agents() -> None:
 
 
 async def _init_database(app: FastAPI) -> bool:
-    """Create tables and run seeds. Returns True on success.
+    """Ensure schema is present and run seeds. Returns True on success.
 
-    Only DB-creation and seed are essential. Everything else (tool reload,
-    skill sync, agent pre-warm) happens in _init_optional() so a single
-    non-essential failure does not block background services.
+    Schema ownership rules (deploy fix):
+
+    * ``Base.metadata.create_all`` is **always** invoked. SQLAlchemy emits
+      ``CREATE TABLE IF NOT EXISTS`` under the hood, so it's safe to
+      re-run. This keeps the association tables that never landed in the
+      Alembic chain (``agent_tools`` / ``agent_sub_agents`` /
+      ``agent_channels`` / ``agent_versions`` / several cmdb_* tables /
+      log_events / itsm_tickets / tasks / …) creatable on every boot.
+      The alternative — authoring ``create_table`` migrations for every
+      gap — is a separate backlog item; for now, ``create_all`` is the
+      ground truth for those.
+    * If the Alembic bookkeeping table ``alembic_version`` is missing,
+      the DB has never been stamped. ``create_all`` above has already
+      produced a schema at ``head``, so we **stamp head** programmatically
+      so the Dockerfile's ``alembic upgrade head`` on next boot is a
+      no-op instead of re-running the chain against tables that are
+      already present.
+    * If ``alembic_version`` is present, we leave it alone and trust the
+      Dockerfile entrypoint's ``alembic upgrade head`` (run before this
+      function executes) to have reconciled schema additions from newer
+      revisions. The migrations in this chain are now idempotent where
+      they risk duplicate DDL with ``create_all`` (space_id / is_builtin
+      / perf indexes — see the guards in those files).
+
+    Only DB-creation and seed are essential. Everything else (tool
+    reload, skill sync, agent pre-warm) happens in _init_optional() so a
+    single non-essential failure does not block background services.
     """
     import src.models  # noqa: F401 — ensure all ORM models are registered with Base.metadata
+    from sqlalchemy import inspect as sa_inspect
 
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.wiki_path, exist_ok=True)
@@ -189,12 +216,60 @@ async def _init_database(app: FastAPI) -> bool:
     app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
     async with engine.begin() as conn:
+        has_alembic = await conn.run_sync(
+            lambda sync_conn: "alembic_version" in sa_inspect(sync_conn).get_table_names()
+        )
+        # Always run create_all — it's idempotent and covers the ORM
+        # tables that have no dedicated Alembic migration.
         await conn.run_sync(Base.metadata.create_all)
+        logger.info(
+            "DB init: Base.metadata.create_all complete (alembic_version present=%s)",
+            has_alembic,
+        )
+
+    # Stamp outside the engine transaction — Alembic opens its own
+    # connection. Only stamp on a truly fresh volume; re-stamping an
+    # existing alembic_version row would overwrite whatever revision
+    # the Dockerfile's ``alembic upgrade`` just reached.
+    if not has_alembic:
+        try:
+            await asyncio.to_thread(_alembic_stamp_head)
+        except Exception:
+            logger.exception(
+                "DB init: alembic stamp head failed (non-fatal, schema "
+                "is already at head via create_all; next upgrade will reconcile)"
+            )
 
     from scripts.seed import seed as run_seed
     await run_seed()
 
     return True
+
+
+def _alembic_stamp_head() -> None:
+    """Stamp the DB at ``head`` after a ``create_all`` bootstrap.
+
+    Called from :func:`_init_database` when the DB has no ``alembic_version``
+    row. Running Alembic programmatically here means a fresh deploy doesn't
+    try to re-apply every migration on top of a schema ``create_all`` just
+    built (which would hit the same duplicate-column errors we patched in
+    the migration files).
+    """
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    ini_path = Path(__file__).resolve().parents[1] / "alembic.ini"
+    cfg = Config(str(ini_path))
+    # Point script_location at the absolute migrations/ dir so stamping
+    # works regardless of the CWD uvicorn is started from.
+    cfg.set_main_option(
+        "script_location",
+        str(ini_path.parent / "migrations"),
+    )
+    command.stamp(cfg, "head")
+    logger.info("DB init: stamped alembic at head")
 
 
 async def _init_optional() -> None:
@@ -345,11 +420,13 @@ async def _start_background_services(app: FastAPI):
     except Exception:
         logger.exception("Cron scheduler failed to start")
 
+    # Task 25.1 — legacy sleep_detector removed; SleepScheduler is the
+    # sole consolidation dispatcher.
     try:
-        from src.services.sleep_detector import sleep_detector
-        await sleep_detector.start()
+        from src.services.sleep_scheduler import start_sleep_scheduler
+        await start_sleep_scheduler()
     except Exception:
-        logger.exception("Sleep detector failed to start")
+        logger.exception("SleepScheduler failed to start")
 
     try:
         from src.services.api_poller import api_poller
@@ -362,6 +439,21 @@ async def _start_background_services(app: FastAPI):
         await kafka_source_manager.start()
     except Exception:
         logger.exception("Kafka source manager failed to start")
+
+    # Ensure default Kafka topics exist (Phase B task 4.7 / R-5.1).
+    # Non-blocking: log on failure and carry on; /readyz will reflect status.
+    try:
+        from src.services.kafka.ensure import ensure_default_topics
+        report = await ensure_default_topics()
+        if report.errors:
+            logger.warning("kafka ensure completed with errors: %s", report.errors)
+        else:
+            logger.info(
+                "kafka topics ensured: created=%s existing=%s upgraded=%s",
+                report.created, report.existing, report.upgraded,
+            )
+    except Exception:
+        logger.exception("kafka ensure failed (non-fatal)")
 
 
 async def _stop_background_services():
@@ -379,8 +471,8 @@ async def _stop_background_services():
         pass
 
     try:
-        from src.services.sleep_detector import sleep_detector
-        await sleep_detector.stop()
+        from src.services.sleep_scheduler import stop_sleep_scheduler
+        await stop_sleep_scheduler()
     except Exception:
         pass
 
@@ -423,13 +515,80 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("Optional init failed (non-fatal)")
 
+    # Phase C — seed default feature flags, start flag service + trajectory sink
+    # BEFORE background services so downstream services can call
+    # ``feature_flags.is_enabled(...)`` during their own startup.
+    if db_ok:
+        try:
+            from src.services.feature_flags_bootstrap import seed_default_flags
+            await seed_default_flags()
+        except Exception:
+            logger.exception("Feature flag seed failed (non-fatal)")
+
+        try:
+            from src.services.feature_flags import get_feature_flags
+            await get_feature_flags()
+        except Exception:
+            logger.exception("Feature flag service start failed (non-fatal)")
+
+        # Register real schemas over the placeholder rows seeded by ensure.py.
+        try:
+            from src.services.kafka.schemas_seed import register_trajectory_schema
+            await register_trajectory_schema()
+        except Exception:
+            logger.exception("Trajectory schema register failed (non-fatal)")
+
+        # TrajectorySink spin-up is best-effort — Kafka broker outages must not
+        # block the app; events will be dropped + counted until the broker is
+        # back.
+        try:
+            from src.services.agent_runtime.trajectory import get_trajectory_sink
+            await get_trajectory_sink()
+        except Exception:
+            logger.exception("TrajectorySink start failed (non-fatal)")
+
     # Start background services if DB is available
     if db_ok:
         await _start_background_services(app)
 
+    # Embedded Celery worker for allinone deployments. Skipped under TESTING=1
+    # so the test suite does not spawn a background worker thread.
+    if settings.service_type == "allinone" and os.environ.get("TESTING") != "1":
+        try:
+            from src.workers.embedded import start_embedded_worker
+            start_embedded_worker()
+        except Exception:
+            logger.exception("Embedded Celery worker failed to start")
+
     yield
 
+    try:
+        from src.workers.embedded import stop_embedded_worker
+        stop_embedded_worker()
+    except Exception:
+        pass
+
+    # Phase C — tear down trajectory sink + flag service in reverse order.
+    try:
+        from src.services.agent_runtime.trajectory import shutdown_trajectory_sink
+        await shutdown_trajectory_sink()
+    except Exception:
+        logger.exception("TrajectorySink shutdown failed (non-fatal)")
+
+    try:
+        from src.services.feature_flags import shutdown_feature_flags
+        await shutdown_feature_flags()
+    except Exception:
+        logger.exception("Feature flag service shutdown failed (non-fatal)")
+
     await _stop_background_services()
+
+    try:
+        from src.core.redis import close_redis
+        await close_redis()
+    except Exception:
+        pass
+
     logger.info("AIOpsOS server shutting down")
 
 
@@ -439,6 +598,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+init_tracing(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -472,8 +633,30 @@ app.include_router(log_search_router)
 app.include_router(itsm_search_router)
 app.include_router(workflow_router)
 app.include_router(public_router)
+app.include_router(metrics_router)
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz():
+    """Readiness probe — 200 iff all default Kafka topics are present (R-5.1).
+
+    Used by Kubernetes / compose healthchecks to detect when the platform's
+    managed Kafka state is fully converged after startup. Returns 503 until
+    :func:`ensure_default_topics` has created every default topic.
+    """
+    from fastapi.responses import JSONResponse
+
+    from src.services.kafka.ensure import default_topics_present
+
+    ok = await default_topics_present()
+    if ok:
+        return {"status": "ready", "kafka_topics": "present"}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "not_ready", "kafka_topics": "missing"},
+    )

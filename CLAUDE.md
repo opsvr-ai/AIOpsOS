@@ -29,7 +29,7 @@ server/src/
 ├── core/           Logging, model_factory, config
 ├── models/         SQLAlchemy ORM models (base, agent, session, knowledge, model_provider)
 ├── schemas/        Pydantic models (CRUD schemas for each entity)
-├── services/       Business logic (memory_service, sleep_detector, cron, kb_monitor, skill_service)
+├── services/       Business logic (memory_service, sleep_scheduler, cron, kb_monitor, skill_service)
 └── main.py         FastAPI app, lifespan (DB init + background services)
 
 web/src/

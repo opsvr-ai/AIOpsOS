@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, field_serializer, field_validator
+from pydantic import BaseModel, field_serializer, field_validator, model_serializer
 
 
 class MessageOut(BaseModel):
@@ -19,6 +19,12 @@ class MessageOut(BaseModel):
     @classmethod
     def serialize_uuid_msg(cls, v: UUID | str) -> str:
         return str(v)
+
+    @model_serializer(mode="wrap")
+    def _add_type_alias(self, serializer, _info):
+        data = serializer(self)
+        data["type"] = data.get("message_type", "text")
+        return data
 
 
 class SessionOut(BaseModel):

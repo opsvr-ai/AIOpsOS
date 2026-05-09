@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 from sqlalchemy import select
 
-from src.models.agent import SkillVersion, Tool
+from src.models.agent import Tool
 from src.models.base import async_session_factory
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,30 @@ logger = logging.getLogger(__name__)
 SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "skills"
 
 _INTERNAL_KEYS = {"_file_hash"}
+
+# R-3.14: subdirectories under ``data/skills/`` whose first path component
+# matches any of these names are EXCLUDED from every filesystem skill scan.
+# ``.candidate`` is the reflection pipeline's staging area — materialised
+# proposals must never be picked up as live, registerable skills by
+# ``tool_manager`` / ``SkillsMiddleware`` / the control-plane sync UI.
+_SCAN_EXCLUDED_DIRS: frozenset[str] = frozenset({".candidate"})
+
+
+def _is_excluded_skill_md(md_path: Path) -> bool:
+    """Return True if ``md_path`` lives under an excluded subdirectory.
+
+    A SKILL.md is excluded when any segment of its path relative to
+    :data:`SKILLS_DIR` matches an entry in :data:`_SCAN_EXCLUDED_DIRS`.
+    Paths outside :data:`SKILLS_DIR` (e.g. a ``tmp_path`` fixture that
+    hasn't rebound the module constant) fall through via the bare-parts
+    check against the absolute path, preserving the same semantics for
+    tests that monkeypatch ``SKILLS_DIR``.
+    """
+    try:
+        parts = md_path.relative_to(SKILLS_DIR).parts
+    except ValueError:
+        parts = md_path.parts
+    return any(p in _SCAN_EXCLUDED_DIRS for p in parts)
 
 
 def _skill_dir(name: str) -> Path:
@@ -129,6 +153,8 @@ def batch_inconsistency_count(tools: list) -> int:
     fs_hashes: dict[str, str] = {}
     if SKILLS_DIR.exists():
         for md_path in SKILLS_DIR.rglob("SKILL.md"):
+            if _is_excluded_skill_md(md_path):
+                continue
             try:
                 name = md_path.parent.name
                 raw = md_path.read_text(encoding="utf-8")
@@ -209,17 +235,17 @@ async def sync_from_filesystem(db, tool: Tool) -> Tool:
     return tool
 
 
-async def create_version_snapshot(db, tool: Tool) -> SkillVersion:
-    """Save the current tool state as a SkillVersion row. Caller must commit."""
-    cfg_snapshot = _strip_internal_keys(dict(tool.config or {}))
-    version = SkillVersion(
-        tool_id=tool.id,
-        name=tool.name,
-        description=tool.description,
-        config=cfg_snapshot,
-    )
-    db.add(version)
-    return version
+async def create_version_snapshot(db, tool: Tool) -> None:
+    """Version-snapshot support for legacy skill tools is temporarily disabled.
+
+    The old ``skill_versions`` table (tool-version history for the web UI)
+    has been replaced by the evolution-pipeline ``skill_versions`` table
+    (promoted skill-candidate history). Migrating skill-tool snapshots to
+    the new schema is tracked separately. Callers treat this as a no-op
+    so the write path of /tools endpoints stays working.
+    """
+    _ = (db, tool)
+    return None
 
 
 def list_filesystem_skills() -> list[dict]:
@@ -239,6 +265,12 @@ def list_filesystem_skills() -> list[dict]:
         return skills
 
     for md_path in sorted(SKILLS_DIR.rglob("SKILL.md")):
+        if _is_excluded_skill_md(md_path):
+            # R-3.14: ``.candidate/`` staging area is off-limits for
+            # live skill discovery. Proposals are materialised there by
+            # the reflection pipeline and only promoted into the main
+            # tree after evaluation.
+            continue
         skill_dir = md_path.parent
         try:
             metadata = _parse_skill_md(md_path)

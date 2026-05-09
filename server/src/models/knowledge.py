@@ -2,9 +2,9 @@ import uuid
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base, TimestampMixin
 
@@ -67,4 +67,34 @@ class AgentMemory(Base, TimestampMixin):
     tags: Mapped[list[str]] = mapped_column("tags", JSONB, default=list)
     space_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # --- columns added by migration 202605041810 --------------------------
+    # Extended by the Agent Runtime Optimization & Evolution spec to support
+    # embedding cache lookup, supersede semantics, HOT-block pinning, and
+    # recency scoring. See
+    # server/migrations/versions/202605041810_extend_memories_and_sessions.py.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_memories.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Self-referential relationship for `superseded_by`. Resolves an
+    # archived memory row to the newer memory that supersedes it.
+    successor: Mapped["AgentMemory | None"] = relationship(
+        "AgentMemory",
+        remote_side="AgentMemory.id",
+        foreign_keys=[superseded_by],
+        uselist=False,
     )

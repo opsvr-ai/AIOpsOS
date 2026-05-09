@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, create_model
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from src.core.redis import cache_delete, cache_get, cache_set
 from src.models.agent import Tool
 from src.models.base import async_session_factory
 
@@ -111,6 +112,38 @@ DESTRUCTIVE = "destructive"
 DEFAULT_SAFETY = SEQUENTIAL
 
 
+# Boot-time safety seed for built-in tools (design.md § ToolDispatcher).
+# Names absent from this dict default to SEQUENTIAL via get_safety(...).
+# Keep in sync with migration 202605041830_add_tool_safety_column.py.
+_BUILTIN_SAFETY_SEED: dict[str, str] = {
+    # parallel-safe — pure-read, idempotent, no external mutation.
+    "grep_kb": SAFE_PARALLEL,
+    "read_wiki": SAFE_PARALLEL,
+    "list_wiki": SAFE_PARALLEL,
+    "memory_retrieve": SAFE_PARALLEL,
+    "list_cron_jobs": SAFE_PARALLEL,
+    "get_config": SAFE_PARALLEL,
+    "list_datasources": SAFE_PARALLEL,
+    "query_cmdb_nodes": SAFE_PARALLEL,
+    "search_logs": SAFE_PARALLEL,
+    "count_logs": SAFE_PARALLEL,
+    "search_tickets": SAFE_PARALLEL,
+    "get_ticket_detail": SAFE_PARALLEL,
+    # destructive — require HumanInterrupt approval before dispatch.
+    "execute": DESTRUCTIVE,
+    "write_wiki": DESTRUCTIVE,
+    "write_raw": DESTRUCTIVE,
+    "cron_create": DESTRUCTIVE,
+    "sync_datasource": DESTRUCTIVE,
+}
+
+
+# Cache key for DB-backed tool list snapshot. Bumped to v2 once the
+# snapshot schema gained a 'safety' field — avoids deserialising stale
+# v1 payloads left over in Redis from before migration 202605041830.
+_TOOLS_LIST_CACHE_KEY = "tools:list:v2"
+
+
 class ToolManager:
     """Registry that loads tools/Skills from DB and wraps them as LangChain tools.
 
@@ -208,14 +241,39 @@ class ToolManager:
         builtins = dict(self._builtin)
         self._tools.clear()
         self._tools.update(builtins)
+
+        # Seed safety defaults BEFORE any cache/DB hydration so the in-memory
+        # dict is deterministic even on a Redis cache hit. DB rows (or
+        # explicit runtime overrides) may later refine individual entries.
+        self.seed_safety_from_defaults()
+
+        cache_key = _TOOLS_LIST_CACHE_KEY
+        try:
+            cached = await cache_get(cache_key)
+        except Exception:
+            cached = None
+
+        if cached:
+            self._load_tools_from_cache(cached)
+            return
+
         async with async_session_factory() as db:
             # load skill tools (skip names that are already built-in)
             result = await db.execute(
                 select(Tool).where(Tool.is_active, Tool.type == "skill")
             )
+            raw = {"skills": [], "mcps": []}
             for tool in result.scalars().all():
                 if tool.name not in self._builtin:
                     self._register_skill(tool)
+                    raw["skills"].append({
+                        "name": tool.name,
+                        "description": tool.description or "",
+                        "return_direct": bool(tool.return_direct),
+                        "source_file": tool.source_file,
+                        "parameters_schema": tool.parameters_schema,
+                        "safety": tool.safety,
+                    })
 
             # load MCP-backed tools (skip names that are already built-in)
             mcp_tools_result = await db.execute(
@@ -226,6 +284,56 @@ class ToolManager:
             for tool in mcp_tools_result.scalars().all():
                 if tool.name not in self._builtin:
                     self._register_skill(tool)
+                    mcp = tool.mcp_server
+                    raw["mcps"].append({
+                        "name": tool.name,
+                        "description": tool.description or "",
+                        "return_direct": bool(tool.return_direct),
+                        "safety": tool.safety,
+                        "mcp_server": {
+                            "name": mcp.name if mcp else "",
+                            "transport": mcp.transport if mcp else "stdio",
+                            "command": mcp.command if mcp else None,
+                            "args": mcp.args if mcp else None,
+                            "url": mcp.url if mcp else None,
+                        } if mcp else None,
+                    })
+
+            try:
+                await cache_set(cache_key, raw, ttl=300)
+            except Exception:
+                pass
+
+    def _load_tools_from_cache(self, raw: dict) -> None:
+        """Reconstruct tool objects from cached metadata."""
+        from src.models.agent import MCPServer
+
+        for s in raw.get("skills", []):
+            tool = Tool(
+                name=s["name"], type="skill", description=s["description"],
+                return_direct=s.get("return_direct"), source_file=s.get("source_file"),
+                parameters_schema=s.get("parameters_schema"),
+                safety=s.get("safety") or DEFAULT_SAFETY,
+            )
+            self._register_skill(tool)
+
+        for m in raw.get("mcps", []):
+            mcp_data = m.get("mcp_server")
+            mcp_server = None
+            if mcp_data:
+                mcp_server = MCPServer(
+                    name=mcp_data.get("name", ""),
+                    transport=mcp_data.get("transport", "stdio"),
+                    command=mcp_data.get("command"),
+                    args=mcp_data.get("args"),
+                    url=mcp_data.get("url"),
+                )
+            tool = Tool(
+                name=m["name"], type="mcp", description=m["description"],
+                return_direct=m.get("return_direct"), mcp_server=mcp_server,
+                safety=m.get("safety") or DEFAULT_SAFETY,
+            )
+            self._register_skill(tool)
 
     # ── safety classification ──────────────────────────────────
 
@@ -243,6 +351,18 @@ class ToolManager:
 
     def is_destructive(self, tool_name: str) -> bool:
         return self._safety.get(tool_name) == DESTRUCTIVE
+
+    def seed_safety_from_defaults(self) -> None:
+        """Seed the in-memory safety map from the built-in classification table.
+
+        Idempotent on reload: only fills entries that are not already set.
+        Runtime overrides (``set_safety`` calls from user code, or DB-backed
+        rows hydrated in ``_register_skill``) are preserved verbatim. This is
+        the inverse of clobbering user intent every time ``reload()`` runs.
+        """
+        for name, classification in _BUILTIN_SAFETY_SEED.items():
+            if name not in self._safety:
+                self.set_safety(name, classification)
 
     # ── output budget ──────────────────────────────────────────
 
@@ -294,6 +414,13 @@ class ToolManager:
             _config=tool.config,
         )
         self._tools[tool.name] = wrapped
+        # Hydrate the safety dict from the DB-backed row so user-defined
+        # skills and MCP tools carry their classification into dispatch
+        # decisions. Falls back silently when the model doesn't expose a
+        # safety attr (e.g. reduced-schema stubs used in unit tests).
+        classification = getattr(tool, "safety", None)
+        if classification in (SAFE_PARALLEL, SEQUENTIAL, DESTRUCTIVE):
+            self.set_safety(tool.name, classification)
 
 def _build_schema(params: dict) -> type[BaseModel]:
     """Turn a flat {name: type} dict into a Pydantic args schema."""
@@ -306,6 +433,14 @@ def _build_schema(params: dict) -> type[BaseModel]:
         py_type = type_map.get(param_type, str)
         fields[param_name] = (py_type, Field(...))
     return create_model("_DynamicArgs", **fields)
+
+
+    async def invalidate_cache(self) -> None:
+        """Invalidate the shared tool cache (call after CRUD on tools/MCP servers)."""
+        try:
+            await cache_delete(_TOOLS_LIST_CACHE_KEY)
+        except Exception:
+            pass
 
 
 # module-level singleton

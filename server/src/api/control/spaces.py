@@ -26,6 +26,14 @@ router = APIRouter(prefix="/spaces", tags=["spaces"])
 
 # ── helpers ────────────────────────────────────────────────────
 
+async def _invalidate_space_cache(user_id: str) -> None:
+    try:
+        from src.core.redis import cache_delete
+        await cache_delete(f"space:my:{user_id}")
+    except Exception:
+        pass
+
+
 def _space_out(space, member_count: int = 0) -> dict:
     return {
         "id": space.id,
@@ -85,12 +93,23 @@ async def create_space(body: SpaceCreate, user: CurrentUser, db: DbSession):
 
     await db.commit()
     await db.refresh(space)
+    await _invalidate_space_cache(str(user.id))
 
     return _space_out(space, member_count=1)
 
 
 @router.get("", response_model=list[SpaceDetailOut])
 async def list_my_spaces(user: CurrentUser, db: DbSession):
+    from src.core.redis import cache_get, cache_set
+
+    cache_key = f"space:my:{user.id}"
+    try:
+        cached = await cache_get(cache_key)
+    except Exception:
+        cached = None
+    if cached is not None:
+        return cached
+
     sub = (
         select(SpaceMember.space_id)
         .where(SpaceMember.user_id == user.id)
@@ -113,10 +132,15 @@ async def list_my_spaces(user: CurrentUser, db: DbSession):
             )
         )
         roles = {str(row.space_id): row.role for row in role_result}
-    return [
+    result = [
         {**_space_out(row.Space, member_count=row.cnt), "my_role": roles.get(str(row.Space.id))}
         for row in rows
     ]
+    try:
+        await cache_set(cache_key, result, ttl=120)
+    except Exception:
+        pass
+    return result
 
 
 @router.get("/discover", response_model=list[SpaceOut])
@@ -187,6 +211,7 @@ async def delete_space(space_id: uuid.UUID, user: CurrentUser, db: DbSession):
         raise HTTPException(status_code=404, detail="Space not found")
     await db.delete(space)
     await db.commit()
+    await _invalidate_space_cache(str(user.id))
     return {"ok": True}
 
 
@@ -241,6 +266,7 @@ async def invite_member(
     db.add(invitation)
     await db.commit()
     await db.refresh(invitation)
+    await _invalidate_space_cache(str(body.user_id))
     from src.services.space_service import send_invitation_notification
     await send_invitation_notification(db, invitation)
     return invitation
@@ -317,6 +343,7 @@ async def respond_invitation(
     else:
         invitation.status = "rejected"
     await db.commit()
+    await _invalidate_space_cache(str(user.id))
     return {"ok": True, "status": invitation.status}
 
 
@@ -345,6 +372,7 @@ async def update_member_role(
         raise HTTPException(status_code=404, detail="Member not found")
     member.role = body.role
     await db.commit()
+    await _invalidate_space_cache(str(member_user_id))
     return {"ok": True}
 
 
@@ -369,6 +397,7 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="Member not found")
     await db.delete(member)
     await db.commit()
+    await _invalidate_space_cache(str(member_user_id))
     return {"ok": True}
 
 
@@ -399,6 +428,7 @@ async def leave_space(space_id: uuid.UUID, user: CurrentUser, db: DbSession):
     if member:
         await db.delete(member)
         await db.commit()
+        await _invalidate_space_cache(str(user.id))
     return {"ok": True}
 
 
@@ -495,6 +525,7 @@ async def review_join_request(
         if not existing_member.scalar_one_or_none():
             db.add(SpaceMember(space_id=space_id, user_id=req.user_id, role="member"))
     await db.commit()
+    await _invalidate_space_cache(str(req.user_id))
     from src.services.space_service import notify_join_request_result
     await notify_join_request_result(db, req)
     return {"ok": True, "status": req.status}

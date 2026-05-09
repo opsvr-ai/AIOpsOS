@@ -40,6 +40,9 @@ class ReportOut(BaseModel):
     theme: str
     status: str
     visibility: str
+    report_type: str
+    date_range_start: str | None
+    date_range_end: str | None
     session_id: str | None
     html_content: str
     created_at: str
@@ -160,6 +163,9 @@ def _to_out(r: Report) -> dict:
         "theme": r.theme,
         "status": r.status,
         "visibility": r.visibility,
+        "report_type": r.report_type,
+        "date_range_start": r.date_range_start,
+        "date_range_end": r.date_range_end,
         "session_id": str(r.session_id) if r.session_id else None,
         "html_content": r.html_content,
         "created_at": r.created_at.isoformat() if r.created_at else "",
@@ -175,6 +181,9 @@ def _row_to_out(r) -> dict:
         "theme": r.theme,
         "status": r.status,
         "visibility": r.visibility,
+        "report_type": r.report_type,
+        "date_range_start": r.date_range_start,
+        "date_range_end": r.date_range_end,
         "session_id": str(r.session_id) if r.session_id else None,
         "html_content": r.html_content,
         "created_at": r.created_at.isoformat() if r.created_at else "",

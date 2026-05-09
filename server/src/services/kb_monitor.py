@@ -217,11 +217,48 @@ class KBMonitor:
                 self._last_check = datetime.now(UTC).isoformat()
                 for fp in changed:
                     logger.info("KB change detected: %s", fp)
-                    result = await self.process_document(fp)
-                    logger.info("KB process result: %s — %s", result.file, result.status)
+                    await self._dispatch_change(fp)
             except Exception:
                 logger.exception("KB monitor loop error")
             await asyncio.sleep(self._poll_interval)
+
+    async def _dispatch_change(self, filepath: str) -> None:
+        """Route a raw-file change either to the Celery worker or to the
+        legacy in-process pipeline, depending on
+        ``wiki_compile_worker_enabled`` (R-2.12, spec task 12.3).
+
+        Any exception from the worker dispatch path is caught so a broker
+        hiccup can't crash the monitor loop — we fall back to the legacy
+        ``process_document`` path in that case.
+        """
+        use_worker = await self._worker_enabled()
+        if use_worker:
+            try:
+                from src.workers.tasks.wiki_compile import compile_wiki
+
+                compile_wiki.delay(filepath)
+                logger.info("KB change dispatched to worker: %s", filepath)
+                return
+            except Exception:
+                logger.exception(
+                    "KB change worker dispatch failed; falling back to in-process "
+                    "pipeline for %s",
+                    filepath,
+                )
+
+        result = await self.process_document(filepath)
+        logger.info("KB process result: %s — %s", result.file, result.status)
+
+    async def _worker_enabled(self) -> bool:
+        """Best-effort feature-flag check. Any error → False (legacy path)."""
+        try:
+            from src.services.feature_flags import get_feature_flags
+
+            svc = await get_feature_flags()
+            return svc.is_enabled("wiki_compile_worker_enabled")
+        except Exception:
+            logger.debug("wiki_compile flag check failed", exc_info=True)
+            return False
 
 
 # Singleton

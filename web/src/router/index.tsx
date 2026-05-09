@@ -30,6 +30,7 @@ const ReportListPage = lazy(() => import('@/features/reports/ReportListPage'));
 const ReportViewerPage = lazy(() => import('@/features/reports/ReportViewerPage'));
 const ModelProvidersPage = lazy(() => import('@/features/model-providers/ModelProvidersPage'));
 const SpacesPage = lazy(() => import('@/features/spaces/SpacesPage'));
+const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'));
 const SpaceDetailPage = lazy(() => import('@/features/spaces/SpaceDetailPage'));
 const LoginPage = lazy(() => import('@/features/LoginPage'));
 const RegisterPage = lazy(() => import('@/features/RegisterPage'));
@@ -336,6 +337,14 @@ export const appRoutes = [
                 element: (
                   <Lazy>
                     <ModelProvidersPage />
+                  </Lazy>
+                ),
+              },
+              {
+                path: 'analytics',
+                element: (
+                  <Lazy>
+                    <AnalyticsPage />
                   </Lazy>
                 ),
               },

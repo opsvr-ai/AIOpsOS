@@ -42,6 +42,12 @@ server/data/cron_output/
 server/data/skills/
 server/.env
 
+# Reflection pipeline staging area (R-3.14) — materialised skill candidates
+# live under data/skills/.candidate/ until promotion. Explicitly ignored so
+# the entry applies even when a developer un-ignores server/data/skills/ locally.
+data/skills/.candidate/
+server/data/skills/.candidate/
+
 # Local test / tmp
 tmp/
 

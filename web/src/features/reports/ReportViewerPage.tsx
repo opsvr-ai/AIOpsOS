@@ -200,29 +200,17 @@ export default function ReportViewerPage() {
         </Space>
       </div>
 
-      {/* Report body — inline rendered */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px 64px' }}>
-          <Typography.Title level={3} style={{ marginBottom: 4 }}>
-            {report.title}
-          </Typography.Title>
-          {report.description && (
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 24, fontSize: 14 }}>
-              {report.description}
-            </Typography.Paragraph>
-          )}
-
-          <div
-            className="report-content"
-            dangerouslySetInnerHTML={{ __html: report.html_content }}
-            style={{
-              fontSize: 15,
-              lineHeight: 1.8,
-              color: 'var(--fg-primary)',
-            }}
-          />
-        </div>
-      </div>
+      {/* Report body — sandboxed iframe for proper full-HTML rendering */}
+      <iframe
+        srcDoc={report.html_content}
+        title={report.title}
+        style={{
+          flex: 1,
+          width: '100%',
+          border: 'none',
+        }}
+        sandbox="allow-scripts"
+      />
     </div>
   );
 }

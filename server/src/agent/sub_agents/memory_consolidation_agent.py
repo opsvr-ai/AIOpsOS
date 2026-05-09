@@ -2,7 +2,7 @@
 and team memories from session conversation history.
 
 Triggered by:
-  - SleepDetector (auto: session idle > 5 min + auto_consolidate=true)
+  - SleepScheduler / ConsolidationWorker (auto: session idle + auto_consolidate=true)
   - Sleep management API  (manual: POST /sleep-management/sessions/{id}/consolidate)
   - Session end lifecycle    (on_session_end hook)
 """

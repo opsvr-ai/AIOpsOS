@@ -35,8 +35,16 @@ function sessionIcon(title: string) {
 }
 
 export default function ChatSidebar() {
-  const { sessionId, setSessionId, sessions, setSessions, setMessages, isRunning, _refreshTick } =
-    useChatStore();
+  const {
+    sessionId,
+    setSessionId,
+    sessions,
+    setSessions,
+    setMessages,
+    setLoadingHistory,
+    isRunning,
+    _refreshTick,
+  } = useChatStore();
   const currentSpaceId = useSpaceStore((s) => s.currentSpace?.id);
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -69,6 +77,7 @@ export default function ChatSidebar() {
   const handleSelect = (sid: string) => {
     if (sid === sessionId) return;
     setSessionId(sid);
+    setLoadingHistory(true);
     api
       .get(`/sessions/${sid}`)
       .then((res) => {
@@ -103,7 +112,12 @@ export default function ChatSidebar() {
           );
         setMessages(msgs);
       })
-      .catch(() => setMessages([]));
+      .catch((err) => {
+        console.error('Failed to load session messages:', err);
+        message.error('加载对话失败');
+        setMessages([]);
+      })
+      .finally(() => setLoadingHistory(false));
   };
 
   const handleDelete = async (e: React.MouseEvent, sid: string) => {

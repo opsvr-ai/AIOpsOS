@@ -34,8 +34,8 @@ import {
   GlobalOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import api from '@/services/api';
 import { useChatStore } from '@/stores/chatStore';
+import api from '@/services/api';
 
 const { DirectoryTree } = Tree;
 
@@ -102,20 +102,12 @@ function fileIcon(mime: string | null) {
 
 const PERSISTED_SESSION_KEY = 'aiops_persisted_session_id';
 
-function ensureSessionId(sessionId: string | null): string {
+function getEffectiveSessionId(sessionId: string | null): string | null {
   if (sessionId) {
     localStorage.setItem(PERSISTED_SESSION_KEY, sessionId);
     return sessionId;
   }
-  const stored = localStorage.getItem(PERSISTED_SESSION_KEY);
-  if (stored) {
-    useChatStore.getState().setSessionId(stored);
-    return stored;
-  }
-  const sid = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  localStorage.setItem(PERSISTED_SESSION_KEY, sid);
-  useChatStore.getState().setSessionId(sid);
-  return sid;
+  return null;
 }
 
 function convertTreeData(nodes: FileTreeNode[]): AntTreeNode[] {
@@ -152,8 +144,9 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [pendingFolders, setPendingFolders] = useState<Set<string>>(new Set());
+  const bumpFileRefresh = useChatStore((s) => s.bumpFileRefresh);
 
-  const sid = ensureSessionId(sessionId);
+  const sid = getEffectiveSessionId(sessionId);
 
   const fetchTree = useCallback(async () => {
     if (!sid) return;
@@ -167,7 +160,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
           if (n.type === 'file') {
             flatFiles.push({
               id: n.id!,
-              session_id: sid,
+              session_id: sid!,
               filename: n.name,
               file_size: n.file_size ?? 0,
               mime_type: n.mime_type ?? null,
@@ -209,7 +202,10 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
   }, [open, fetchReports]);
 
   const handleUpload = async (file: File) => {
-    console.log('[ContextPanel] handleUpload called:', file.name, 'sid=', sid);
+    if (!sid) {
+      message.error('请先发送一条消息创建会话');
+      return false;
+    }
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -218,8 +214,9 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
         `/sessions/${sid}/files?folder_path=${encodeURIComponent(currentFolder)}`,
         formData,
       );
-      console.log('[ContextPanel] upload response:', res.data);
-      await fetchTree();
+      const uploaded = res.data as SessionFile;
+      setFiles((prev) => [...prev, uploaded]);
+      bumpFileRefresh();
       message.success(`${file.name} 上传成功`);
     } catch (err: any) {
       console.error(
@@ -252,6 +249,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
         try {
           await api.delete(`/sessions/${sid}/files/${fileId}`);
           await fetchTree();
+          bumpFileRefresh();
           message.success('删除成功');
         } catch {
           message.error('删除失败');
@@ -267,6 +265,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
         `/sessions/${sid}/files/${fileId}/rename?new_name=${encodeURIComponent(newName)}`,
       );
       await fetchTree();
+      bumpFileRefresh();
       message.success('重命名成功');
     } catch {
       message.error('重命名失败');
@@ -296,6 +295,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
         `/sessions/${sid}/files/${fileId}/move?target_folder=${encodeURIComponent(targetFolder)}`,
       );
       await fetchTree();
+      bumpFileRefresh();
       message.success('移动成功');
     } catch {
       message.error('移动失败');
@@ -520,7 +520,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
                       </Button>
                     </Empty>
                     <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                      sid: {sid.slice(0, 8)}... / files: {files.length}
+                      sid: {sid?.slice(0, 8) ?? '—'}... / files: {files.length}
                     </Typography.Text>
                   </div>
                 ) : (
@@ -529,7 +529,7 @@ export default function ContextPanel({ open, onClose, sessionId }: Props) {
                       type="secondary"
                       style={{ fontSize: 11, padding: '4px 0', display: 'block' }}
                     >
-                      sid: {sid.slice(0, 8)}... / files: {files.length}
+                      sid: {sid?.slice(0, 8) ?? '—'}... / files: {files.length}
                     </Typography.Text>
                     <DirectoryTree
                       key={files.map((f) => f.id).join(',')}
