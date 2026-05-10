@@ -1,10 +1,16 @@
 import uuid
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Column, ForeignKey, String, Table, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Table, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from src.models.channel import NotificationChannel
+    from src.models.knowledge import KnowledgeDocument
+    from src.models.scenario import ScenarioExecution
 
 scenario_tools = Table(
     "scenario_tools",
@@ -38,6 +44,21 @@ agent_channels = Table(
     "agent_channels",
     Base.metadata,
     Column("agent_id", UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True),
+    Column("channel_id", UUID(as_uuid=True), ForeignKey("notification_channels.id", ondelete="CASCADE"), primary_key=True),
+)
+
+# New association tables for Scenario resource relationships
+scenario_knowledge_docs = Table(
+    "scenario_knowledge_docs",
+    Base.metadata,
+    Column("scenario_id", UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="CASCADE"), primary_key=True),
+    Column("document_id", UUID(as_uuid=True), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), primary_key=True),
+)
+
+scenario_channels = Table(
+    "scenario_channels",
+    Base.metadata,
+    Column("scenario_id", UUID(as_uuid=True), ForeignKey("scenarios.id", ondelete="CASCADE"), primary_key=True),
     Column("channel_id", UUID(as_uuid=True), ForeignKey("notification_channels.id", ondelete="CASCADE"), primary_key=True),
 )
 
@@ -169,9 +190,47 @@ class Scenario(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
     )
 
+    # New fields for scenario type system (Requirements 1.1-1.4)
+    scenario_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="command", server_default="command"
+    )  # command | natural_language | hybrid
+    nl_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    execution_timeout: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=300, server_default="300"
+    )  # seconds
+
+    # Emergency collaboration configuration (Requirements 6.1)
+    enable_collaboration: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    collaboration_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # collaboration_config structure:
+    # {
+    #   "auto_create_group": true,
+    #   "group_name_template": "[应急] {scenario_name} - {timestamp}",
+    #   "group_members": ["user1", "user2"],
+    #   "group_owner": "admin",
+    #   "send_email": true,
+    #   "email_recipients": ["ops@example.com"],
+    #   "email_template_id": "emergency_alert"
+    # }
+
+    # Existing relationships
     tools: Mapped[list["Tool"]] = relationship(
         secondary="scenario_tools", back_populates="scenarios"
     )
     agents: Mapped[list["Agent"]] = relationship(
         secondary="scenario_agents", back_populates="scenarios"
+    )
+
+    # New relationships for resource associations (Requirements 4.3, 4.4)
+    knowledge_docs: Mapped[list["KnowledgeDocument"]] = relationship(
+        secondary="scenario_knowledge_docs"
+    )
+    notification_channels: Mapped[list["NotificationChannel"]] = relationship(
+        secondary="scenario_channels"
+    )
+    executions: Mapped[list["ScenarioExecution"]] = relationship(
+        back_populates="scenario", order_by="ScenarioExecution.created_at.desc()"
     )

@@ -1,5 +1,58 @@
 # Changelog
 
+## v2026.5.11 (2026-05-11) — Scenario Operations & Emergency Collaboration (Complete)
+
+### Summary
+
+This release completes the Scenario Operations Optimization and Emergency Collaboration feature set, adding comprehensive integration between scenario execution, collaboration sessions, message synchronization, progress analysis, and intelligent recommendations.
+
+### New Features
+
+- **Scenario Execution & Collaboration Integration**: Scenarios with `enable_collaboration=True` now automatically create collaboration sessions when triggered. The `ScenarioExecutionEngine` integrates with `CollaborationService` to execute initialization actions (group chat creation, email notifications).
+
+- **Message Sync Integration**: `MessageSyncService` fully integrated with `GroupChatManager` for bidirectional real-time message synchronization between collaboration sessions and WeCom group chats.
+
+- **Progress Analysis & Recommendation Integration**: `ProgressAnalyzer` now automatically triggers `RecommendationEngine` after analysis phase changes, generating intelligent next-step suggestions based on current progress.
+
+- **Collaboration Session API**: Complete REST API for collaboration session management:
+  - List sessions with pagination and filtering (status, time range, scenario)
+  - Session details with messages, progress analysis, and recommendation history
+  - Status management with state transition validation
+  - Report export with duration, statistics, and key events
+  - Keyword search across message content
+  - Manual progress analysis trigger
+  - Recommendation generation and feedback submission
+
+### Integration Points
+
+- `ScenarioExecutionEngine._create_collaboration_session()` — Auto-creates collaboration session for scenarios with collaboration enabled
+- `ProgressAnalyzer._auto_generate_recommendations()` — Auto-generates recommendations after phase changes
+- `MessageSyncService` ↔ `GroupChatManager` — Bidirectional message sync with format conversion
+- `CollaborationService.execute_initialization_actions()` — Group chat creation and email notifications
+
+### API Endpoints (New)
+
+- `GET /api/v1/collaboration-sessions` — List sessions with filters
+- `GET /api/v1/collaboration-sessions/count` — Session count by status
+- `GET /api/v1/collaboration-sessions/{id}` — Session details
+- `GET /api/v1/collaboration-sessions/{id}/messages` — Session messages
+- `GET /api/v1/collaboration-sessions/{id}/recommendations` — Session recommendations
+- `PUT /api/v1/collaboration-sessions/{id}/status` — Update session status
+- `GET /api/v1/collaboration-sessions/{id}/report` — Export session report
+- `GET /api/v1/collaboration-sessions/search/messages` — Search messages by keyword
+- `POST /api/v1/collaboration-sessions/{id}/analyze` — Trigger progress analysis
+- `POST /api/v1/collaboration-sessions/{id}/generate-recommendations` — Generate recommendations
+- `PUT /api/v1/collaboration-sessions/recommendations/{id}/feedback` — Submit recommendation feedback
+
+### Files Changed
+
+- `server/src/api/control/collaboration.py` — New collaboration session API (944 lines)
+- `server/src/api/control/router.py` — Registered collaboration router
+- `server/src/services/scenario_execution.py` — Added collaboration integration
+- `server/src/services/progress_analyzer.py` — Added auto-recommendation generation
+
+---
+
 ## v2026.5.10 (2026-05-10) — Scenario Operations & Emergency Collaboration
 
 ### New Features

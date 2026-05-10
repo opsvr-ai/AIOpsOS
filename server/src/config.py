@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # Public-facing base URL for generating shareable links (no trailing slash)
     public_url: str = "http://localhost:8000"
 
+    # Progress analysis configuration
+    progress_analysis_interval: int = 300  # seconds between automatic analyses (default 5 minutes)
+    progress_analysis_enabled: bool = True  # whether automatic analysis is enabled by default
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="")
 
 

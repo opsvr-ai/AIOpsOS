@@ -14,6 +14,25 @@ from src.schemas.agent import (
 )
 from src.schemas.alert import AlertActionRequest, AlertListParams, AlertOut
 from src.schemas.channel import AgentProfileCreate, AgentProfileOut, ChannelCreate, ChannelOut
+from src.schemas.collaboration import (
+    CollaborationMessageCreate,
+    CollaborationMessageListOut,
+    CollaborationMessageResponse,
+    CollaborationRecommendationCreate,
+    CollaborationRecommendationListOut,
+    CollaborationRecommendationResponse,
+    CollaborationRecommendationUpdate,
+    CollaborationReportRequest,
+    CollaborationReportResponse,
+    CollaborationSearchParams,
+    CollaborationSessionCreate,
+    CollaborationSessionListOut,
+    CollaborationSessionListResponse,
+    CollaborationSessionResponse,
+    CollaborationSessionUpdate,
+    ProgressAnalysisRequest,
+    ProgressAnalysisResponse,
+)
 from src.schemas.chat import (
     ChatEvent,
     ChatRequest,

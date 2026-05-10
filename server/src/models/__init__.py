@@ -4,6 +4,11 @@ from src.models.assistant import PersonalAssistantConfig
 from src.models.base import Base
 from src.models.channel import AgentProfile, NotificationChannel, SystemConfig
 from src.models.cmdb import CmdbEdge, CmdbMappingRule, CmdbNode, CmdbReviewItem, CmdbSyncLog
+from src.models.collaboration import (
+    CollaborationMessage,
+    CollaborationRecommendation,
+    CollaborationSession,
+)
 from src.models.cron_job import CronJob
 from src.models.datasource import DataSource
 from src.models.evolution import (
@@ -23,6 +28,7 @@ from src.models.model_provider import ModelProvider
 from src.models.notification import Notification
 from src.models.report import Report
 from src.models.runtime_flag import RuntimeFeatureFlag
+from src.models.scenario import ScenarioExecution
 from src.models.schedule import SceneTrigger, Schedule, ScheduleExecution
 from src.models.session import Memory, Message, Session, SessionFile
 from src.models.space import Space, SpaceInvitation, SpaceJoinRequest, SpaceMember
@@ -45,6 +51,9 @@ __all__ = [
     "CmdbNode",
     "CmdbReviewItem",
     "CmdbSyncLog",
+    "CollaborationMessage",
+    "CollaborationRecommendation",
+    "CollaborationSession",
     "CronJob",
     "DataSource",
     "EvalSetItem",
@@ -67,6 +76,7 @@ __all__ = [
     "Role",
     "RuntimeFeatureFlag",
     "Scenario",
+    "ScenarioExecution",
     "SceneTrigger",
     "Schedule",
     "ScheduleExecution",

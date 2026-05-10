@@ -20,6 +20,7 @@ from src.models.agent import (
     agent_tools,
 )
 from src.models.channel import NotificationChannel
+from src.models.knowledge import KnowledgeDocument
 from src.schemas.agent import (
     AgentCreate,
     AgentOut,
@@ -29,10 +30,29 @@ from src.schemas.agent import (
     ScenarioCreate,
     ScenarioOut,
 )
+from src.schemas.scenario import (
+    ScenarioCreate as ScenarioCreateV2,
+    ScenarioFromTemplateCreate,
+    ScenarioResponse,
+    ScenarioTemplateListResponse,
+    ScenarioTemplateResponse,
+)
 from src.services.agent_sync import create_agent_version_snapshot
+from src.services.template_service import TemplateService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Initialize template service singleton
+_template_service: TemplateService | None = None
+
+
+def get_template_service() -> TemplateService:
+    """Get or create the template service singleton."""
+    global _template_service
+    if _template_service is None:
+        _template_service = TemplateService()
+    return _template_service
 
 
 async def _load_agent_with_rels(db, agent_id: str) -> Agent | None:
@@ -429,6 +449,167 @@ async def seed_agents(db: DbSession, _=Depends(get_current_user)):
 
     await db.commit()
     return {"created": created, "updated": updated, "agents": agent_ids}
+
+
+# ── Scenario Templates ────────────────────────────────────────────────
+# Requirements 2.1-2.6: Scenario template management APIs
+# NOTE: These routes are defined BEFORE /scenarios/{scenario_id} to ensure
+# proper route matching (FastAPI matches routes in order)
+
+
+@router.get("/scenarios/templates", response_model=ScenarioTemplateListResponse)
+async def list_scenario_templates(
+    _=Depends(get_current_user),
+):
+    """List all available scenario templates.
+
+    Returns all built-in scenario templates including:
+    - fault_isolation: 故障定界模板
+    - health_inspection: 健康巡检模板
+    - capacity_prediction: 容量预测模板
+    - alert_analysis: 告警分析模板
+
+    Requirements 2.1: THE Scenario_Template_System SHALL provide built-in templates.
+    """
+    template_service = get_template_service()
+    templates = template_service.list_templates()
+    return ScenarioTemplateListResponse(
+        templates=templates,
+        total=len(templates),
+    )
+
+
+@router.get("/scenarios/templates/{template_id}", response_model=ScenarioTemplateResponse)
+async def get_scenario_template(
+    template_id: str,
+    _=Depends(get_current_user),
+):
+    """Get details of a specific scenario template.
+
+    Args:
+        template_id: Template identifier (fault_isolation, health_inspection,
+                    capacity_prediction, alert_analysis)
+
+    Returns:
+        Template details including default configuration, parameter schema,
+        and recommended tools/agents.
+
+    Raises:
+        HTTPException 404: If template not found.
+
+    Requirements 2.1, 2.4, 2.5: Provide template details with default params
+    schema and recommended resources.
+    """
+    template_service = get_template_service()
+    template = template_service.get_template(template_id)
+    if template is None:
+        valid_templates = ", ".join(template_service.get_template_ids())
+        raise HTTPException(
+            status_code=404,
+            detail=f"Template '{template_id}' not found. Valid templates: {valid_templates}",
+        )
+    return template
+
+
+@router.post("/scenarios/from-template", response_model=ScenarioResponse)
+async def create_scenario_from_template(
+    body: ScenarioFromTemplateCreate,
+    db: DbSession,
+    _=Depends(require_perm("scenarios", "create")),
+):
+    """Create a new scenario from a template with optional customization.
+
+    This endpoint allows creating scenarios based on built-in templates.
+    Template defaults are automatically applied, and users can customize
+    any configuration as needed.
+
+    Args:
+        body: Template ID and optional customizations including:
+            - template_id: Required template identifier
+            - name: Required scenario name
+            - description: Optional custom description
+            - trigger_command: Optional custom trigger command
+            - nl_prompt: Optional custom NL prompt
+            - params_schema: Optional custom params (merged with template defaults)
+            - execution_timeout: Optional custom timeout
+            - enable_collaboration: Optional collaboration flag
+            - collaboration_config: Optional collaboration settings
+            - tool_ids: Optional tool associations
+            - agent_ids: Optional agent associations
+            - knowledge_doc_ids: Optional knowledge document associations
+            - channel_ids: Optional notification channel associations
+
+    Returns:
+        The created scenario with template configuration applied.
+
+    Raises:
+        HTTPException 400: If template_id is invalid.
+        HTTPException 422: If validation fails.
+
+    Requirements:
+        - 2.2: Auto-fill template predefined configuration items
+        - 2.3: Allow user customization on top of template
+        - 2.6: Record scenario's template source
+    """
+    template_service = get_template_service()
+
+    # Apply template to create ScenarioCreate object
+    try:
+        scenario_create = template_service.apply_template(body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Convert to dict for database insertion
+    data = scenario_create.model_dump()
+    tool_ids = data.pop("tool_ids", [])
+    agent_ids = data.pop("agent_ids", [])
+    knowledge_doc_ids = data.pop("knowledge_doc_ids", [])
+    channel_ids = data.pop("channel_ids", [])
+
+    # Convert collaboration_config to dict if it's a Pydantic model
+    if data.get("collaboration_config") is not None:
+        if hasattr(data["collaboration_config"], "model_dump"):
+            data["collaboration_config"] = data["collaboration_config"].model_dump()
+
+    # Create scenario
+    scenario = Scenario(**data)
+
+    # Associate tools
+    if tool_ids:
+        result = await db.execute(select(Tool).where(Tool.id.in_(tool_ids)))
+        scenario.tools = result.scalars().all()
+
+    # Associate agents
+    if agent_ids:
+        result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+        scenario.agents = result.scalars().all()
+
+    # Associate knowledge documents
+    if knowledge_doc_ids:
+        result = await db.execute(
+            select(KnowledgeDocument).where(KnowledgeDocument.id.in_(knowledge_doc_ids))
+        )
+        scenario.knowledge_docs = result.scalars().all()
+
+    # Associate notification channels
+    if channel_ids:
+        result = await db.execute(
+            select(NotificationChannel).where(NotificationChannel.id.in_(channel_ids))
+        )
+        scenario.notification_channels = result.scalars().all()
+
+    db.add(scenario)
+    await db.commit()
+    await db.refresh(scenario)
+
+    logger.info(
+        "Created scenario '%s' from template '%s' (id=%s)",
+        scenario.name,
+        body.template_id,
+        scenario.id,
+    )
+
+    return scenario
 
 
 # ── Scenarios ─────────────────────────────────────────────────────────
