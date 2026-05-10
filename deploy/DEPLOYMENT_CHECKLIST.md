@@ -25,12 +25,13 @@ cp .env.example .env
 **必须修改的配置项:**
 - [ ] `SECRET_KEY` - 生成随机字符串: `openssl rand -hex 32`
 - [ ] `POSTGRES_PASSWORD` - 设置强密码
-- [ ] `LLM_API_KEY` - 配置 LLM API 密钥
-- [ ] `LLM_BASE_URL` - 配置 LLM API 地址
 - [ ] `PUBLIC_URL` - 设置公开访问 URL
 
+**平台初始化配置 (部署后在管理后台配置):**
+- [ ] 模型服务商 - 控制中心 → 模型配置 → 添加 LLM 服务商
+- [ ] Embedding 模型 - 控制中心 → 模型配置 → 添加 Embedding 服务商
+
 **可选配置项:**
-- [ ] `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL` - 如使用独立的 Embedding 服务
 - [ ] `LOG_LEVEL` - 生产环境建议设为 `INFO` 或 `WARNING`
 
 ### 2.2 docker-compose.yml
@@ -84,6 +85,12 @@ docker compose exec server alembic current
 ### 4.3 访问服务
 - Web 界面: http://your-server:80
 - API 文档: http://your-server:8000/docs
+
+### 4.4 首次登录配置
+1. 访问 Web 界面，注册管理员账号
+2. 进入 控制中心 → 模型配置
+3. 添加 LLM 模型服务商 (必须)
+4. 添加 Embedding 模型服务商 (知识库功能需要)
 
 ## 5. 应急协同功能配置
 
