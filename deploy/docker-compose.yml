@@ -91,6 +91,12 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WIKI_PATH: ${WIKI_PATH:-data/knowledge}
+      KB_MONITOR_ENABLED: ${KB_MONITOR_ENABLED:-true}
+      PROGRESS_ANALYSIS_INTERVAL: ${PROGRESS_ANALYSIS_INTERVAL:-300}
+      PROGRESS_ANALYSIS_ENABLED: ${PROGRESS_ANALYSIS_ENABLED:-true}
     volumes:
       - ./server_uploads:/app/uploads
       - ./server_data:/app/data
@@ -141,6 +147,9 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      WIKI_PATH: ${WIKI_PATH:-data/knowledge}
+      KB_MONITOR_ENABLED: ${KB_MONITOR_ENABLED:-true}
       # Explicitly NOT "allinone" — the worker has its own lifecycle.
       SERVICE_TYPE: worker
     volumes:

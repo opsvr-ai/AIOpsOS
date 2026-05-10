@@ -11,13 +11,20 @@
 ```bash
 cd deploy
 cp .env.example .env
-vim .env   # 修改 LLM_API_KEY 等必要配置
+vim .env   # 修改 SECRET_KEY、POSTGRES_PASSWORD 等必要配置
 docker compose up -d
 ```
 
 启动后访问：
 - 前端: `http://localhost`
 - API 文档: `http://localhost:8000/docs`
+
+### 首次配置
+
+1. 访问前端，注册管理员账号
+2. 进入 **控制中心 → 模型配置**
+3. 添加 LLM 模型服务商（必须）
+4. 添加 Embedding 模型服务商（知识库功能需要）
 
 ## 配置说明
 
@@ -27,7 +34,7 @@ docker compose up -d
 |------|--------|------|
 | `POSTGRES_DB` | `aiopsos` | 数据库名称 |
 | `POSTGRES_USER` | `aiopsos` | 数据库用户 |
-| `POSTGRES_PASSWORD` | `aiopsos123` | 数据库密码 |
+| `POSTGRES_PASSWORD` | `aiopsos123` | 数据库密码（**生产环境务必修改**） |
 | `POSTGRES_PORT` | `5432` | 数据库端口（宿主机） |
 | `DATABASE_URL` | `postgresql+asyncpg://...` | 异步数据库连接串 |
 | `SYNC_DATABASE_URL` | `postgresql://...` | 同步数据库连接串（Alembic） |
@@ -36,12 +43,16 @@ docker compose up -d
 | `SECRET_KEY` | — | JWT 签名密钥（**生产环境务必修改**） |
 | `JWT_ALGORITHM` | `HS256` | JWT 签名算法 |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 登录过期时间（分钟） |
-| `SERVICE_TYPE` | `allinone` | 服务模式 |
-| `LLM_API_KEY` | — | LLM API 密钥（**必填**） |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | LLM API 地址 |
-| `EMBEDDING_MODEL` | — | Embedding 模型名称 |
-| `EMBEDDING_API_KEY` | — | Embedding API 密钥 |
-| `EMBEDDING_BASE_URL` | — | Embedding API 地址 |
+| `SERVICE_TYPE` | `server` | 服务模式: server / worker / allinone |
+| `PUBLIC_URL` | `http://localhost:8000` | 公开访问 URL |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `WIKI_PATH` | `data/knowledge` | 知识库存储路径 |
+
+### 模型配置
+
+> **注意**: LLM 和 Embedding 模型配置已迁移到平台管理后台。
+> 
+> 首次部署后，请登录平台进入 **控制中心 → 模型配置** 添加模型服务商。
 
 ## 镜像构建
 
