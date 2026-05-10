@@ -7,13 +7,19 @@ services:
     image: docker.1ms.run/pgvector/pgvector:pg15
     container_name: aiopsos-db
     restart: unless-stopped
+    # PostgreSQL 容器内部以 postgres 用户 (UID 999) 运行
+    # 需要确保宿主机目录有正确权限
+    user: "999:999"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-aiopsos}
       POSTGRES_USER: ${POSTGRES_USER:-aiopsos}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiopsos123}
+      # 确保数据目录权限正确
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+      # 使用本地目录而非 Docker volume
+      - ./db_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
@@ -41,6 +47,8 @@ services:
     container_name: aiopsos-kafka
     restart: unless-stopped
     hostname: kafka
+    # Kafka 容器内部以 appuser (UID 1000) 运行
+    user: "1000:1000"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: 'broker,controller'
@@ -51,6 +59,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      # 指定日志目录
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - ./kafka_data:/var/lib/kafka/data
     ports:
@@ -195,5 +205,6 @@ services:
     depends_on:
       - server
 
-volumes:
-  db_data:
+# 不再使用 Docker volumes，全部使用本地目录映射
+# volumes:
+#   db_data:
