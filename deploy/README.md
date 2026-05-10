@@ -10,8 +10,17 @@
 
 ```bash
 cd deploy
+
+# 1. 创建配置文件
 cp .env.example .env
 vim .env   # 修改 SECRET_KEY、POSTGRES_PASSWORD 等必要配置
+
+# 2. 初始化数据目录并设置权限
+chmod +x init-dirs.sh
+./init-dirs.sh
+
+# 3. 构建并启动
+docker compose build
 docker compose up -d
 ```
 
@@ -47,6 +56,10 @@ docker compose up -d
 | `PUBLIC_URL` | `http://localhost:8000` | 公开访问 URL |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
 | `WIKI_PATH` | `data/knowledge` | 知识库存储路径 |
+| `KB_MONITOR_ENABLED` | `true` | 知识库监控开关 |
+| `KB_MONITOR_POLL_INTERVAL` | `30` | 知识库监控轮询间隔（秒） |
+| `PROGRESS_ANALYSIS_INTERVAL` | `300` | 应急协同进度分析间隔（秒） |
+| `PROGRESS_ANALYSIS_ENABLED` | `true` | 应急协同自动分析开关 |
 
 ### 模型配置
 
@@ -99,19 +112,36 @@ Browser :80 → web (nginx) → /api/ → server:8000 (FastAPI)
 | `aiopsos-redis` | `redis:7-alpine` | 6379 |
 | `aiopsos-kafka` | `cp-kafka:7.5.0` | 9092 |
 | `aiopsos-server` | `aiopsos-server:latest` | 8000 |
+| `aiopsos-worker` | `aiopsos-server:latest` | — |
 | `aiopsos-web` | `aiopsos-web:latest` | 80 |
 
 ## 数据持久化
 
 所有数据挂载到 `deploy/` 下的本地目录，容器重启不会丢失：
 
-| 目录 | 内容 |
-|------|------|
-| `deploy/db_data/` | PostgreSQL 数据库文件 |
-| `deploy/redis_data/` | Redis 持久化数据 |
-| `deploy/kafka_data/` | Kafka 消息日志 |
-| `deploy/server_uploads/` | 文件上传 |
-| `deploy/server_data/` | 应用数据 |
+| 目录 | 内容 | 权限 (UID:GID) |
+|------|------|----------------|
+| `deploy/db_data/` | PostgreSQL 数据库文件 | 999:999 |
+| `deploy/redis_data/` | Redis 持久化数据 | 默认 |
+| `deploy/kafka_data/` | Kafka 消息日志 | 1000:1000 |
+| `deploy/server_uploads/` | 文件上传 | 默认 |
+| `deploy/server_data/` | 应用数据（日志、知识库） | 默认 |
+
+**首次部署前**，运行 `init-dirs.sh` 脚本创建目录并设置正确权限：
+```bash
+chmod +x init-dirs.sh
+./init-dirs.sh
+```
+
+**手动设置权限**（如遇权限问题）：
+```bash
+# PostgreSQL 需要 UID 999
+sudo chown -R 999:999 db_data
+chmod 700 db_data
+
+# Kafka 需要 UID 1000
+sudo chown -R 1000:1000 kafka_data
+```
 
 ## 常用操作
 
@@ -132,7 +162,7 @@ docker compose restart server
 docker compose down
 
 # 停止并删除数据 (⚠️ 数据将丢失)
-docker compose down -v
+docker compose down && rm -rf db_data redis_data kafka_data
 ```
 
 ## 数据库
@@ -148,7 +178,27 @@ docker compose exec db psql -U aiopsos -d aiopsos
 docker compose exec db pg_dump -U aiopsos aiopsos > backup_$(date +%Y%m%d).sql
 
 # 恢复
-docker compose exec -T db psql -U aiopsos aiopsos < backup_20260427.sql
+docker compose exec -T db psql -U aiopsos aiopsos < backup_20260511.sql
+```
+
+## 数据备份与恢复
+
+```bash
+# 停止服务（确保数据一致性）
+docker compose stop
+
+# 备份所有数据目录
+tar czf aiopsos_backup_$(date +%Y%m%d).tar.gz \
+    db_data/ redis_data/ kafka_data/ server_data/ server_uploads/
+
+# 重新启动服务
+docker compose start
+
+# 恢复数据
+docker compose down
+tar xzf aiopsos_backup_20260511.tar.gz
+./init-dirs.sh  # 重新设置权限
+docker compose up -d
 ```
 
 ## 开发模式
@@ -181,8 +231,21 @@ docker compose logs server
 docker compose exec db pg_isready -U aiopsos -d aiopsos
 ```
 
+**数据库权限问题**
+```bash
+# 检查目录权限
+ls -la db_data/
+# 重新设置权限
+sudo chown -R 999:999 db_data
+chmod 700 db_data
+```
+
 **前端页面空白**
 ```bash
 curl -s http://localhost:8000/docs | head -20
 curl -s http://localhost/api/v1/health
 ```
+
+## 详细部署检查清单
+
+完整的部署检查清单请参考 [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)

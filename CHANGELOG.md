@@ -1,5 +1,52 @@
 # Changelog
 
+## v2026.5.11.2 (2026-05-11) — Deployment Configuration & Frontend Enhancements
+
+### Deployment Configuration
+
+- **Local Directory Mounts**: Replaced Docker volumes with local directory mounts for all data storage (PostgreSQL, Redis, Kafka, server data). This provides better visibility and easier backup/restore.
+- **Permission Handling**: Added `init-dirs.sh` script to initialize data directories with correct permissions:
+  - PostgreSQL: UID 999:999
+  - Kafka: UID 1000:1000
+- **Environment Variables**: Added missing environment variables to docker-compose.yml:
+  - `EMBEDDING_DIM`, `UPLOAD_DIR`
+  - `KB_MONITOR_POLL_INTERVAL`, `KB_MONITOR_MODEL`
+  - `LOG_DIR`, `LOG_FORMAT`, `LOG_RETENTION_DAYS`
+- **Python Dependencies**: Moved `httpx` from dev to main dependencies (required by ITSM adapters, CMDB agent, datasources)
+- **Database Initialization**: Added `pg_trgm` extension to `init-db.sql` for fuzzy search support
+- **Documentation**: Updated `DEPLOYMENT_CHECKLIST.md` with directory initialization steps and backup/restore instructions
+
+### Frontend Enhancements
+
+- **Collaboration Page**: New `/ops/collaboration` page with:
+  - Statistics cards (total, active, resolved, closed sessions)
+  - Session table with status filters and time range selection
+  - Detail drawer with session info, messages, and recommendations
+  - Search functionality across message content
+- **Scenario Page Enhancements**:
+  - Scenario type selection (command/natural_language/hybrid)
+  - Collaboration config (auto group creation, email notification)
+  - Statistics cards (total, active, with collaboration, executions today)
+  - Detail drawer with info and execution history tabs
+  - Manual execution trigger button
+- **Sidebar Navigation**: Added "应急协同" (Emergency Collaboration) menu item
+
+### Files Changed
+
+- `deploy/docker-compose.yml` — Local directory mounts, permission settings
+- `deploy/init-dirs.sh` — New directory initialization script
+- `deploy/.env.example` — Complete environment variable documentation
+- `deploy/init-db.sql` — Added pg_trgm extension
+- `deploy/README.md` — Updated deployment instructions
+- `deploy/DEPLOYMENT_CHECKLIST.md` — Comprehensive deployment checklist
+- `server/pyproject.toml` — Moved httpx to main dependencies
+- `web/src/features/collaboration/CollaborationPage.tsx` — New collaboration page
+- `web/src/features/scenarios/ScenarioPage.tsx` — Enhanced scenario page
+- `web/src/router/index.tsx` — Added collaboration route
+- `web/src/components/layout/Sidebar.tsx` — Added collaboration menu item
+
+---
+
 ## v2026.5.11 (2026-05-11) — Scenario Operations & Emergency Collaboration (Complete)
 
 ### Summary
