@@ -41,7 +41,24 @@ function AuthRefresher() {
           });
           setSetupRequired(d.setup_required || false);
         })
-        .catch(() => {});
+        .catch((err) => {
+          // If cold-start error, retry after a short delay
+          if (err?.isColdStart || err?.degraded) {
+            setTimeout(() => {
+              authApi.getMe().then((res) => {
+                const d = res.data;
+                setAuth(token, useAuthStore.getState().refreshToken || '', {
+                  id: d.id,
+                  username: d.username,
+                  email: d.email,
+                  default_space_id: d.default_space_id,
+                  roles: d.roles.map((r) => r.name),
+                });
+                setSetupRequired(d.setup_required || false);
+              }).catch(() => {});
+            }, 2000);
+          }
+        });
     }
   }, []);
 

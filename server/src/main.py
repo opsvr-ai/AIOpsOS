@@ -210,6 +210,9 @@ async def _init_database(app: FastAPI) -> bool:
     from sqlalchemy import inspect as sa_inspect
 
     os.makedirs(settings.upload_dir, exist_ok=True)
+    # Ensure feedbacks subdirectory exists for feedback image uploads (Requirement 5.2)
+    feedbacks_upload_dir = os.path.join(settings.upload_dir, "feedbacks")
+    os.makedirs(feedbacks_upload_dir, exist_ok=True)
     os.makedirs(settings.wiki_path, exist_ok=True)
     for sub in ("wiki", "raw", "meta"):
         os.makedirs(os.path.join(settings.wiki_path, sub), exist_ok=True)
@@ -298,6 +301,9 @@ async def _init_optional() -> None:
         from src.agent.deep_agent import get_deep_agent
         _agent = await get_deep_agent()
         logger.info("Agent pre-warmed successfully")
+        # Set process-level flag so /readyz can report agent warmup status
+        global _agent_warmed
+        _agent_warmed = True
     except Exception:
         logger.exception("Agent pre-warm failed (non-fatal)")
 
@@ -641,22 +647,62 @@ async def health():
     return {"status": "ok"}
 
 
+# Process-level flag: set to True in _init_optional() after agent pre-warm succeeds.
+# Used by /readyz to report agent warmup status.
+_agent_warmed: bool = False
+
+
 @app.get("/readyz")
 async def readyz():
-    """Readiness probe — 200 iff all default Kafka topics are present (R-5.1).
+    """Comprehensive readiness probe — checks DB, Redis, agent warmup, and Kafka topics.
 
-    Used by Kubernetes / compose healthchecks to detect when the platform's
-    managed Kafka state is fully converged after startup. Returns 503 until
-    :func:`ensure_default_topics` has created every default topic.
+    Returns 200 + {"ready": true} when all checks pass.
+    Returns 503 + {"ready": false, "pending": [<failed item names>...]} if any check fails.
+
+    Used by Kubernetes / compose healthchecks and the frontend cold-start retry logic
+    to detect when the platform is fully ready to serve requests (R-5.1, R-2.14).
     """
     from fastapi.responses import JSONResponse
 
-    from src.services.kafka.ensure import default_topics_present
+    pending: list[str] = []
 
-    ok = await default_topics_present()
-    if ok:
-        return {"status": "ready", "kafka_topics": "present"}
+    # 1. DB check: async_session_factory can SELECT 1
+    try:
+        from sqlalchemy import text
+
+        from src.models.base import async_session_factory
+        async with async_session_factory() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception:
+        logger.debug("readyz: DB check failed", exc_info=True)
+        pending.append("db")
+
+    # 2. Redis check: ping() succeeds
+    try:
+        from src.core.redis import get_redis
+        redis = await get_redis()
+        await redis.ping()
+    except Exception:
+        logger.debug("readyz: Redis check failed", exc_info=True)
+        pending.append("redis")
+
+    # 3. Agent warmup check: get_deep_agent() has been pre-warmed (process-level flag)
+    if not _agent_warmed:
+        pending.append("agent")
+
+    # 4. Kafka topics check: all default topics are present
+    try:
+        from src.services.kafka.ensure import default_topics_present
+        kafka_ok = await default_topics_present()
+        if not kafka_ok:
+            pending.append("kafka_topics")
+    except Exception:
+        logger.debug("readyz: Kafka topics check failed", exc_info=True)
+        pending.append("kafka_topics")
+
+    if not pending:
+        return {"ready": True}
     return JSONResponse(
         status_code=503,
-        content={"status": "not_ready", "kafka_topics": "missing"},
+        content={"ready": False, "pending": pending},
     )

@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潍坊市未来7天天气预报 (2026.05.10 - 05.16)</title>
+<style>
+/* ═══════════════════════════════════════════════
+   AIOpsOS Report Template — CSS Component Library
+   Weather Report Special Edition
+   Theme: ink (with weather-specific customizations)
+   ═══════════════════════════════════════════════ */
+
+/* ── CSS Variables ── */
+:root {
+  --bg: #f0f6ff;
+  --fg: #1a1a2e;
+  --fg-secondary: #5a6a7a;
+  --fg-tertiary: #9ca3af;
+  --accent: #1e6fa0;
+  --accent-light: #e1f0fa;
+  --border: #d0e0ed;
+  --card-bg: #ffffff;
+  --critical: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
+  --info: #2563eb;
+  --warm: #f59e0b;
+  --hot: #ef4444;
+  --cool: #3b82f6;
+  --cold: #06b6d4;
+  --font-heading: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --font-body: 'Noto Sans SC', 'Source Han Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --radius: 10px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.06);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.08);
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  font-size: 15px; line-height: 1.75;
+  color: var(--fg); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.report-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 32px 56px;
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.report-header {
+  margin-bottom: 36px;
+  padding-bottom: 24px;
+  border-bottom: 3px solid var(--accent);
+  background: linear-gradient(135deg, var(--accent-light) 0%, #ffffff 80%);
+  margin: -40px -32px 36px;
+  padding: 40px 32px 24px;
+}
+.report-header h1 {
+  font-family: var(--font-heading);
+  font-size: 28px; font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.3;
+  margin-bottom: 8px; color: var(--accent);
+}
+.report-header .subtitle {
+  font-size: 15px; color: var(--fg-secondary);
+  margin-bottom: 12px;
+}
+.report-header .meta {
+  font-size: 13px; color: var(--fg-tertiary);
+  display: flex; align-items: center; gap: 16px;
+  flex-wrap: wrap;
+}
+.report-header .meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── Typography ── */
+h2 {
+  font-family: var(--font-heading);
+  font-size: 20px; font-weight: 600;
+  margin: 32px 0 16px; line-height: 1.4;
+  color: var(--fg);
+}
+h3 {
+  font-family: var(--font-heading);
+  font-size: 17px; font-weight: 600;
+  margin: 24px 0 12px; line-height: 1.4;
+}
+p { margin-bottom: 14px; }
+strong { font-weight: 600; }
+ul, ol { margin: 12px 0 12px 24px; }
+li { margin-bottom: 6px; }
+
+/* ── Section Title ── */
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 19px; font-weight: 600;
+  padding-bottom: 10px; margin: 36px 0 20px;
+  border-bottom: 2px solid var(--accent);
+  display: flex; align-items: center; gap: 10px;
+  color: var(--accent);
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 20px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Stat Card ── */
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px; text-align: center;
+  box-shadow: var(--shadow);
+}
+.stat-card .n {
+  font-size: 32px; font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent); line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.stat-card .l {
+  font-size: 12px; color: var(--fg-secondary);
+  margin-top: 4px; line-height: 1.4;
+}
+.stat-card.critical .n { color: var(--critical); }
+.stat-card.warning .n { color: var(--warning); }
+.stat-card.success .n { color: var(--success); }
+.stat-card.info .n { color: var(--info); }
+.stat-card.warm .n { color: var(--warm); }
+.stat-card.hot .n { color: var(--hot); }
+.stat-card.cool .n { color: var(--cool); }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px; margin: 18px 0;
+}
+
+/* ── KPI Grid ── */
+.kpi-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+@media (max-width: 640px) {
+  .kpi-2, .kpi-3, .kpi-4, .stat-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── Pillar ── */
+.pillar {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  box-shadow: var(--shadow);
+}
+.pillar .ic { font-size: 26px; margin-bottom: 8px; line-height: 1; }
+.pillar .t { font-weight: 600; font-size: 15px; margin-bottom: 4px; color: var(--fg); }
+.pillar .d { font-size: 13px; color: var(--fg-secondary); line-height: 1.5; }
+.pillar-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px; margin: 18px 0;
+}
+
+/* ── Table ── */
+.table-wrapper {
+  overflow-x: auto; margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th {
+  background: var(--accent-light);
+  font-weight: 600; text-align: left;
+  padding: 12px 14px;
+  border-bottom: 2px solid var(--border);
+  font-size: 13px; color: var(--accent);
+  white-space: nowrap;
+  text-align: center;
+}
+tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  text-align: center;
+}
+tbody td:first-child { text-align: left; font-weight: 500; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: #f7faff; }
+tbody tr:hover td { background: var(--accent-light); }
+
+/* ── Temp Bar ── */
+.temp-bar-wrapper {
+  display: flex; align-items: center; gap: 8px;
+  justify-content: center;
+}
+.temp-bar {
+  display: flex; align-items: center;
+  height: 16px; border-radius: 8px;
+  min-width: 60px; max-width: 120px;
+  flex: 1;
+  background: #e8e8e8;
+  overflow: hidden;
+  position: relative;
+}
+.temp-bar .fill {
+  height: 100%; border-radius: 8px;
+  position: absolute;
+  transition: width 0.4s ease;
+}
+.temp-label {
+  font-size: 12px; font-family: var(--font-mono);
+  white-space: nowrap;
+  min-width: 28px;
+}
+.temp-label.high { color: var(--hot); font-weight: 600; }
+.temp-label.low { color: var(--cool); }
+
+/* ── Callout ── */
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-light);
+  padding: 14px 18px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 18px 0; font-size: 14px;
+  line-height: 1.6;
+}
+.callout.warning {
+  border-left-color: var(--warning);
+  background: #fef3c7;
+}
+.callout.critical {
+  border-left-color: var(--critical);
+  background: #fee2e2;
+}
+.callout.info {
+  border-left-color: var(--info);
+  background: #dbeafe;
+}
+.callout.success {
+  border-left-color: var(--success);
+  background: #dcfce7;
+}
+.callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Tag ── */
+.tag {
+  display: inline-block; padding: 2px 10px;
+  border-radius: 12px; font-size: 12px; font-weight: 500;
+  line-height: 1.5;
+}
+.tag.critical { background: #fee2e2; color: var(--critical); }
+.tag.warning { background: #fef3c7; color: var(--warning); }
+.tag.success { background: #dcfce7; color: var(--success); }
+.tag.info { background: #dbeafe; color: var(--info); }
+.tag.neutral { background: #f3f4f6; color: #6b7280; }
+.tag.hot { background: #fee2e2; color: #dc2626; }
+.tag.cool { background: #dbeafe; color: #2563eb; }
+
+/* ── Day Detail Card ── */
+.day-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin: 14px 0;
+  box-shadow: var(--shadow);
+}
+.day-card .day-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.day-card .day-header .day-icon { font-size: 28px; }
+.day-card .day-header .day-name { font-size: 16px; font-weight: 600; }
+.day-card .day-header .day-date { font-size: 13px; color: var(--fg-secondary); }
+.day-card .day-temps {
+  display: flex; gap: 16px; margin-bottom: 10px;
+}
+.day-card .day-temps .temp-item { text-align: center; }
+.day-card .day-temps .temp-item .temp-val { font-size: 24px; font-weight: 700; font-family: var(--font-mono); }
+.day-card .day-temps .temp-item .temp-val.high { color: var(--hot); }
+.day-card .day-temps .temp-item .temp-val.low { color: var(--cool); }
+.day-card .day-temps .temp-item .temp-label { font-size: 11px; color: var(--fg-tertiary); }
+.day-card .detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.day-card .detail-item {
+  font-size: 13px;
+  color: var(--fg-secondary);
+  display: flex; align-items: center; gap: 6px;
+}
+.day-card .detail-item .label { color: var(--fg-tertiary); min-width: 50px; }
+
+/* ── Hourly Timeline ── */
+.hourly-timeline {
+  display: flex; gap: 4px;
+  margin: 10px 0; padding: 8px 0;
+  overflow-x: auto;
+}
+.hourly-item {
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 56px; padding: 6px 4px;
+  border-radius: 6px;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+.hourly-item .h-time { font-size: 10px; color: var(--fg-tertiary); }
+.hourly-item .h-icon { font-size: 16px; margin: 2px 0; }
+.hourly-item .h-temp { font-size: 12px; font-weight: 600; font-family: var(--font-mono); }
+.hourly-item.rain { background: #e0f2fe; }
+.hourly-item.sun { background: #fef9c3; }
+.hourly-item.cloud { background: #f1f5f9; }
+.hourly-item.fog { background: #e2e8f0; }
+
+/* ── Separator ── */
+hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+
+/* ── Footer ── */
+.report-footer {
+  margin-top: 40px; padding-top: 18px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12px; color: var(--fg-tertiary);
+}
+
+/* ── Utility ── */
+.text-center { text-align: center; }
+.text-left { text-align: left !important; }
+.text-muted { color: var(--fg-secondary); font-size: 13px; }
+.mt-4 { margin-top: 16px; }
+
+/* ── Weather Mood Bar ── */
+.mood-bar {
+  display: flex; gap: 6px; margin: 16px 0;
+  justify-content: center;
+}
+.mood-item {
+  flex: 1; text-align: center;
+  padding: 8px 4px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500;
+  transition: all 0.2s;
+}
+.mood-item .mood-emoji { font-size: 24px; display: block; margin-bottom: 4px; }
+.mood-item .mood-label { font-size: 11px; color: var(--fg-secondary); }
+.mood-item.sunny { background: #fef3c7; color: #92400e; }
+.mood-item.cloudy { background: #e2e8f0; color: #475569; }
+.mood-item.rainy { background: #dbeafe; color: #1e40af; }
+.mood-item.hot { background: #fee2e2; color: #991b1b; }
+.mood-item.foggy { background: #f1f5f9; color: #475569; }
+
+/* ── Chart Container ── */
+.chart-container {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin: 18px 0;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+.chart-container svg { display: block; margin: 0 auto; }
+
+/* ── Data Source Note ── */
+.data-note {
+  font-size: 12px; color: var(--fg-tertiary);
+  text-align: center; margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* ── Print ── */
+@media print {
+  @page { margin: 1.5cm; size: A4 landscape; }
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .report-container { max-width: 100%; padding: 0; box-shadow: none; }
+  .report-header { margin: 0 0 20px; padding: 20px 0; }
+  .stat-card, .pillar, .day-card { break-inside: avoid; box-shadow: none; }
+  .report-footer { display: none; }
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .report-container { padding: 20px 16px 32px; }
+  .report-header { margin: -20px -16px 24px; padding: 20px 16px 16px; }
+  .report-header h1 { font-size: 22px; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .hourly-timeline { gap: 2px; }
+  .hourly-item { min-width: 44px; }
+  .mood-item .mood-emoji { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+<div class="report-container">
+
+  <!-- ════ HEADER ════ -->
+  <div class="report-header">
+    <h1>潍坊市未来7天天气预报</h1>
+    <div class="subtitle">山东省潍坊市（北纬36.71&deg;，东经119.16&deg;）&nbsp;&nbsp;|&nbsp;&nbsp;2026年5月10日（周日）— 5月16日（周六）</div>
+    <div class="meta">
+      <span>🕐 生成时间：2026-05-10 08:30 CST</span>
+      <span>📡 数据来源：Open-Meteo API + wttr.in</span>
+      <span>🤖 Generated by AIOpsOS Report Agent</span>
+    </div>
+  </div>
+
+  <div class="report-body">
+
+    <!-- ════ SECTION 1: 当前实况 ════ -->
+    <div class="section-title">当前实况</div>
+
+    <div class="stat-row">
+      <div class="stat-card warm">
+        <div class="n">23&deg;C</div>
+        <div class="l">🌡️ 当前温度</div>
+      </div>
+      <div class="stat-card info">
+        <div class="n">24&deg;C</div>
+        <div class="l">🤗 体感温度</div>
+      </div>
+      <div class="stat-card cool">
+        <div class="n">41%</div>
+        <div class="l">💧 相对湿度</div>
+      </div>
+      <div class="stat-card">
+        <div class="n">☀️</div>
+        <div class="l">晴转多云</div>
+      </div>
+      <div class="stat-card">
+        <div class="n">26 km/h</div>
+        <div class="l">🌬️ 南偏西南风</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="n">7</div>
+        <div class="l">☀️ 紫外线指数（高）</div>
+      </div>
+    </div>
+
+    <!-- ════ SECTION 2: 7天总览 ════ -->
+    <div class="section-title">未来7天天气总览</div>
+
+    <div class="mood-bar">
+      <div class="mood-item sunny">
+        <span class="mood-emoji">⛅</span>
+        <span class="mood-label">5/10 周日<br>局部多云</span>
+      </div>
+      <div class="mood-item rainy">
+        <span class="mood-emoji">🌦️</span>
+        <span class="mood-label">5/11 周一<br>小雨</span>
+      </div>
+      <div class="mood-item sunny">
+        <span class="mood-emoji">☀️</span>
+        <span class="mood-label">5/12 周二<br>晴</span>
+      </div>
+      <div class="mood-item hot">
+        <span class="mood-emoji">🔥</span>
+        <span class="mood-label">5/13 周三<br>阴天/高温</span>
+      </div>
+      <div class="mood-item cloudy">
+        <span class="mood-emoji">☁️</span>
+        <span class="mood-label">5/14 周四<br>阴天</span>
+      </div>
+      <div class="mood-item cloudy">
+        <span class="mood-emoji">☁️</span>
+        <span class="mood-label">5/15 周五<br>阴天</span>
+      </div>
+      <div class="mood-item cloudy">
+        <span class="mood-emoji">☁️</span>
+        <span class="mood-label">5/16 周六<br>阴天</span>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>天气</th>
+            <th>最高温</th>
+            <th>最低温</th>
+            <th>温度区间</th>
+            <th>降水量</th>
+            <th>降水概率</th>
+            <th>最大风速</th>
+            <th>日出</th>
+            <th>日落</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>5/10 周日</td>
+            <td>⛅ 局部多云</td>
+            <td style="color:#ef4444;font-weight:600;">31.3&deg;C</td>
+            <td style="color:#3b82f6;">17.4&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">17&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:70%;background:linear-gradient(to right,#3b82f6,#f59e0b);left:14%;"></div>
+                </div>
+                <span class="temp-label high">31&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>2%</td>
+            <td>19.8 km/h</td>
+            <td>05:00</td>
+            <td>18:59</td>
+          </tr>
+          <tr>
+            <td>5/11 周一</td>
+            <td>🌦️ 小雨</td>
+            <td style="color:#ef4444;font-weight:600;">28.7&deg;C</td>
+            <td style="color:#3b82f6;">18.8&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">19&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:55%;background:linear-gradient(to right,#3b82f6,#8b5cf6);left:22%;"></div>
+                </div>
+                <span class="temp-label high">29&deg;</span>
+              </div>
+            </td>
+            <td style="color:#2563eb;font-weight:600;">2.3 mm</td>
+            <td><span class="tag warning">31%</span></td>
+            <td>13.9 km/h</td>
+            <td>04:59</td>
+            <td>18:59</td>
+          </tr>
+          <tr>
+            <td>5/12 周二</td>
+            <td>☀️ 晴</td>
+            <td style="color:#ef4444;font-weight:600;">32.2&deg;C</td>
+            <td style="color:#3b82f6;">16.2&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">16&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:80%;background:linear-gradient(to right,#3b82f6,#f59e0b);left:5%;"></div>
+                </div>
+                <span class="temp-label high">32&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>0%</td>
+            <td>21.3 km/h</td>
+            <td>04:58</td>
+            <td>19:00</td>
+          </tr>
+          <tr style="background:#fff5f5;">
+            <td style="font-weight:700;">5/13 周三 🔥</td>
+            <td>☁️ 阴天</td>
+            <td style="color:#dc2626;font-weight:700;font-size:16px;">38.7&deg;C</td>
+            <td style="color:#3b82f6;">19.5&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">20&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:100%;background:linear-gradient(to right,#3b82f6,#ef4444);left:0%;"></div>
+                </div>
+                <span class="temp-label high" style="color:#dc2626;font-weight:700;">39&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>0%</td>
+            <td>16.8 km/h</td>
+            <td>04:57</td>
+            <td>19:01</td>
+          </tr>
+          <tr>
+            <td>5/14 周四</td>
+            <td>☁️ 阴天</td>
+            <td style="color:#ef4444;font-weight:600;">32.5&deg;C</td>
+            <td style="color:#3b82f6;">17.5&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">18&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:75%;background:linear-gradient(to right,#3b82f6,#f59e0b);left:10%;"></div>
+                </div>
+                <span class="temp-label high">33&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>0%</td>
+            <td>20.6 km/h</td>
+            <td>04:56</td>
+            <td>19:02</td>
+          </tr>
+          <tr>
+            <td>5/15 周五</td>
+            <td>☁️ 阴天</td>
+            <td style="color:#ef4444;font-weight:600;">29.9&deg;C</td>
+            <td style="color:#3b82f6;">16.7&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">17&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:65%;background:linear-gradient(to right,#3b82f6,#8b5cf6);left:15%;"></div>
+                </div>
+                <span class="temp-label high">30&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>2%</td>
+            <td>24.6 km/h</td>
+            <td>04:56</td>
+            <td>19:03</td>
+          </tr>
+          <tr>
+            <td>5/16 周六</td>
+            <td>☁️ 阴天</td>
+            <td style="color:#ef4444;font-weight:600;">28.3&deg;C</td>
+            <td style="color:#3b82f6;">16.9&deg;C</td>
+            <td>
+              <div class="temp-bar-wrapper">
+                <span class="temp-label low">17&deg;</span>
+                <div class="temp-bar">
+                  <div class="fill" style="width:60%;background:linear-gradient(to right,#3b82f6,#8b5cf6);left:18%;"></div>
+                </div>
+                <span class="temp-label high">28&deg;</span>
+              </div>
+            </td>
+            <td>0.0 mm</td>
+            <td>6%</td>
+            <td>28.5 km/h</td>
+            <td>04:55</td>
+            <td>19:04</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ════ SECTION 3: 温度趋势图 ════ -->
+    <div class="section-title">温度趋势图</div>
+
+    <div class="chart-container">
+      <svg viewBox="0 0 860 320" width="100%" height="auto" style="max-width:860px;">
+        <!-- 背景网格 -->
+        <defs>
+          <linearGradient id="highGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ef4444" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#ef4444" stop-opacity="0.02"/>
+          </linearGradient>
+          <linearGradient id="lowGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.02"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Y轴刻度线 -->
+        <line x1="60" y1="30" x2="830" y2="30" stroke="#f0f0f0" stroke-width="1"/>
+        <line x1="60" y1="80" x2="830" y2="80" stroke="#f0f0f0" stroke-width="1"/>
+        <line x1="60" y1="130" x2="830" y2="130" stroke="#f0f0f0" stroke-width="1"/>
+        <line x1="60" y1="180" x2="830" y2="180" stroke="#f0f0f0" stroke-width="1"/>
+        <line x1="60" y1="230" x2="830" y2="230" stroke="#f0f0f0" stroke-width="1"/>
+        <line x1="60" y1="280" x2="830" y2="280" stroke="#f0f0f0" stroke-width="1"/>
+
+        <!-- Y轴标签 -->
+        <text x="50" y="34" text-anchor="end" font-size="11" fill="#9ca3af">40&deg;</text>
+        <text x="50" y="84" text-anchor="end" font-size="11" fill="#9ca3af">35&deg;</text>
+        <text x="50" y="134" text-anchor="end" font-size="11" fill="#9ca3af">30&deg;</text>
+        <text x="50" y="184" text-anchor="end" font-size="11" fill="#9ca3af">25&deg;</text>
+        <text x="50" y="234" text-anchor="end" font-size="11" fill="#9ca3af">20&deg;</text>
+        <text x="50" y="284" text-anchor="end" font-size="11" fill="#9ca3af">15&deg;</text>
+
+        <!-- 温度范围填充区域（高温和低温之间的区域） -->
+        <!-- 每个数据点的x位置: 日=110, 一=220, 二=330, 三=440, 四=550, 五=660, 六=770 -->
+        <!-- y映射: y = 280 - (temp - 15) * 250/25, 15度=280, 40度=30 -->
+
+        <!-- 温度带（高温与低温之间的填充区域） -->
+        <polygon points="
+          110,152.0 220,183.0 330,144.0 440,46.5 550,145.0 660,171.0 770,177.0
+          770,221.0 660,223.0 550,215.0 440,235.0 330,238.0 220,192.0 110,206.0
+        " fill="#e8f4fd" stroke="none" opacity="0.5"/>
+
+        <!-- 最高温折线 -->
+        <polyline points="
+          110,108.0 220,133.0 330,98.0 440,27.0 550,105.0 660,121.0 770,133.0
+        " fill="none" stroke="#ef4444" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+
+        <!-- 最低温折线 -->
+        <polyline points="
+          110,216.0 220,192.0 330,238.0 440,235.0 550,215.0 660,223.0 770,221.0
+        " fill="none" stroke="#3b82f6" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+
+        <!-- 最高温数据点 -->
+        <circle cx="110" cy="108.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="220" cy="133.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="330" cy="98.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="440" cy="27.0" r="7" fill="#fff" stroke="#dc2626" stroke-width="3"/>
+        <circle cx="550" cy="105.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="660" cy="121.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+        <circle cx="770" cy="133.0" r="5" fill="#fff" stroke="#ef4444" stroke-width="2.5"/>
+
+        <!-- 最低温数据点 -->
+        <circle cx="110" cy="216.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="220" cy="192.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="330" cy="238.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="440" cy="235.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="550" cy="215.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="660" cy="223.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+        <circle cx="770" cy="221.0" r="5" fill="#fff" stroke="#3b82f6" stroke-width="2.5"/>
+
+        <!-- 高温温度标签 -->
+        <text x="110" y="100" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">31.3&deg;</text>
+        <text x="220" y="125" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">28.7&deg;</text>
+        <text x="330" y="90" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">32.2&deg;</text>
+        <text x="440" y="19" text-anchor="middle" font-size="14" font-weight="700" fill="#dc2626">38.7&deg;</text>
+        <text x="550" y="97" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">32.5&deg;</text>
+        <text x="660" y="113" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">29.9&deg;</text>
+        <text x="770" y="125" text-anchor="middle" font-size="12" font-weight="600" fill="#ef4444">28.3&deg;</text>
+
+        <!-- 低温温度标签 -->
+        <text x="110" y="228" text-anchor="middle" font-size="11" fill="#3b82f6">17.4&deg;</text>
+        <text x="220" y="184" text-anchor="middle" font-size="11" fill="#3b82f6">18.8&deg;</text>
+        <text x="330" y="250" text-anchor="middle" font-size="11" fill="#3b82f6">16.2&deg;</text>
+        <text x="440" y="247" text-anchor="middle" font-size="11" fill="#3b82f6">19.5&deg;</text>
+        <text x="550" y="207" text-anchor="middle" font-size="11" fill="#3b82f6">17.5&deg;</text>
+        <text x="660" y="235" text-anchor="middle" font-size="11" fill="#3b82f6">16.7&deg;</text>
+        <text x="770" y="233" text-anchor="middle" font-size="11" fill="#3b82f6">16.9&deg;</text>
+
+        <!-- X轴标签 -->
+        <text x="110" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周日</text>
+        <text x="220" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周一</text>
+        <text x="330" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周二</text>
+        <text x="440" y="300" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">周三</text>
+        <text x="550" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周四</text>
+        <text x="660" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周五</text>
+        <text x="770" y="300" text-anchor="middle" font-size="12" font-weight="500" fill="#4b5563">周六</text>
+
+        <!-- X轴副标签 -->
+        <text x="110" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/10</text>
+        <text x="220" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/11</text>
+        <text x="330" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/12</text>
+        <text x="440" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/13</text>
+        <text x="550" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/14</text>
+        <text x="660" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/15</text>
+        <text x="770" y="314" text-anchor="middle" font-size="10" fill="#9ca3af">5/16</text>
+
+        <!-- 图例 -->
+        <line x1="620" y1="8" x2="650" y2="8" stroke="#ef4444" stroke-width="3"/>
+        <text x="655" y="12" font-size="12" fill="#4b5563">最高温</text>
+        <line x1="720" y1="8" x2="750" y2="8" stroke="#3b82f6" stroke-width="3"/>
+        <text x="755" y="12" font-size="12" fill="#4b5563">最低温</text>
+
+        <!-- 高温警戒线 -->
+        <line x1="60" y1="53" x2="830" y2="53" stroke="#ef4444" stroke-width="1" stroke-dasharray="6,4" opacity="0.5"/>
+        <text x="835" y="56" font-size="10" fill="#ef4444" opacity="0.6">35&deg;C 警戒线</text>
+      </svg>
+    </div>
+
+    <!-- ════ SECTION 4: 详细天气详情 ════ -->
+    <div class="section-title">逐日详细天气详情</div>
+
+    <!-- 5月10日 -->
+    <div class="day-card">
+      <div class="day-header">
+        <span class="day-icon">⛅</span>
+        <div>
+          <div class="day-name">5月10日（周日）— 晴转多云</div>
+          <div class="day-date">舒适宜人，适合户外活动</div>
+        </div>
+      </div>
+      <div class="day-temps">
+        <div class="temp-item">
+          <div class="temp-val high">31.3&deg;C</div>
+          <div class="temp-label">最高温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val low">17.4&deg;C</div>
+          <div class="temp-label">最低温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val" style="color:#6b7280;">23&deg;C</div>
+          <div class="temp-label">平均温</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-item"><span class="label">🌡️ 体感</span>24&deg;C</div>
+        <div class="detail-item"><span class="label">💧 湿度</span>20% - 54%</div>
+        <div class="detail-item"><span class="label">🌬️ 风向</span>南偏西南风 26km/h</div>
+        <div class="detail-item"><span class="label">☀️ 紫外线</span><span class="tag warning">7（高）</span></div>
+        <div class="detail-item"><span class="label">🌅 日出</span>05:01</div>
+        <div class="detail-item"><span class="label">🌇 日落</span>19:00</div>
+        <div class="detail-item"><span class="label">🌙 月相</span>残月（光照49%）</div>
+        <div class="detail-item"><span class="label">⏳ 日照</span>13.8小时</div>
+      </div>
+      <div class="hourly-timeline">
+        <div class="hourly-item sun"><span class="h-time">早晨</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item cloud"><span class="h-time">中午</span><span class="h-icon">⛅</span><span class="h-temp">多云</span></div>
+        <div class="hourly-item sun"><span class="h-time">下午</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item cloud"><span class="h-time">夜间</span><span class="h-icon">🌙</span><span class="h-temp">晴</span></div>
+      </div>
+    </div>
+
+    <!-- 5月11日 -->
+    <div class="day-card" style="border-left: 4px solid #2563eb;">
+      <div class="day-header">
+        <span class="day-icon">🌦️</span>
+        <div>
+          <div class="day-name">5月11日（周一）— 小雨 / 雷阵雨 ⚠️</div>
+          <div class="day-date">降水日，注意携带雨具</div>
+        </div>
+      </div>
+      <div class="day-temps">
+        <div class="temp-item">
+          <div class="temp-val high">28.7&deg;C</div>
+          <div class="temp-label">最高温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val low">18.8&deg;C</div>
+          <div class="temp-label">最低温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val" style="color:#6b7280;">20&deg;C</div>
+          <div class="temp-label">平均温</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-item"><span class="label">💧 降雨量</span><span style="color:#2563eb;font-weight:600;">2.3 mm</span></div>
+        <div class="detail-item"><span class="label">🌧️ 概率</span><span class="tag warning">31%</span></div>
+        <div class="detail-item"><span class="label">💧 湿度</span>49% - 93%</div>
+        <div class="detail-item"><span class="label">☀️ 紫外线</span><span class="tag neutral">5（中等）</span></div>
+        <div class="detail-item"><span class="label">🌅 日出</span>04:59</div>
+        <div class="detail-item"><span class="label">🌇 日落</span>18:59</div>
+        <div class="detail-item"><span class="label">👁️ 能见度</span>上午8km / 下午降至2km</div>
+        <div class="detail-item"><span class="label">⏳ 日照</span>13.0小时</div>
+      </div>
+      <div class="hourly-timeline">
+        <div class="hourly-item sun"><span class="h-time">凌晨</span><span class="h-icon">🌙</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item rain"><span class="h-time">早晨</span><span class="h-icon">🌧️</span><span class="h-temp">小雨</span></div>
+        <div class="hourly-item rain" style="background:#bae6fd;"><span class="h-time">上午</span><span class="h-icon">🌧️</span><span class="h-temp">中雨</span></div>
+        <div class="hourly-item rain" style="background:#7dd3fc;"><span class="h-time">中午</span><span class="h-icon">⛈️</span><span class="h-temp">雷暴</span></div>
+        <div class="hourly-item rain"><span class="h-time">下午</span><span class="h-icon">🌦️</span><span class="h-temp">小雨</span></div>
+        <div class="hourly-item rain" style="background:#bae6fd;"><span class="h-time">傍晚</span><span class="h-icon">🌧️</span><span class="h-temp">中雨</span></div>
+        <div class="hourly-item cloud"><span class="h-time">夜间</span><span class="h-icon">⛅</span><span class="h-temp">多云</span></div>
+      </div>
+      <div class="callout info" style="margin:10px 0 0;">
+        <strong>🌧️ 降水详情</strong>
+        早晨小雨(0.5mm) → 上午中雨(7.1mm) → 中午雷暴 → 下午小雨(0.3mm) → 傍晚中雨(2.5mm)。全天累计降雨约10.4mm，午后能见度较低，出行请注意安全。
+      </div>
+    </div>
+
+    <!-- 5月12日 -->
+    <div class="day-card">
+      <div class="day-header">
+        <span class="day-icon">☀️</span>
+        <div>
+          <div class="day-name">5月12日（周二）— 晴间多云</div>
+          <div class="day-date">昼夜温差大，早晨有雾，午后紫外线强</div>
+        </div>
+      </div>
+      <div class="day-temps">
+        <div class="temp-item">
+          <div class="temp-val high">32.2&deg;C</div>
+          <div class="temp-label">最高温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val low">16.2&deg;C</div>
+          <div class="temp-label">最低温</div>
+        </div>
+        <div class="temp-item">
+          <div class="temp-val" style="color:#6b7280;">20&deg;C</div>
+          <div class="temp-label">平均温</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-item"><span class="label">💧 湿度</span>31% - 97%</div>
+        <div class="detail-item"><span class="label">🌬️ 风速</span>21.3 km/h</div>
+        <div class="detail-item"><span class="label">☀️ 紫外线</span><span class="tag critical">8（很高）</span></div>
+        <div class="detail-item"><span class="label">🌅 日出</span>04:58</div>
+        <div class="detail-item"><span class="label">🌇 日落</span>19:01</div>
+        <div class="detail-item"><span class="label">🌙 月相</span>残月（光照29%）</div>
+      </div>
+      <div class="hourly-timeline">
+        <div class="hourly-item fog"><span class="h-time">凌晨</span><span class="h-icon">🌫️</span><span class="h-temp">有雾</span></div>
+        <div class="hourly-item fog"><span class="h-time">早晨</span><span class="h-icon">🌫️</span><span class="h-temp">有雾</span></div>
+        <div class="hourly-item sun"><span class="h-time">上午</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item sun"><span class="h-time">中午</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item sun"><span class="h-time">下午</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item sun"><span class="h-time">傍晚</span><span class="h-icon">☀️</span><span class="h-temp">晴</span></div>
+        <div class="hourly-item cloud"><span class="h-time">夜间</span><span class="h-icon">🌙</span><span class="h-temp">晴</span></div>
+      </div>
+      <div class="callout warning" style="margin:10px 0 0;">
+        <strong>🌫️ 大雾预警</strong>
+        凌晨至早晨有雾，能见度最低约2km，驾车出行请减速慢行，注意安全。上午雾气消散后天气转晴。
+      </div>
+    </div>
+
+    <!-- 5月13日-16日（简洁卡片） -->
+    <div class="pillar-row" style="margin-top:16px;">
+      <div class="pillar" style="border-left:4px solid #dc2626;">
+        <div class="ic">🔥</div>
+        <div class="t">5月13日（周三）— 高温日</div>
+        <div class="d">
+          天气：☁️ 阴天<br>
+          <strong style="color:#dc2626;font-size:18px;">38.7&deg;C</strong> / 19.5&deg;C<br>
+          降水量：0.0 mm | 风速：16.8 km/h<br>
+          日出 04:57 / 日落 19:01
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">☁️</div>
+        <div class="t">5月14日（周四）— 阴天</div>
+        <div class="d">
+          天气：☁️ 阴天<br>
+          <strong style="color:#ef4444;">32.5&deg;C</strong> / 17.5&deg;C<br>
+          降水量：0.0 mm | 风速：20.6 km/h<br>
+          日出 04:56 / 日落 19:02
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">☁️</div>
+        <div class="t">5月15日（周五）— 阴天</div>
+        <div class="d">
+          天气：☁️ 阴天<br>
+          <strong style="color:#ef4444;">29.9&deg;C</strong> / 16.7&deg;C<br>
+          降水量：0.0 mm | 风速：24.6 km/h<br>
+          日出 04:56 / 日落 19:03
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">☁️</div>
+        <div class="t">5月16日（周六）— 阴天</div>
+        <div class="d">
+          天气：☁️ 阴天<br>
+          <strong style="color:#ef4444;">28.3&deg;C</strong> / 16.9&deg;C<br>
+          降水量：0.0 mm | 风速：<span style="color:#2563eb;">28.5 km/h</span><br>
+          日出 04:55 / 日落 19:04
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ SECTION 5: 关键天气提示 ════ -->
+    <div class="section-title">关键天气提示</div>
+
+    <div class="kpi-2">
+      <div class="callout warning" style="margin:0;">
+        <strong>🌧️ 5月11日（周一）— 降雨日</strong>
+        全天有雨，累计降水量约2.3mm（wttr.in实测约10.4mm），早晨至傍晚持续降水，中午前后可能出现雷暴。<br>
+        <strong>建议：</strong>携带雨具，驾车注意湿滑路面，午后能见度较低，注意交通安全。
+      </div>
+      <div class="callout critical" style="margin:0;">
+        <strong>🔥 5月13日（周三）— 高温日</strong>
+        最高温达38.7&deg;C，为本周期最高气温，远超其他日期。<br>
+        <strong>建议：</strong>避免午后户外活动，多饮水，注意防暑降温。老人、儿童及慢性病患者需特别关注。
+      </div>
+    </div>
+
+    <div class="kpi-2">
+      <div class="callout warning" style="margin:0;">
+        <strong>☀️ 5月12日（周二）— 高强度紫外线</strong>
+        紫外线指数高达8（很高），是本周紫外线最强的日期。<br>
+        <strong>建议：</strong>外出需做好防晒措施——涂抹防晒霜（SPF30+）、佩戴遮阳帽和太阳镜，尽量避免10:00-16:00期间长时间日晒。
+      </div>
+      <div class="callout info" style="margin:0;">
+        <strong>🌫️ 5月12日（周二）— 晨雾</strong>
+        凌晨至早晨有浓雾，湿度高达97%，能见度最低约2km。<br>
+        <strong>建议：</strong>驾车出行请开启雾灯，保持安全车距。上午雾气消散后转为晴朗天气。
+      </div>
+    </div>
+
+    <div class="callout success" style="margin-top:12px;">
+      <strong>📋 周期小结</strong>
+      本周潍坊市以晴到多云天气为主，前期（5/10-5/12）天气波动较大——周日晴好、周一有雨、周二晴后有雾；中期（5/13）迎来极端高温（38.7&deg;C）；后期（5/14-5/16）持续阴天，气温回落至28-32&deg;C区间，风力逐渐增强。昼夜温差普遍在12-16&deg;C之间，建议采用"洋葱式"穿搭法。
+    </div>
+
+    <!-- ════ SECTION 6: 数据说明 ════ -->
+    <div class="section-title">数据来源与说明</div>
+
+    <div class="pillar-row">
+      <div class="pillar">
+        <div class="ic">📡</div>
+        <div class="t">Open-Meteo API</div>
+        <div class="d">
+          提供7天逐日预报数据（5/10-5/16），包括温度、降水、风速、天气代码（WMO）等标准指标。<br>
+          <span style="font-size:11px;color:#9ca3af;">来源：open-meteo.com</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">🌤️</div>
+        <div class="t">wttr.in API</div>
+        <div class="d">
+          提供5/10-5/12三日精细化数据（逐时天气、湿度、能见度、月相等），数据精度更高。<br>
+          <span style="font-size:11px;color:#9ca3af;">来源：wttr.in</span>
+        </div>
+      </div>
+      <div class="pillar">
+        <div class="ic">⚠️</div>
+        <div class="t">数据差异说明</div>
+        <div class="d">
+          两数据源在5月12日最高温上存在差异（Open-Meteo: 32.2&deg;C, wttr.in: 27&deg;C），本报告以Open-Meteo为准。<br>
+          <span style="font-size:11px;color:#9ca3af;">建议以临近预报为准</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="data-note">
+      本报告由 AIOpsOS Report Agent 自动生成 &mdash; 数据仅供参考，实际天气以当地气象部门发布为准。<br>
+      报告生成时间：2026-05-10 08:30 CST &nbsp;|&nbsp; 潍坊市（北纬36.71&deg;，东经119.16&deg;）
+    </p>
+
+  </div>
+
+  <div class="report-footer">
+    Generated by AIOpsOS Report Agent &mdash; 潍坊市未来7天天气预报 &mdash; 2026-05-10
+  </div>
+
+</div>
+</body>
+</html>

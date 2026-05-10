@@ -5,17 +5,23 @@ R-1.3 / R-1.9 / R-10.2 / R-10.4 / R-10.5 / R-10.6.
 
 Algorithm (matches design.md § "RouterLLM 详细设计"):
 
+0. **Heuristic short-circuit** (B3 fix): If message is short (≤ 6 chars
+   by default) and contains no ops keywords, return ``route="direct"``
+   immediately without calling any LLM tier. This avoids the 2s+ timeout
+   for DeepSeek + short greetings like "你好".
 1. Look up ``router:decision:{sha256(message + user_id + last_asst_sha)}``
    in Redis. Hit → bump ``router_path_total{path="cache"}`` and return
    the cached decision.
 2. **Tier 1 — function calling.** Bind :data:`RouterDecisionTool` with
    ``tool_choice={"type":"tool","name":"decide"}``. Parse the tool-call
    args on success → bump ``router_path_total{path="function_calling"}``.
+   For DeepSeek, use ``tool_choice="auto"`` instead of forced selection.
 3. **Tier 2 — JSON mode fallback** (on schema / tool-choice errors):
    ``llm.with_structured_output(RouterDecision, method="json_mode")``.
    Success → bump ``router_path_total{path="json_mode"}``.
-4. **Tier 3 — fallback executor** on any further failure. Bump
-   ``router_path_total{path="fallback_executor"}``.
+4. **Tier 3 — fallback** on any further failure. For non-ops messages,
+   return ``route="direct"``; for ops messages, return ``route="executor"``.
+   No longer defaults to full_agent.
 5. A hard ``asyncio.TimeoutError`` anywhere short-circuits to the
    fallback path and bumps ``router_timeout_total``.
 6. After a decision is produced we apply two post-validation rules:
@@ -33,12 +39,14 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import time
 from typing import Any, Callable
 
 from src.core.metrics import router_path_total, router_timeout_total
 from src.core.tracing import tracer
 from src.services.agent_runtime.router_schema import (
+    OPS_KEYWORDS,
     ROUTER_SYSTEM_PROMPT,
     RouterDecision,
     RouterDecisionTool,
@@ -53,10 +61,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-DEFAULT_TIMEOUT_MS: int = 500
+DEFAULT_TIMEOUT_MS: int = 800  # Reduced from 2000ms for faster fallback (B3 fix)
 DEFAULT_CACHE_TTL_S: int = 30
 CONFIDENCE_FLOOR: float = 0.4
 CACHE_KEY_PREFIX: str = "router:decision:"
+
+# Heuristic short-circuit threshold (B3 fix): messages with length ≤ this
+# value (after strip) and no ops keywords are routed directly without LLM.
+# Set to 0 to disable heuristic entirely (back-compat exit).
+_OPS_ROUTER_HEURISTIC_MAX_LEN: int = int(
+    os.environ.get("OPS_ROUTER_HEURISTIC_MAX_LEN", "6")
+)
 
 # Truncation bounds used by ``_render_router_context`` (design.md).
 HOT_BLOCK_MAX_CHARS: int = 400
@@ -136,6 +151,82 @@ def _inc_timeout() -> None:
         logger.debug("router: metric inc failed", exc_info=True)
 
 
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    """Read a boolean environment variable (1/true/yes → True)."""
+    val = os.environ.get(name, "").lower()
+    if val in ("1", "true", "yes"):
+        return True
+    if val in ("0", "false", "no"):
+        return False
+    return default
+
+
+def _contains_ops_keyword(text: str) -> bool:
+    """Check if text contains any ops keyword from OPS_KEYWORDS."""
+    for kw in OPS_KEYWORDS:
+        if kw in text:
+            return True
+    return False
+
+
+def _heuristic_direct(message: str) -> RouterDecision | None:
+    """Heuristic short-circuit for short greetings (B3 fix).
+    
+    If the message is short (≤ OPS_ROUTER_HEURISTIC_MAX_LEN chars after strip)
+    and contains no ops keywords, return a direct route immediately without
+    calling any LLM tier. This avoids the 2s+ timeout for DeepSeek + short
+    greetings like "你好".
+    
+    Returns None if heuristic doesn't apply (message too long or contains ops keywords).
+    """
+    if _OPS_ROUTER_HEURISTIC_MAX_LEN <= 0:
+        # Heuristic disabled via env var (back-compat exit)
+        return None
+    
+    trimmed = message.strip()
+    if len(trimmed) > _OPS_ROUTER_HEURISTIC_MAX_LEN:
+        return None
+    
+    if _contains_ops_keyword(trimmed):
+        return None
+    
+    return RouterDecision(
+        route="direct",
+        direct_answer=None,
+        subagent_name=None,
+        suggested_tools=[],
+        reason="heuristic_short_greeting",
+        confidence=0.8,
+    )
+
+
+def _is_deepseek_model(llm: Any) -> bool:
+    """Detect if the LLM is a DeepSeek model.
+
+    DeepSeek API doesn't support OpenAI's ``tool_choice={"type": "tool", "name": "..."}``
+    format. We detect DeepSeek by checking:
+    1. The class name (DeepSeekChatOpenAI)
+    2. The base_url containing "deepseek"
+    3. The model name containing "deepseek"
+    """
+    # Check class name
+    class_name = type(llm).__name__
+    if "deepseek" in class_name.lower():
+        return True
+
+    # Check base_url
+    base_url = getattr(llm, "openai_api_base", None) or getattr(llm, "base_url", None)
+    if base_url and "deepseek" in str(base_url).lower():
+        return True
+
+    # Check model name
+    model_name = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    if model_name and "deepseek" in str(model_name).lower():
+        return True
+
+    return False
+
+
 # ---------------------------------------------------------------------------
 # RouterLLM
 # ---------------------------------------------------------------------------
@@ -155,12 +246,15 @@ class RouterLLM:
         llm: Any | None = None,
         *,
         cache_ttl_s: int = DEFAULT_CACHE_TTL_S,
-        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        timeout_ms: int | None = None,
         redis_client: Any | None = None,
         skill_index_fn: Callable[[], str] | None = None,
     ) -> None:
         self._llm = llm
         self._cache_ttl_s = int(cache_ttl_s)
+        # Allow env var override for timeout (B3 fix)
+        if timeout_ms is None:
+            timeout_ms = int(os.environ.get("OPS_ROUTER_TIMEOUT_MS", str(DEFAULT_TIMEOUT_MS)))
         self._timeout_s = float(timeout_ms) / 1000.0
         self._redis = redis_client
         self._skill_index_fn = skill_index_fn
@@ -208,6 +302,28 @@ class RouterLLM:
                 )
                 return cached
 
+            # ---- Heuristic short-circuit (B3 fix) ------------------------------
+            # For short messages (≤ OPS_ROUTER_HEURISTIC_MAX_LEN chars) without
+            # ops keywords, return direct immediately without calling any LLM tier.
+            # This avoids the 2s+ timeout for DeepSeek + short greetings like "你好".
+            heuristic_decision = _heuristic_direct(message)
+            if heuristic_decision is not None:
+                _inc_path("heuristic_direct")
+                chosen_path = "heuristic_direct"
+                logger.debug(
+                    "router: heuristic_direct for short greeting '%s' user=%s",
+                    message[:20], user_id,
+                )
+                span.set_attribute("chosen_path", chosen_path)
+                span.set_attribute("confidence", heuristic_decision.confidence)
+                span.set_attribute(
+                    "latency_ms", (time.perf_counter() - t0) * 1000.0
+                )
+                # Note: We don't cache heuristic decisions — they're instant anyway
+                # and caching would prevent the user from getting LLM-quality routing
+                # if they later send a longer message with the same prefix.
+                return heuristic_decision
+
             # ---- Build messages -----------------------------------------------
             try:
                 messages = self._build_messages(
@@ -239,16 +355,23 @@ class RouterLLM:
                 if decision is not None:
                     _inc_path("function_calling")
                     chosen_path = "function_calling"
+                    logger.debug(
+                        "router: function_calling succeeded route=%s confidence=%.2f",
+                        decision.route, decision.confidence,
+                    )
             except asyncio.TimeoutError:
                 _inc_timeout()
                 timed_out = True
-                logger.debug("router: function_calling timed out")
-            except Exception:
+                logger.warning(
+                    "router: function_calling timed out after %.0fms user=%s",
+                    self._timeout_s * 1000, user_id,
+                )
+            except Exception as e:
                 # Non-timeout error (ToolChoiceNotSupported, ProviderSchemaError,
                 # ValidationError, parse error) — fall through to Tier 2.
-                logger.debug(
-                    "router: function_calling failed, trying json_mode",
-                    exc_info=True,
+                logger.warning(
+                    "router: function_calling failed (%s), trying json_mode user=%s",
+                    type(e).__name__, user_id,
                 )
 
             # ---- Tier 2: JSON mode (skipped if Tier 1 timed out) ---------------
@@ -261,20 +384,61 @@ class RouterLLM:
                     if decision is not None:
                         _inc_path("json_mode")
                         chosen_path = "json_mode"
+                        logger.debug(
+                            "router: json_mode succeeded route=%s confidence=%.2f",
+                            decision.route, decision.confidence,
+                        )
                 except asyncio.TimeoutError:
                     _inc_timeout()
-                    logger.debug("router: json_mode timed out")
-                except Exception:
-                    logger.debug(
-                        "router: json_mode failed, falling back", exc_info=True
+                    logger.warning(
+                        "router: json_mode timed out after %.0fms user=%s",
+                        self._timeout_s * 1000, user_id,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "router: json_mode failed (%s), falling back user=%s",
+                        type(e).__name__, user_id,
                     )
 
-            # ---- Tier 3: fallback executor -------------------------------------
+            # ---- Tier 3: fallback (B3 fix: no longer defaults to full_agent) ----
             if decision is None:
                 reason = "timeout" if timed_out else "parse_error"
-                decision = RouterDecision.fallback_executor(reason)
-                _inc_path("fallback_executor")
-                chosen_path = "fallback_executor"
+                # B3 fix: Instead of always falling back to executor (which triggers
+                # full_agent assembly), we now route based on message content:
+                # - Messages with ops keywords → executor (narrow graph)
+                # - Messages without ops keywords → direct (LLM direct answer)
+                # Note: confidence is set to 0.4 (the floor) to avoid _clamp_confidence
+                # converting direct back to executor.
+                if _contains_ops_keyword(message):
+                    decision = RouterDecision(
+                        route="executor",
+                        direct_answer=None,
+                        subagent_name=None,
+                        suggested_tools=[],
+                        reason=f"{reason}_ops_keyword",
+                        confidence=0.4,  # At floor to avoid clamping
+                    )
+                    _inc_path("fallback_executor")
+                    chosen_path = "fallback_executor"
+                    logger.warning(
+                        "router: fallback to executor (ops keyword) reason=%s user=%s",
+                        reason, user_id,
+                    )
+                else:
+                    decision = RouterDecision(
+                        route="direct",
+                        direct_answer=None,
+                        subagent_name=None,
+                        suggested_tools=[],
+                        reason=f"{reason}_non_ops",
+                        confidence=0.4,  # At floor to avoid clamping to executor
+                    )
+                    _inc_path("fallback_direct")
+                    chosen_path = "fallback_direct"
+                    logger.warning(
+                        "router: fallback to direct (non-ops) reason=%s user=%s",
+                        reason, user_id,
+                    )
 
             # ---- Post-validation ----------------------------------------------
             decision = promote_if_ops_keyword(decision, message)
@@ -298,27 +462,56 @@ class RouterLLM:
     async def _classify_via_function_calling(
         self, messages: list[Any]
     ) -> RouterDecision | None:
-        """Tier 1: ``llm.bind_tools(..., tool_choice=...).ainvoke``."""
+        """Tier 1: ``llm.bind_tools(..., tool_choice=...).ainvoke``.
+
+        For DeepSeek: uses ``tool_choice="auto"`` instead of forced tool selection,
+        since DeepSeek doesn't support ``tool_choice={"type": "tool", "name": "..."}``.
+        The OPS_ROUTER_SKIP_FOR_DEEPSEEK=1 env var can be used to skip Tier 1
+        entirely for DeepSeek (back-compat exit).
+        """
         llm = await self._get_llm()
         if llm is None:
             return None
-        # ``bind_tools`` returns a Runnable; errors are caught by the caller.
-        bound = llm.bind_tools(
-            [RouterDecisionTool],
-            tool_choice={"type": "tool", "name": "decide"},
-        )
+
+        # Detect if this is a DeepSeek model by checking the base_url or model name.
+        is_deepseek = _is_deepseek_model(llm)
+
+        # Back-compat exit: OPS_ROUTER_SKIP_FOR_DEEPSEEK=1 skips Tier 1 for DeepSeek
+        if is_deepseek and _env_flag("OPS_ROUTER_SKIP_FOR_DEEPSEEK", default=False):
+            logger.debug("router: skipping function_calling for DeepSeek (opt-out)")
+            return None
+
+        if is_deepseek:
+            # DeepSeek supports tool_choice="auto" but not forced tool selection
+            bound = llm.bind_tools([RouterDecisionTool], tool_choice="auto")
+        else:
+            # OpenAI-compatible: use specific tool choice
+            bound = llm.bind_tools(
+                [RouterDecisionTool],
+                tool_choice={"type": "tool", "name": "decide"},
+            )
         response = await bound.ainvoke(messages)
         return _parse_tool_call(response)
 
     async def _classify_via_json_mode(
         self, messages: list[Any]
     ) -> RouterDecision | None:
-        """Tier 2: ``llm.with_structured_output(..., method='json_mode')``."""
+        """Tier 2: ``llm.with_structured_output(..., method='json_mode')``.
+
+        For DeepSeek compatibility, we need to:
+        1. Include "json" in the prompt (DeepSeek requirement)
+        2. Provide a JSON example in the prompt
+        """
         llm = await self._get_llm()
         if llm is None:
             return None
+
+        # For JSON mode, we need to modify the messages to include JSON instructions
+        # DeepSeek requires "json" keyword in the prompt
+        json_messages = self._build_json_mode_messages(messages)
+
         structured = llm.with_structured_output(RouterDecision, method="json_mode")
-        result = await structured.ainvoke(messages)
+        result = await structured.ainvoke(json_messages)
         if isinstance(result, RouterDecision):
             return result
         if isinstance(result, dict):
@@ -327,6 +520,54 @@ class RouterLLM:
             except Exception:
                 return None
         return None
+
+    def _build_json_mode_messages(self, messages: list[Any]) -> list[Any]:
+        """Rebuild messages for JSON mode with explicit JSON instructions.
+
+        DeepSeek requires the word "json" in the prompt and benefits from
+        an example of the expected JSON format.
+        """
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        json_system_prompt = """你是 AIOpsOS 的请求路由器。请以 JSON 格式输出路由决策。
+
+目标：把单条用户消息分类到三条路径之一：
+- direct: 纯闲聊、问候、简单事实确认，可以不依赖任何工具直接回答。
+- executor: 任何需要查询/执行/排查/分析/部署/重启/读文件/调用 API 的运维请求。
+- subagent: 明确需要由某个专职子 agent 处理的复杂任务。
+
+输出格式（严格 JSON）：
+{
+  "route": "direct" | "executor" | "subagent",
+  "direct_answer": "如果 route=direct，这里填写直接回答；否则为 null",
+  "subagent_name": "如果 route=subagent，这里填写子 agent 名称；否则为 null",
+  "suggested_tools": ["工具名1", "工具名2"],
+  "reason": "简短说明分类理由",
+  "confidence": 0.0-1.0
+}
+
+示例输出：
+{"route": "executor", "direct_answer": null, "subagent_name": null, "suggested_tools": ["get_weather"], "reason": "用户请求查询天气数据", "confidence": 0.85}
+
+硬性规则：
+1. 只输出 JSON，不要输出任何其他文本。
+2. suggested_tools 最多 5 个，不确定就留空数组 []。
+3. route=direct 且不确信答案时，改成 executor。
+4. 只要消息里出现"执行/查询/分析/故障/告警/部署/排查/重启"等运维动词，优先选 executor。
+5. confidence 低于 0.4 会被系统自动降级。
+"""
+        # Extract the user message content from the original messages
+        user_content = ""
+        for msg in messages:
+            if hasattr(msg, "content") and hasattr(msg, "type"):
+                if msg.type == "human":
+                    user_content = msg.content
+                    break
+
+        return [
+            SystemMessage(content=json_system_prompt),
+            HumanMessage(content=user_content),
+        ]
 
     # ------------------------------------------------------------------
     # Prompt construction

@@ -32,6 +32,8 @@ import {
 } from '@ant-design/icons';
 import api from '@/services/api';
 import { useThemeStore } from '@/stores/themeStore';
+import ImageUploader, { type PendingImage } from './ImageUploader';
+import FeedbackImageGallery from './FeedbackImageGallery';
 
 interface FeedbackItem {
   id: string;
@@ -44,6 +46,7 @@ interface FeedbackItem {
   rating: number | null;
   ai_analysis: string | null;
   resolved_version: string | null;
+  images: string[];
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +91,7 @@ export default function FeedbackPage() {
   const [typeFilter, setTypeFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [selectedType, setSelectedType] = useState<string>('bug');
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
 
   const loadFeedbacks = useCallback(async () => {
     setLoading(true);
@@ -118,17 +122,84 @@ export default function FeedbackPage() {
     loadStatuses();
   }, [loadFeedbacks, loadStatuses]);
 
+  /**
+   * Uploads a single image to the server.
+   * @param image - The pending image to upload
+   * @returns The uploaded URL on success, or throws an error on failure
+   */
+  const uploadImage = async (image: PendingImage): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', image.file);
+    
+    const response = await api.post('/feedbacks/images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data.url;
+  };
+
+  /**
+   * Uploads all pending images and returns their URLs.
+   * Updates image status during upload (uploading -> uploaded/error).
+   * @returns Array of uploaded image URLs
+   * @throws Error if any image upload fails
+   */
+  const uploadAllImages = async (): Promise<string[]> => {
+    if (pendingImages.length === 0) {
+      return [];
+    }
+
+    const uploadedUrls: string[] = [];
+    const updatedImages = [...pendingImages];
+
+    for (let i = 0; i < pendingImages.length; i++) {
+      const image = pendingImages[i];
+      
+      // Update status to uploading
+      updatedImages[i] = { ...image, status: 'uploading' };
+      setPendingImages([...updatedImages]);
+
+      try {
+        const url = await uploadImage(image);
+        uploadedUrls.push(url);
+        
+        // Update status to uploaded
+        updatedImages[i] = { ...image, status: 'uploaded', uploadedUrl: url };
+        setPendingImages([...updatedImages]);
+      } catch (err: unknown) {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        const errorMessage = detail || '上传失败';
+        
+        // Update status to error
+        updatedImages[i] = { ...image, status: 'error', error: errorMessage };
+        setPendingImages([...updatedImages]);
+        
+        throw new Error(`图片上传失败: ${errorMessage}`);
+      }
+    }
+
+    return uploadedUrls;
+  };
+
   const handleSubmit = async () => {
     const values = await form.validateFields();
     setSubmitting(true);
     try {
-      await api.post('/feedbacks', { ...values, type: selectedType });
+      // Upload all pending images first
+      const imageUrls = await uploadAllImages();
+      
+      // Submit feedback with image URLs
+      await api.post('/feedbacks', { ...values, type: selectedType, images: imageUrls });
       msg.success('反馈已提交，感谢您的贡献！');
       form.resetFields();
+      setPendingImages([]);
       loadFeedbacks();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      msg.error(detail || '提交失败');
+      const errorMessage = (err as Error)?.message;
+      msg.error(detail || errorMessage || '提交失败');
     } finally {
       setSubmitting(false);
     }
@@ -186,8 +257,23 @@ export default function FeedbackPage() {
       dataIndex: 'description',
       width: 200,
       ellipsis: true,
-      render: (d: string) => (
-        <Typography.Link onClick={() => modal.info({ title: '反馈详情', content: d, width: 520 })}>
+      render: (d: string, record: FeedbackItem) => (
+        <Typography.Link
+          onClick={() =>
+            modal.info({
+              title: '反馈详情',
+              content: (
+                <div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{d}</div>
+                  {record.images && record.images.length > 0 && (
+                    <FeedbackImageGallery images={record.images} />
+                  )}
+                </div>
+              ),
+              width: 520,
+            })
+          }
+        >
           {d.slice(0, 60)}
           {d.length > 60 ? '…' : ''}
         </Typography.Link>
@@ -403,6 +489,17 @@ export default function FeedbackPage() {
                           : '1. 使用场景：...\n2. 期望功能：...\n3. 解决的问题：...'
                       }
                       style={{ fontSize: 14 }}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    label={<Typography.Text strong>截图/图片</Typography.Text>}
+                  >
+                    <ImageUploader
+                      images={pendingImages}
+                      onChange={setPendingImages}
+                      maxCount={5}
+                      maxSizeMB={5}
+                      disabled={submitting}
                     />
                   </Form.Item>
                   <Button

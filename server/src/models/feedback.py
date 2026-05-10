@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base, TimestampMixin
@@ -20,3 +20,4 @@ class Feedback(Base, TimestampMixin):
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    images: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")

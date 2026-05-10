@@ -182,6 +182,11 @@ class RuntimeGateway:
 
             # ---- Flag gate 1: gateway_enabled ------------------------
             if not await self._flag_is_enabled("gateway_enabled", ctx.user_id):
+                logger.info(
+                    "gateway: routing to full_agent (gateway_disabled) "
+                    "user=%s session=%s",
+                    ctx.user_id, ctx.session_id,
+                )
                 graph = await self._resolve_full_agent()
                 result = GatewayResult(
                     route="full_agent",
@@ -197,6 +202,11 @@ class RuntimeGateway:
 
             # ---- Flag gate 2: router_llm_enabled ---------------------
             if not await self._flag_is_enabled("router_llm_enabled", ctx.user_id):
+                logger.info(
+                    "gateway: routing to full_agent (router_llm_disabled) "
+                    "user=%s session=%s",
+                    ctx.user_id, ctx.session_id,
+                )
                 graph = await self._resolve_full_agent()
                 result = GatewayResult(
                     route="full_agent",
@@ -223,6 +233,22 @@ class RuntimeGateway:
                 (time.perf_counter() - t_router_start) * 1000
             )
 
+            # Log the router decision for debugging
+            logger.info(
+                "gateway: router decision route=%s confidence=%.2f "
+                "suggested_tools=%s subagent=%s reason=%s latency=%dms "
+                "user=%s session=%s msg_preview=%.50s",
+                decision.route,
+                decision.confidence,
+                decision.suggested_tools[:3] if decision.suggested_tools else [],
+                decision.subagent_name,
+                decision.reason[:50] if decision.reason else "",
+                router_latency_ms,
+                ctx.user_id,
+                ctx.session_id,
+                message[:50] if message else "",
+            )
+
             # Fire off the router_decision trajectory event early — it's
             # cheap and keeps observability alive even if downstream
             # graph resolution fails.
@@ -233,6 +259,10 @@ class RuntimeGateway:
 
             # ---- Route selection -------------------------------------
             if decision.route == "direct" and decision.direct_answer:
+                logger.info(
+                    "gateway: using direct route user=%s session=%s",
+                    ctx.user_id, ctx.session_id,
+                )
                 result = GatewayResult(
                     route="direct",
                     trajectory_id=trajectory_id,
@@ -253,13 +283,23 @@ class RuntimeGateway:
                 try:
                     graph = await pool.get_for(decision)
                 except Exception:
-                    logger.debug(
-                        "gateway: executor_pool.get_for raised; falling back",
+                    logger.warning(
+                        "gateway: executor_pool.get_for raised; falling back "
+                        "user=%s session=%s",
+                        ctx.user_id, ctx.session_id,
                         exc_info=True,
                     )
                     graph = None
 
                 if graph is not None:
+                    logger.info(
+                        "gateway: using narrowed %s graph with tools=%s "
+                        "user=%s session=%s",
+                        decision.route,
+                        decision.suggested_tools[:5] if decision.suggested_tools else [],
+                        ctx.user_id,
+                        ctx.session_id,
+                    )
                     result = GatewayResult(
                         route=decision.route,
                         trajectory_id=trajectory_id,
@@ -272,12 +312,33 @@ class RuntimeGateway:
                     )
                     _set_span_summary(span, result, started_at)
                     return result
+                else:
+                    logger.warning(
+                        "gateway: executor_pool returned None for route=%s "
+                        "tools=%s subagent=%s confidence=%.2f; falling back to full_agent "
+                        "user=%s session=%s",
+                        decision.route,
+                        decision.suggested_tools,
+                        decision.subagent_name,
+                        decision.confidence,
+                        ctx.user_id,
+                        ctx.session_id,
+                    )
 
             # Anything else → full-agent fallback (covers:
             #   * direct route without a direct_answer
             #   * executor/subagent that the pool couldn't narrow
             #   * router fallback decisions (confidence=0.0)
             # ). The legacy graph exists for exactly this reason.
+            logger.info(
+                "gateway: using full_agent fallback route=%s confidence=%.2f "
+                "reason=%s user=%s session=%s",
+                decision.route if decision else "none",
+                decision.confidence if decision else 0.0,
+                decision.reason[:50] if decision and decision.reason else "",
+                ctx.user_id,
+                ctx.session_id,
+            )
             graph = await self._resolve_full_agent()
             result = GatewayResult(
                 route="full_agent",

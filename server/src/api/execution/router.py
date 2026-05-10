@@ -6,6 +6,8 @@ import time
 import uuid as _uuid
 from typing import Any
 
+import httpx as _httpx_mod
+import openai as _openai_mod
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -59,6 +61,19 @@ _TOOL_RELOAD_TTL: float = 300.0
 # TTL cache for space context resolution — space membership rarely changes
 _space_ctx_cache: dict[str, tuple[tuple[str, str], float]] = {}
 _SPACE_CTX_TTL: float = 300.0
+
+# B2 fix: Whitelist of timeout exceptions from sub-agent LLM calls that should
+# be caught and handled gracefully (emit sub_agent_error + tool_error, then
+# continue or close stream with done) rather than killing the entire SSE stream.
+_SUBAGENT_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
+    _openai_mod.APITimeoutError,
+    _httpx_mod.ConnectTimeout,
+    _httpx_mod.ReadTimeout,
+    asyncio.TimeoutError,
+)
+
+# Maximum number of consecutive sub-agent timeout retries before escalating to fatal
+_SUBAGENT_TIMEOUT_MAX_RETRIES: int = 2
 
 # Keyword-based intent classifier — sub-microsecond, no LLM call needed
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
@@ -1059,237 +1074,328 @@ async def chat_stream(
             ):
                 _agent = gw_result.agent_graph
 
-            async for event in _agent.astream_events(
-                {"messages": agent_messages},
-                version="v2",
-                config={"recursion_limit": 150},
-            ):
-                if await request.is_disconnected():
-                    break
+            # B2 fix: Track last active task tool call for timeout error attribution
+            last_active_task_info: dict[str, Any] | None = None
+            subagent_timeout_retries = 0
 
-                etype = event.get("event", "")
-                name = event.get("name", "")
-                data = event.get("data", {})
-                run_id = event.get("run_id", "")
-
-                if etype == "on_chat_model_stream":
-                    chunk = data.get("chunk")
-                    content = (
-                        getattr(chunk, "content", None)
-                        if hasattr(chunk, "content")
-                        else chunk.get("content", None) if isinstance(chunk, dict) else None
-                    )
-                    if content:
-                        pending_tokens.append(content)
-                        final_answer += content
-
-                        # A2UI block detection — use rolling buffer to handle
-                        # markers split across streaming token boundaries
-                        if in_a2ui_block:
-                            a2ui_buffer += content
-                            if A2UI_END in a2ui_buffer:
-                                before, _, after = a2ui_buffer.partition(A2UI_END)
-                                try:
-                                    a2ui_messages = json.loads(_clean_a2ui_json(before))
-                                    yield _sse_event("a2ui_batch", {
-                                        "messages": a2ui_messages,
-                                        "session_id": session_id,
-                                    })
-                                except json.JSONDecodeError:
-                                    logger.warning("Invalid A2UI JSON in stream")
-                                in_a2ui_block = False
-                                a2ui_buffer = ""
-                                if after:
-                                    pre_a2ui_buf = after
-                        else:
-                            pre_a2ui_buf += content
-                            idx = pre_a2ui_buf.find(A2UI_START)
-                            if idx >= 0:
-                                before = pre_a2ui_buf[:idx]
-                                after = pre_a2ui_buf[idx + A2UI_START_LEN:]
-                                if before:
-                                    yield _sse_event("token", {
-                                        "content": before,
-                                        "session_id": session_id,
-                                    })
-                                pre_a2ui_buf = ""
-                                in_a2ui_block = True
-                                if A2UI_END in after:
-                                    a2ui_body, _, rest = after.partition(A2UI_END)
-                                    try:
-                                        a2ui_messages = json.loads(_clean_a2ui_json(a2ui_body))
-                                        yield _sse_event("a2ui_batch", {
-                                            "messages": a2ui_messages,
-                                            "session_id": session_id,
-                                        })
-                                    except json.JSONDecodeError:
-                                        logger.warning("Invalid A2UI JSON in stream")
-                                    in_a2ui_block = False
-                                    if rest:
-                                        pre_a2ui_buf = rest
-                                else:
-                                    a2ui_buffer = after
-                            else:
-                                # Only emit content that can't be part of
-                                # a partial A2UI_START marker at the boundary
-                                cutoff = max(0, len(pre_a2ui_buf) - A2UI_START_LEN + 1)
-                                if cutoff > 0:
-                                    yield _sse_event("token", {
-                                        "content": pre_a2ui_buf[:cutoff],
-                                        "session_id": session_id,
-                                    })
-                                    pre_a2ui_buf = pre_a2ui_buf[cutoff:]
-
-                elif etype == "on_tool_start":
-                    step_counter += 1
-                    if run_id:
-                        tool_step_map[run_id] = step_counter
-                    tool_type = _classify_tool(name)
-                    tool_input = data.get("input", {})
-                    is_retrieval = name in ("get_config", "grep_kb", "read_wiki", "list_wiki",
-                                            "retrieve_knowledge", "search_knowledge")
-
-                    if is_retrieval:
-                        yield _sse_event("retrieve_start", {
-                            "type": "knowledge",
-                            "name": name,
-                            "query": _safe_truncate(tool_input, 200),
-                            "session_id": session_id,
-                        })
-
-                    yield _sse_event("tool_start", {
-                        "name": name,
-                        "tool_type": tool_type,
-                        "input": _safe_truncate(tool_input),
-                        "step": step_counter,
-                        "session_id": session_id,
-                    })
-
-                    # Report generation progress — tool start
-                    if name == "save_report":
-                        yield _sse_event("report_progress", {
-                            "session_id": session_id,
-                            "status": "saving",
-                            "message": "Report generated, saving...",
-                        })
-
-                    # Collect for persistence
-                    from datetime import UTC
-                    from datetime import datetime as _dt
-                    collected_steps.append({
-                        "id": f"{name}-{run_id[:8] if run_id else step_counter}",
-                        "type": tool_type,
-                        "name": name,
-                        "input": _safe_truncate(tool_input),
-                        "output": "",
-                        "status": "running",
-                        "timestamp": _dt.now(UTC).timestamp(),
-                        "stepNumber": step_counter,
-                    })
-
-                    # Emit sub_agent_start only once per task call (deduped)
-                    if name == "task" and run_id not in seen_task_ids:
-                        seen_task_ids.add(run_id)
-                        sa_name = ""
-                        if isinstance(tool_input, dict):
-                            sa_name = str(tool_input.get("subagent_type", "") or "")
-                        yield _sse_event("sub_agent_start", {
-                            "name": sa_name or "sub-agent",
-                            "input": _safe_truncate(tool_input.get("description", "") if isinstance(tool_input, dict) else tool_input),
-                            "step": step_counter,
-                            "session_id": session_id,
-                        })
-
-                elif etype == "on_tool_end":
-                    tool_type = _classify_tool(name)
-                    tool_output = data.get("output", "")
-                    is_retrieval = name in ("get_config", "grep_kb", "read_wiki", "list_wiki",
-                                            "retrieve_knowledge", "search_knowledge")
-                    step = tool_step_map.get(run_id, 0)
-
-                    if is_retrieval:
-                        result_count = 0
-                        if isinstance(tool_output, str):
-                            result_count = tool_output.count("\\n") + 1 if tool_output.strip() else 0
-                        elif isinstance(tool_output, (list, dict)):
-                            result_count = len(tool_output) if isinstance(tool_output, list) else 1
-                        yield _sse_event("retrieve_end", {
-                            "type": "knowledge",
-                            "name": name,
-                            "result_count": result_count,
-                            "session_id": session_id,
-                        })
-
-                    yield _sse_event("tool_end", {
-                        "name": name,
-                        "tool_type": tool_type,
-                        "output": _safe_truncate(tool_output),
-                        "step": step,
-                        "session_id": session_id,
-                    })
-
-                    # Report generation progress — tool end
-                    if name == "save_report":
-                        progress_data: dict = {
-                            "session_id": session_id,
-                            "status": "completed",
-                        }
-                        try:
-                            result = json.loads(tool_output) if isinstance(tool_output, str) else tool_output
-                            if isinstance(result, dict):
-                                progress_data["report_id"] = result.get("report_id", "")
-                                progress_data["url"] = result.get("url", "")
-                                progress_data["title"] = result.get("title", "")
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                        yield _sse_event("report_progress", progress_data)
-
-                    # Emit sub_agent_end once (deduped)
-                    if name == "task" and run_id in seen_task_ids:
-                        yield _sse_event("sub_agent_end", {
-                            "name": "",
-                            "output": _safe_truncate(tool_output),
-                            "step": step,
-                            "session_id": session_id,
-                        })
-
-                    # Update collected step with output
-                    step_id = f"{name}-{run_id[:8] if run_id else step}"
-                    for s in collected_steps:
-                        if s["id"] == step_id:
-                            s["output"] = _safe_truncate(tool_output)
-                            s["status"] = "error" if "Error" in str(tool_output) else "done"
+            # B2 fix: Wrap astream_events in a while loop to allow retry on sub-agent timeout
+            while True:
+                try:
+                    async for event in _agent.astream_events(
+                        {"messages": agent_messages},
+                        version="v2",
+                        config={"recursion_limit": 150},
+                    ):
+                        if await request.is_disconnected():
                             break
 
-                    # Check for human interrupt marker
-                    if name in ("request_approval", "request_input"):
-                        interrupt_data = parse_interrupt_marker(str(tool_output))
-                        if interrupt_data:
-                            yield _sse_event("interrupt", {
-                                "interrupt_id": interrupt_data["interrupt_id"],
-                                "type": interrupt_data["type"],
-                                "data": interrupt_data["data"],
+                        etype = event.get("event", "")
+                        name = event.get("name", "")
+                        data = event.get("data", {})
+                        run_id = event.get("run_id", "")
+
+                        if etype == "on_chat_model_stream":
+                            chunk = data.get("chunk")
+                            content = (
+                                getattr(chunk, "content", None)
+                                if hasattr(chunk, "content")
+                                else chunk.get("content", None) if isinstance(chunk, dict) else None
+                            )
+                            if content:
+                                pending_tokens.append(content)
+                                final_answer += content
+
+                                # A2UI block detection — use rolling buffer to handle
+                                # markers split across streaming token boundaries
+                                if in_a2ui_block:
+                                    a2ui_buffer += content
+                                    if A2UI_END in a2ui_buffer:
+                                        before, _, after = a2ui_buffer.partition(A2UI_END)
+                                        try:
+                                            a2ui_messages = json.loads(_clean_a2ui_json(before))
+                                            yield _sse_event("a2ui_batch", {
+                                                "messages": a2ui_messages,
+                                                "session_id": session_id,
+                                            })
+                                        except json.JSONDecodeError:
+                                            logger.warning("Invalid A2UI JSON in stream")
+                                        in_a2ui_block = False
+                                        a2ui_buffer = ""
+                                        if after:
+                                            pre_a2ui_buf = after
+                                else:
+                                    pre_a2ui_buf += content
+                                    idx = pre_a2ui_buf.find(A2UI_START)
+                                    if idx >= 0:
+                                        before = pre_a2ui_buf[:idx]
+                                        after = pre_a2ui_buf[idx + A2UI_START_LEN:]
+                                        if before:
+                                            yield _sse_event("token", {
+                                                "content": before,
+                                                "session_id": session_id,
+                                            })
+                                        pre_a2ui_buf = ""
+                                        in_a2ui_block = True
+                                        if A2UI_END in after:
+                                            a2ui_body, _, rest = after.partition(A2UI_END)
+                                            try:
+                                                a2ui_messages = json.loads(_clean_a2ui_json(a2ui_body))
+                                                yield _sse_event("a2ui_batch", {
+                                                    "messages": a2ui_messages,
+                                                    "session_id": session_id,
+                                                })
+                                            except json.JSONDecodeError:
+                                                logger.warning("Invalid A2UI JSON in stream")
+                                            in_a2ui_block = False
+                                            if rest:
+                                                pre_a2ui_buf = rest
+                                        else:
+                                            a2ui_buffer = after
+                                    else:
+                                        # Only emit content that can't be part of
+                                        # a partial A2UI_START marker at the boundary
+                                        cutoff = max(0, len(pre_a2ui_buf) - A2UI_START_LEN + 1)
+                                        if cutoff > 0:
+                                            yield _sse_event("token", {
+                                                "content": pre_a2ui_buf[:cutoff],
+                                                "session_id": session_id,
+                                            })
+                                            pre_a2ui_buf = pre_a2ui_buf[cutoff:]
+
+                        elif etype == "on_tool_start":
+                            step_counter += 1
+                            if run_id:
+                                tool_step_map[run_id] = step_counter
+                            tool_type = _classify_tool(name)
+                            tool_input = data.get("input", {})
+                            is_retrieval = name in ("get_config", "grep_kb", "read_wiki", "list_wiki",
+                                                    "retrieve_knowledge", "search_knowledge")
+
+                            if is_retrieval:
+                                yield _sse_event("retrieve_start", {
+                                    "type": "knowledge",
+                                    "name": name,
+                                    "query": _safe_truncate(tool_input, 200),
+                                    "session_id": session_id,
+                                })
+
+                            yield _sse_event("tool_start", {
+                                "name": name,
+                                "tool_type": tool_type,
+                                "input": _safe_truncate(tool_input),
+                                "step": step_counter,
                                 "session_id": session_id,
                             })
-                            # Persist partial message before yielding
-                            async with async_session_factory() as _db:
-                                partial_msg = Message(
-                                    session_id=session_id, role="assistant",
-                                    content=final_answer or "[等待人工介入]",
-                                    extra_metadata={
-                                        "execution_steps": collected_steps,
-                                        "interrupt_pending": True,
+
+                            # Report generation progress — tool start
+                            if name == "save_report":
+                                yield _sse_event("report_progress", {
+                                    "session_id": session_id,
+                                    "status": "saving",
+                                    "message": "Report generated, saving...",
+                                })
+
+                            # Collect for persistence
+                            # UTC/datetime 已在 chat_stream 顶部 import；不要在嵌套闭包内重复 import，
+                            # 否则会触发 Python local 绑定陷阱 (PEP 227)
+                            collected_steps.append({
+                                "id": f"{name}-{run_id[:8] if run_id else step_counter}",
+                                "type": tool_type,
+                                "name": name,
+                                "input": _safe_truncate(tool_input),
+                                "output": "",
+                                "status": "running",
+                                "timestamp": datetime.now(UTC).timestamp(),
+                                "stepNumber": step_counter,
+                            })
+
+                            # Emit sub_agent_start only once per task call (deduped)
+                            if name == "task" and run_id not in seen_task_ids:
+                                seen_task_ids.add(run_id)
+                                sa_name = ""
+                                if isinstance(tool_input, dict):
+                                    sa_name = str(tool_input.get("subagent_type", "") or "")
+                                yield _sse_event("sub_agent_start", {
+                                    "name": sa_name or "sub-agent",
+                                    "input": _safe_truncate(tool_input.get("description", "") if isinstance(tool_input, dict) else tool_input),
+                                    "step": step_counter,
+                                    "session_id": session_id,
+                                })
+                                # B2 fix: Track last active task for timeout error attribution
+                                last_active_task_info = {
+                                    "run_id": run_id,
+                                    "step": step_counter,
+                                    "step_id": f"{name}-{run_id[:8] if run_id else step_counter}",
+                                    "name": sa_name or "sub-agent",
+                                    "tool_call_id": run_id,  # Use run_id as tool_call_id proxy
+                                }
+
+                        elif etype == "on_tool_end":
+                            tool_type = _classify_tool(name)
+                            tool_output = data.get("output", "")
+                            is_retrieval = name in ("get_config", "grep_kb", "read_wiki", "list_wiki",
+                                                    "retrieve_knowledge", "search_knowledge")
+                            step = tool_step_map.get(run_id, 0)
+
+                            if is_retrieval:
+                                result_count = 0
+                                if isinstance(tool_output, str):
+                                    result_count = tool_output.count("\\n") + 1 if tool_output.strip() else 0
+                                elif isinstance(tool_output, (list, dict)):
+                                    result_count = len(tool_output) if isinstance(tool_output, list) else 1
+                                yield _sse_event("retrieve_end", {
+                                    "type": "knowledge",
+                                    "name": name,
+                                    "result_count": result_count,
+                                    "session_id": session_id,
+                                })
+
+                            yield _sse_event("tool_end", {
+                                "name": name,
+                                "tool_type": tool_type,
+                                "output": _safe_truncate(tool_output),
+                                "step": step,
+                                "session_id": session_id,
+                            })
+
+                            # Report generation progress — tool end
+                            if name == "save_report":
+                                progress_data: dict = {
+                                    "session_id": session_id,
+                                    "status": "completed",
+                                }
+                                try:
+                                    result = json.loads(tool_output) if isinstance(tool_output, str) else tool_output
+                                    if isinstance(result, dict):
+                                        progress_data["report_id"] = result.get("report_id", "")
+                                        progress_data["url"] = result.get("url", "")
+                                        progress_data["title"] = result.get("title", "")
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                                yield _sse_event("report_progress", progress_data)
+
+                            # Emit sub_agent_end once (deduped)
+                            if name == "task" and run_id in seen_task_ids:
+                                yield _sse_event("sub_agent_end", {
+                                    "name": "",
+                                    "output": _safe_truncate(tool_output),
+                                    "step": step,
+                                    "session_id": session_id,
+                                })
+                                # B2 fix: Clear last_active_task_info when task completes successfully
+                                last_active_task_info = None
+
+                            # Update collected step with output
+                            step_id = f"{name}-{run_id[:8] if run_id else step}"
+                            for s in collected_steps:
+                                if s["id"] == step_id:
+                                    s["output"] = _safe_truncate(tool_output)
+                                    s["status"] = "error" if "Error" in str(tool_output) else "done"
+                                    break
+
+                            # Check for human interrupt marker
+                            if name in ("request_approval", "request_input"):
+                                interrupt_data = parse_interrupt_marker(str(tool_output))
+                                if interrupt_data:
+                                    yield _sse_event("interrupt", {
                                         "interrupt_id": interrupt_data["interrupt_id"],
-                                    },
-                                )
-                                _db.add(partial_msg)
-                                await _db.commit()
-                            yield _sse_event("done", {
-                                "session_id": session_id,
-                                "reply": final_answer or "[等待人工介入]",
-                                "interrupt_pending": True,
-                            })
-                            return  # end stream, wait for user response
+                                        "type": interrupt_data["type"],
+                                        "data": interrupt_data["data"],
+                                        "session_id": session_id,
+                                    })
+                                    # Persist partial message before yielding
+                                    async with async_session_factory() as _db:
+                                        partial_msg = Message(
+                                            session_id=session_id, role="assistant",
+                                            content=final_answer or "[等待人工介入]",
+                                            extra_metadata={
+                                                "execution_steps": collected_steps,
+                                                "interrupt_pending": True,
+                                                "interrupt_id": interrupt_data["interrupt_id"],
+                                            },
+                                        )
+                                        _db.add(partial_msg)
+                                        await _db.commit()
+                                    yield _sse_event("done", {
+                                        "session_id": session_id,
+                                        "reply": final_answer or "[等待人工介入]",
+                                        "interrupt_pending": True,
+                                    })
+                                    return  # end stream, wait for user response
+
+                    # B2 fix: astream_events completed successfully, break out of retry loop
+                    break
+
+                except _SUBAGENT_TIMEOUT_ERRORS as timeout_err:
+                    # B2 fix: Handle sub-agent timeout gracefully instead of killing the stream
+                    subagent_timeout_retries += 1
+                    error_kind = type(timeout_err).__name__
+                    error_message = str(timeout_err)[:200]
+
+                    logger.warning(
+                        "Sub-agent timeout (attempt %d/%d): %s - %s",
+                        subagent_timeout_retries,
+                        _SUBAGENT_TIMEOUT_MAX_RETRIES,
+                        error_kind,
+                        error_message,
+                    )
+
+                    # Determine the step to attribute the error to
+                    error_step = step_counter
+                    error_step_id = None
+                    if last_active_task_info:
+                        error_step = last_active_task_info["step"]
+                        error_step_id = last_active_task_info["step_id"]
+
+                    # Emit sub_agent_error SSE event
+                    yield _sse_event("sub_agent_error", {
+                        "session_id": session_id,
+                        "step": error_step,
+                        "name": "task",
+                        "error_kind": error_kind,
+                        "error_message_preview": error_message,
+                    })
+
+                    # Emit tool_error SSE event
+                    yield _sse_event("tool_error", {
+                        "session_id": session_id,
+                        "step": error_step,
+                        "name": "task",
+                        "error_kind": error_kind,
+                        "error_message_preview": error_message,
+                    })
+
+                    # Update collected_steps for the failed task
+                    if error_step_id:
+                        for s in collected_steps:
+                            if s["id"] == error_step_id:
+                                s["status"] = "error"
+                                s["output"] = _safe_truncate(f"sub-agent timed out: {error_kind}: {error_message}")
+                                break
+
+                    # Construct ToolMessage to feed back to main agent
+                    from langchain_core.messages import ToolMessage
+                    tool_call_id = last_active_task_info["tool_call_id"] if last_active_task_info else f"task-{error_step}"
+                    timeout_tool_msg = ToolMessage(
+                        tool_call_id=tool_call_id,
+                        content=f"sub-agent timed out: {error_kind}. The sub-task could not be completed due to a timeout. Please inform the user and suggest retrying later.",
+                    )
+                    agent_messages.append(timeout_tool_msg)
+
+                    # Clear last_active_task_info since we've handled this error
+                    last_active_task_info = None
+
+                    # Check if we should retry or give up
+                    if subagent_timeout_retries >= _SUBAGENT_TIMEOUT_MAX_RETRIES:
+                        logger.warning(
+                            "Sub-agent timeout retry limit reached (%d), proceeding to close stream gracefully",
+                            _SUBAGENT_TIMEOUT_MAX_RETRIES,
+                        )
+                        break  # Exit while loop, proceed to normal stream closure
+
+                    # Otherwise, continue to retry with the updated agent_messages
+                    logger.info("Retrying astream_events after sub-agent timeout (attempt %d)", subagent_timeout_retries)
+                    continue
 
             # Flush any remaining pre-A2UI scanner buffer content
             if pre_a2ui_buf:
@@ -1401,12 +1507,47 @@ async def chat_stream(
                     await _db.commit()
 
         except Exception as exc:
+            # B2 fix: Fatal path — emit error event first, then done event to properly close stream
             import traceback as _tb
             logger.error("SSE chat error: %s\n%s", exc, _tb.format_exc())
+
+            # Mark any running steps as error
+            for s in collected_steps:
+                if s.get("status") == "running":
+                    s["status"] = "error"
+                    s["output"] = _safe_truncate(f"Fatal error: {str(exc)}")
+
+            # Emit error event
             yield _sse_event("error", {
                 "message": str(exc),
                 "session_id": session_id,
             })
+
+            # B2 fix: Always emit done event after error to properly close the stream
+            # This ensures frontend always receives a done event for unified stream close
+            yield _sse_event("done", {
+                "session_id": session_id,
+                "reply": final_answer or "对话异常结束",
+            })
+
+            # B2 fix: Persist assistant message with delivery_status="failed"
+            try:
+                async with async_session_factory() as _db:
+                    # Create a message to record the failed conversation
+                    failed_msg = Message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=final_answer or "对话异常结束",
+                        extra_metadata={
+                            "execution_steps": collected_steps,
+                            "error": str(exc)[:500],
+                        },
+                        delivery_status="failed",
+                    )
+                    _db.add(failed_msg)
+                    await _db.commit()
+            except Exception as persist_err:
+                logger.error("Failed to persist failed message: %s", persist_err)
 
     return StreamingResponse(
         event_stream(),

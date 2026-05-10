@@ -293,7 +293,11 @@ class ExecutorAgentPool:
         subagents_subset: list[str] | None
 
         if route == "executor":
-            if not decision.suggested_tools:
+            # Empty suggested_tools is valid — DeepAgents will inject
+            # essential tools (filesystem, planning) automatically.
+            # Only return None when suggested_tools is explicitly None
+            # (meaning RouterLLM couldn't determine any tools).
+            if decision.suggested_tools is None:
                 return None
             tools_subset = list(decision.suggested_tools)
             subagents_subset = None

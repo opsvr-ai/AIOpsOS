@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>脚本版本治理方案 — 文档分析报告</title>
+<style>
+/* ═══════════════════════════════════════════════
+   AIOpsOS Report Template — CSS Component Library
+   Theme: ink (Document Analysis)
+   ═══════════════════════════════════════════════ */
+
+/* ── CSS Variables ── */
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-secondary: #6b7280;
+  --fg-tertiary: #9ca3af;
+  --accent: #1e3a5f;
+  --accent-light: #e8edf3;
+  --border: #e5e7eb;
+  --card-bg: #f9fafb;
+  --critical: #dc2626;
+  --warning: #d97706;
+  --success: #16a34a;
+  --info: #2563eb;
+  --font-heading: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --font-body: 'Noto Sans SC', 'Source Han Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+[data-theme="ink"] {
+  --accent: #1e40af;
+  --accent-light: #dbeafe;
+  --card-bg: #f8faff;
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  font-size: 15px; line-height: 1.75;
+  color: var(--fg); background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.report-container { max-width: 960px; margin: 0 auto; padding: 48px 32px 64px; }
+
+/* ── Header ── */
+.report-header {
+  margin-bottom: 44px; padding-bottom: 28px;
+  border-bottom: 2px solid var(--border);
+}
+.report-header h1 {
+  font-family: var(--font-heading);
+  font-size: 30px; font-weight: 700;
+  letter-spacing: -0.01em; line-height: 1.3;
+  margin-bottom: 10px; color: var(--fg);
+}
+.report-header .meta {
+  font-size: 13px; color: var(--fg-secondary);
+  display: flex; align-items: center; gap: 12px;
+}
+.report-header .meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ── Hero Cover ── */
+.hero-cover {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #3b82f6 100%);
+  border-radius: 16px;
+  padding: 56px 48px;
+  margin-bottom: 40px;
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+.hero-cover::before {
+  content: '';
+  position: absolute;
+  top: -50%; right: -20%;
+  width: 400px; height: 400px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+}
+.hero-cover::after {
+  content: '';
+  position: absolute;
+  bottom: -30%; left: -10%;
+  width: 300px; height: 300px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.03);
+}
+.hero-cover .hero-badge {
+  display: inline-block;
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(4px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  margin-bottom: 20px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.hero-cover h1 {
+  font-family: var(--font-heading);
+  font-size: 36px; font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 16px;
+  position: relative; z-index: 1;
+}
+.hero-cover .hero-sub {
+  font-size: 16px;
+  opacity: 0.85;
+  margin-bottom: 24px;
+  position: relative; z-index: 1;
+}
+.hero-cover .hero-meta {
+  display: flex; gap: 24px;
+  font-size: 13px;
+  opacity: 0.7;
+  position: relative; z-index: 1;
+}
+.hero-cover .hero-meta span { display: flex; align-items: center; gap: 6px; }
+
+/* ── TOC ── */
+.toc {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 40px;
+  box-shadow: var(--shadow);
+}
+.toc-title {
+  font-family: var(--font-heading);
+  font-size: 16px; font-weight: 600;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+.toc-list { list-style: none; margin: 0; padding: 0; }
+.toc-list li { margin-bottom: 8px; padding: 0; }
+.toc-list a {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--fg-secondary);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.toc-list a:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+.toc-list .toc-num {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 12px; font-weight: 600;
+  flex-shrink: 0;
+}
+.toc-list .toc-l2 { padding-left: 44px; font-size: 13px; }
+
+/* ── Typography ── */
+h2 {
+  font-family: var(--font-heading);
+  font-size: 21px; font-weight: 600;
+  margin: 36px 0 16px; line-height: 1.4;
+}
+h3 {
+  font-family: var(--font-heading);
+  font-size: 17px; font-weight: 600;
+  margin: 28px 0 12px; line-height: 1.4;
+}
+h4 { font-size: 15px; font-weight: 600; margin: 24px 0 10px; }
+p { margin-bottom: 14px; }
+strong { font-weight: 600; }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.2s; }
+a:hover { border-bottom-color: var(--accent); }
+ul, ol { margin: 12px 0 12px 24px; }
+li { margin-bottom: 6px; }
+
+/* ── Section Title ── */
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 20px; font-weight: 600;
+  padding-bottom: 10px; margin: 40px 0 20px;
+  border-bottom: 2px solid var(--accent);
+  display: flex; align-items: center; gap: 10px;
+  color: var(--accent);
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 22px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Stat Card ── */
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px; text-align: center;
+  box-shadow: var(--shadow);
+}
+.stat-card .n {
+  font-size: 34px; font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent); line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.stat-card .l {
+  font-size: 13px; color: var(--fg-secondary);
+  margin-top: 6px; line-height: 1.4;
+}
+.stat-card.critical .n { color: var(--critical); }
+.stat-card.warning .n { color: var(--warning); }
+.stat-card.success .n { color: var(--success); }
+.stat-card.info .n { color: var(--info); }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px; margin: 20px 0;
+}
+
+/* ── KPI Grid ── */
+.kpi-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+.kpi-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+@media (max-width: 640px) {
+  .kpi-2, .kpi-3, .kpi-4, .stat-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── Pillar ── */
+.pillar {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+.pillar .ic { font-size: 28px; margin-bottom: 10px; line-height: 1; }
+.pillar .t { font-weight: 600; font-size: 15px; margin-bottom: 6px; color: var(--fg); }
+.pillar .d { font-size: 13px; color: var(--fg-secondary); line-height: 1.5; }
+.pillar-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px; margin: 20px 0;
+}
+
+/* ── Table ── */
+.table-wrapper {
+  overflow-x: auto; margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th {
+  background: var(--accent-light);
+  font-weight: 600; text-align: left;
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--border);
+  font-size: 13px; color: var(--accent);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: var(--card-bg); }
+tbody tr:hover td { background: var(--accent-light); }
+
+/* ── Callout ── */
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-light);
+  padding: 14px 18px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 20px 0; font-size: 14px;
+  line-height: 1.6;
+}
+.callout.warning {
+  border-left-color: var(--warning);
+  background: #fef3c7;
+}
+.callout.critical {
+  border-left-color: var(--critical);
+  background: #fee2e2;
+}
+.callout.info {
+  border-left-color: var(--info);
+  background: #dbeafe;
+}
+.callout.success {
+  border-left-color: var(--success);
+  background: #dcfce7;
+}
+.callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ── Tag ── */
+.tag {
+  display: inline-block; padding: 3px 10px;
+  border-radius: 12px; font-size: 12px; font-weight: 500;
+  line-height: 1.5;
+}
+.tag.critical { background: #fee2e2; color: var(--critical); }
+.tag.warning { background: #fef3c7; color: var(--warning); }
+.tag.success { background: #dcfce7; color: var(--success); }
+.tag.info { background: #dbeafe; color: var(--info); }
+.tag.neutral { background: #f3f4f6; color: #6b7280; }
+
+/* ── Progress Bar ── */
+.progress-bar {
+  width: 100%; height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden; margin: 8px 0;
+}
+.progress-bar .fill {
+  height: 100%; border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.progress-bar .fill.critical { background: var(--critical); }
+.progress-bar .fill.warning { background: var(--warning); }
+.progress-bar .fill.success { background: var(--success); }
+
+/* ── Progress Label Row ── */
+.progress-row {
+  display: flex; align-items: center;
+  gap: 12px; margin-bottom: 12px;
+}
+.progress-row .label {
+  width: 140px; font-size: 13px;
+  color: var(--fg-secondary); flex-shrink: 0;
+}
+.progress-row .bar-wrap { flex: 1; }
+.progress-row .pct {
+  width: 48px; text-align: right;
+  font-size: 13px; font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+
+/* ── Score Card ── */
+.score-card {
+  text-align: center;
+  padding: 32px 24px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.score-card .score {
+  font-size: 52px; font-weight: 700;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+.score-card .score.critical { color: var(--critical); }
+.score-card .score.warning { color: var(--warning); }
+.score-card .score.success { color: var(--success); }
+.score-card .score.info { color: var(--info); }
+.score-card .label { font-size: 14px; color: var(--fg-secondary); margin-top: 8px; }
+.score-card .desc { font-size: 13px; color: var(--fg-tertiary); margin-top: 4px; }
+
+/* ── Highlight Card ── */
+.highlight-card {
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  color: #ffffff;
+  margin: 24px 0;
+  box-shadow: var(--shadow-md);
+}
+.highlight-card .tag-rec {
+  display: inline-block;
+  background: rgba(255,255,255,0.2);
+  padding: 4px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+.highlight-card h3 {
+  font-family: var(--font-heading);
+  font-size: 20px; margin: 0 0 12px;
+  color: #ffffff;
+}
+.highlight-card p { opacity: 0.9; margin-bottom: 8px; }
+.highlight-card ul { margin: 8px 0 0 20px; }
+.highlight-card li { opacity: 0.85; margin-bottom: 6px; color: #ffffff; }
+
+/* ── Footer ── */
+.report-footer {
+  margin-top: 48px; padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12px; color: var(--fg-tertiary);
+}
+
+/* ── Utility ── */
+.text-center { text-align: center; }
+.text-right { text-align: right; }
+.text-muted { color: var(--fg-secondary); font-size: 13px; }
+.mt-4 { margin-top: 16px; }
+.mb-4 { margin-bottom: 16px; }
+
+/* ── Bar Chart (simple) ── */
+.bar-chart { margin: 20px 0; }
+.bar-item {
+  display: flex; align-items: center;
+  margin-bottom: 14px; gap: 12px;
+}
+.bar-item .bar-label {
+  width: 100px; font-size: 13px;
+  color: var(--fg-secondary); text-align: right;
+  flex-shrink: 0;
+}
+.bar-item .bar-track {
+  flex: 1; height: 28px;
+  background: var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.bar-item .bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  display: flex; align-items: center;
+  padding: 0 10px;
+  font-size: 12px; font-weight: 600;
+  color: #fff;
+  min-width: 40px;
+}
+.bar-item .bar-fill.blue { background: linear-gradient(90deg, #1e40af, #3b82f6); }
+.bar-item .bar-fill.green { background: linear-gradient(90deg, #15803d, #22c55e); }
+.bar-item .bar-fill.orange { background: linear-gradient(90deg, #b45309, #f59e0b); }
+.bar-item .bar-fill.purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+.bar-item .bar-fill.red { background: linear-gradient(90deg, #b91c1c, #ef4444); }
+.bar-item .bar-fill.teal { background: linear-gradient(90deg, #0d9488, #14b8a6); }
+.bar-item .bar-val {
+  width: 60px; font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* ── Print ── */
+@media print {
+  @page { margin: 2cm; size: A4; }
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .report-container { max-width: 100%; padding: 0; }
+  .hero-cover { background: #1e3a5f !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .stat-card, .pillar { break-inside: avoid; box-shadow: none; }
+  .highlight-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .report-footer { display: none; }
+}
+
+/* ── Sub-section divider ── */
+.sub-section {
+  margin: 32px 0 16px;
+  font-size: 18px; font-weight: 600;
+  color: var(--fg);
+  display: flex; align-items: center; gap: 8px;
+}
+.sub-section .sub-num {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px; font-weight: 600;
+}
+
+/* ── Dimension Card ── */
+.dim-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--accent);
+}
+.dim-card.critical { border-left-color: var(--critical); }
+.dim-card.warning { border-left-color: var(--warning); }
+.dim-card.info { border-left-color: var(--info); }
+.dim-card .dim-header {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.dim-card .dim-title { font-weight: 600; font-size: 15px; }
+.dim-card .dim-desc { font-size: 13px; color: var(--fg-secondary); line-height: 1.6; }
+</style>
+</head>
+<body data-theme="ink">
+<div class="report-container">
+
+  <!-- ═══════════ HERO COVER ═══════════ -->
+  <div class="hero-cover">
+    <div class="hero-badge">DOCUMENT ANALYSIS REPORT</div>
+    <h1>脚本版本治理方案<br>文档分析报告</h1>
+    <p class="hero-sub">基于汇报材料（v1.8）的深度结构化分析 —— 现状诊断 · 问题洞察 · 方案决策</p>
+    <div class="hero-meta">
+      <span>文档版本：v1.8</span>
+      <span>汇报时间：2026年03月</span>
+      <span>来源：商行联盟 · 自动化运维部</span>
+      <span>分析类型：文档分析</span>
+    </div>
+  </div>
+
+  <!-- ═══════════ TABLE OF CONTENTS ═══════════ -->
+  <div class="toc">
+    <div class="toc-title">目录导航</div>
+    <ul class="toc-list">
+      <li><a href="#sec-summary"><span class="toc-num">S</span>执行摘要</a></li>
+      <li><a href="#sec-p1"><span class="toc-num">1</span>PART 01 · 现状分析</a></li>
+      <li><a class="toc-l2" href="#sec-1-1">1.1 平台管理概况</a></li>
+      <li><a class="toc-l2" href="#sec-1-2">1.2 自动化脚本管理现状</a></li>
+      <li><a class="toc-l2" href="#sec-1-3">1.3 CMDB脚本管理现状</a></li>
+      <li><a class="toc-l2" href="#sec-1-4">1.4 运维&研发脚本现状（抽样调查）</a></li>
+      <li><a class="toc-l2" href="#sec-1-5">1.5 问题分析（6大维度）</a></li>
+      <li><a href="#sec-p2"><span class="toc-num">2</span>PART 02 · 治理方案</a></li>
+      <li><a class="toc-l2" href="#sec-2-1">2.1 三种方案设计</a></li>
+      <li><a class="toc-l2" href="#sec-2-2">2.2 方案对比矩阵</a></li>
+      <li><a class="toc-l2" href="#sec-2-3">2.3 推荐方案</a></li>
+    </ul>
+  </div>
+
+  <!-- ═══════════ EXECUTIVE SUMMARY ═══════════ -->
+  <div class="report-body">
+    <div class="section-title" id="sec-summary">执行摘要</div>
+    <p>本报告基于商行联盟（中国持牌金融科技服务公司）<strong>《脚本版本治理汇报方案》v1.8</strong> 进行深度结构化分析。该材料系统呈现了企业在自动化运维场景下的脚本管理现状、核心痛点及治理路径。</p>
+    <p>核心发现：当前企业已通过自动化运维平台和CMDB平台纳管了 <strong>2,021个</strong> 平台脚本和 <strong>270+个</strong> CMDB脚本，但运维与研发侧仍存在高达 <strong>65%</strong> 的脚本无版本管理、<strong>70%</strong> 依赖手工执行的盲区。面对六大维度的系统性问题，材料提出了三种治理方案，最终推荐 <strong>「平台集中管理 + 流程控制 + Git备份」</strong> 的混合高可用模式。</p>
+
+    <div class="kpi-4">
+      <div class="stat-card">
+        <div class="n">2,021</div>
+        <div class="l">平台纳管脚本</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="n">65%</div>
+        <div class="l">脚本无版本管理</div>
+      </div>
+      <div class="stat-card critical">
+        <div class="n">70%</div>
+        <div class="l">手工执行比例</div>
+      </div>
+      <div class="stat-card info">
+        <div class="n">6</div>
+        <div class="l">核心问题维度</div>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <strong>分析结论</strong>
+      材料逻辑清晰，数据详实，从「现状→问题→方案」层层递进。方案三（混合高可用模式）综合优势显著，但需关注二次开发成本与组织协同。建议优先推进CMDB脚本的全量版本管理上线，同步启动自动化平台与Git的集成开发。
+    </div>
+
+    <!-- ═══════════ PART 01 ═══════════ -->
+    <div class="section-title" id="sec-p1">PART 01 · 现状分析</div>
+    <p>本章从平台管理概况、自动化脚本管理、CMDB脚本管理、运维&研发脚本抽样调查四个维度，全景呈现企业脚本管理与版本控制的现状。</p>
+
+    <!-- 1.1 平台管理概况 -->
+    <div class="sub-section" id="sec-1-1"><span class="sub-num">1.1</span>平台管理概况</div>
+    <p>企业目前通过两大核心平台承载脚本管理与自动化执行能力：</p>
+    <div class="kpi-2">
+      <div class="pillar">
+        <div class="t">自动化运维管理平台</div>
+        <div class="d">聚焦灾备切换、生产批量执行、定时任务调度及健康巡检等核心运维场景。已具备完整版本管理体系，支持版本迭代与回滚。</div>
+      </div>
+      <div class="pillar">
+        <div class="t">CMDB配置管理平台</div>
+        <div class="d">覆盖云智中心、ITSM流程流转及CMDB自身数据采集等自动化脚本。建立了完善的版本控制机制。</div>
+      </div>
+    </div>
+
+    <!-- 1.2 自动化脚本管理现状 -->
+    <div class="sub-section" id="sec-1-2"><span class="sub-num">1.2</span>自动化脚本管理现状</div>
+    <div class="kpi-4">
+      <div class="stat-card">
+        <div class="n">2,021</div>
+        <div class="l">纳管脚本总数</div>
+      </div>
+      <div class="stat-card">
+        <div class="n">166</div>
+        <div class="l">巡检脚本数</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="n">2,700+</div>
+        <div class="l">纳管任务总数</div>
+      </div>
+      <div class="stat-card critical">
+        <div class="n">83%</div>
+        <div class="l">灾备切换脚本占比</div>
+      </div>
+    </div>
+
+    <p>自动化平台管理呈现<strong>「双轨并存」</strong>特征：平台核心脚本具备完整版本管理能力，但自动化定时任务直接调用服务器脚本，<strong>不具备版本管理能力</strong>；健康巡检模块具有初步版本管理能力。</p>
+
+    <div class="bar-chart">
+      <div class="bar-item">
+        <div class="bar-label">脚本服务</div>
+        <div class="bar-track"><div class="bar-fill blue" style="width:100%">版本管理完善</div></div>
+        <div class="bar-val">100%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">自动化定时任务</div>
+        <div class="bar-track"><div class="bar-fill red" style="width:0%">无版本管理</div></div>
+        <div class="bar-val">0%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">健康巡检</div>
+        <div class="bar-track"><div class="bar-fill orange" style="width:40%">初步版本管理</div></div>
+        <div class="bar-val">40%</div>
+      </div>
+    </div>
+
+    <!-- 1.3 CMDB脚本管理现状 -->
+    <div class="sub-section" id="sec-1-3"><span class="sub-num">1.3</span>CMDB脚本管理现状</div>
+    <div class="kpi-3">
+      <div class="stat-card">
+        <div class="n">270+</div>
+        <div class="l">纳管脚本总数</div>
+      </div>
+      <div class="stat-card success">
+        <div class="n">100%</div>
+        <div class="l">全量版本管理</div>
+      </div>
+      <div class="stat-card">
+        <div class="n">1.0.16</div>
+        <div class="l">典型版本号示例</div>
+      </div>
+    </div>
+
+    <p>CMDB脚本管理覆盖五大业务领域，且全部脚本均已实现<strong>明确版本号管理</strong>（如 v1.0.16），是全企业脚本版本管理的标杆板块。</p>
+    <div class="pillar-row">
+      <div class="pillar">
+        <div class="ic">🔗</div>
+        <div class="t">物理机/资源管理</div>
+        <div class="d">物理机影响范围拉群、IP用途关联等基础资源管理脚本</div>
+      </div>
+      <div class="pillar">
+        <div class="ic">☁️</div>
+        <div class="t">云管/IP生命周期</div>
+        <div class="d">批量更新IP使用情况，云平台IP资源调度</div>
+      </div>
+      <div class="pillar">
+        <div class="ic">⚙️</div>
+        <div class="t">PaaS中间件管控</div>
+        <div class="d">Minio、Nacos、Redis等中间件自动化启停与配置管理</div>
+      </div>
+      <div class="pillar">
+        <div class="ic">🏗️</div>
+        <div class="t">基础环境部署</div>
+        <div class="d">OS配置、安全加固、备份系统、网络及虚拟化环境自动化部署</div>
+      </div>
+      <div class="pillar">
+        <div class="ic">📦</div>
+        <div class="t">中间件全生命周期</div>
+        <div class="d">ES、Kafka、RabbitMQ等主流中间件全生命周期部署管理</div>
+      </div>
+    </div>
+
+    <!-- 1.4 运维&研发脚本现状 -->
+    <div class="sub-section" id="sec-1-4"><span class="sub-num">1.4</span>运维&amp;研发脚本现状（抽样调查）</div>
+    <p>2026年2月5日至9日期间，对涉及<strong>13个关键业务系统</strong>的脚本进行了专项调查，揭示了当前管理体系中最大的薄弱环节。</p>
+
+    <div class="kpi-4">
+      <div class="stat-card info">
+        <div class="n">13</div>
+        <div class="l">涉及关键业务系统</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="n">141</div>
+        <div class="l">收集脚本总数</div>
+      </div>
+      <div class="stat-card critical">
+        <div class="n">65%</div>
+        <div class="l">无版本管理</div>
+      </div>
+      <div class="stat-card critical">
+        <div class="n">70%</div>
+        <div class="l">手工执行</div>
+      </div>
+    </div>
+
+    <h4>脚本来源分布</h4>
+    <div class="bar-chart">
+      <div class="bar-item">
+        <div class="bar-label">运维编写</div>
+        <div class="bar-track"><div class="bar-fill blue" style="width:58%">82 个</div></div>
+        <div class="bar-val">58%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">研发提供</div>
+        <div class="bar-track"><div class="bar-fill green" style="width:42%">59 个</div></div>
+        <div class="bar-val">42%</div>
+      </div>
+    </div>
+
+    <h4>脚本功能类型分布</h4>
+    <div class="bar-chart">
+      <div class="bar-item">
+        <div class="bar-label">变更操作类</div>
+        <div class="bar-track"><div class="bar-fill blue" style="width:43%">43%</div></div>
+        <div class="bar-val">43%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">应急处置类</div>
+        <div class="bar-track"><div class="bar-fill orange" style="width:21%">21%</div></div>
+        <div class="bar-val">21%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">查询类</div>
+        <div class="bar-track"><div class="bar-fill green" style="width:15%">15%</div></div>
+        <div class="bar-val">15%</div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-label">其他</div>
+        <div class="bar-track"><div class="bar-fill purple" style="width:21%">21%</div></div>
+        <div class="bar-val">21%</div>
+      </div>
+    </div>
+
+    <h4>版本管理 vs 执行方式</h4>
+    <div class="kpi-2">
+      <div>
+        <p><strong>版本管理情况</strong></p>
+        <div class="progress-row">
+          <div class="label">无版本管理</div>
+          <div class="bar-wrap">
+            <div class="progress-bar"><div class="fill critical" style="width:65%"></div></div>
+          </div>
+          <div class="pct">65%</div>
+        </div>
+        <div class="progress-row">
+          <div class="label">有版本管理</div>
+          <div class="bar-wrap">
+            <div class="progress-bar"><div class="fill success" style="width:35%"></div></div>
+          </div>
+          <div class="pct">35%</div>
+        </div>
+      </div>
+      <div>
+        <p><strong>生产环境执行方式</strong></p>
+        <div class="progress-row">
+          <div class="label">手工执行</div>
+          <div class="bar-wrap">
+            <div class="progress-bar"><div class="fill critical" style="width:70%"></div></div>
+          </div>
+          <div class="pct">70%</div>
+        </div>
+        <div class="progress-row">
+          <div class="label">自动化/其他</div>
+          <div class="bar-wrap">
+            <div class="progress-bar"><div class="fill success" style="width:30%"></div></div>
+          </div>
+          <div class="pct">30%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout critical">
+      <strong>核心风险提示</strong>
+      运维&研发脚本是当前版本管理的<strong>最大盲区</strong>。65%的脚本无版本管理、70%依赖手工执行，且涉及13个关键业务系统，一旦脚本出现错误将直接影响生产稳定性。此外，42%的脚本由研发提供，跨团队协作进一步增加了管理复杂度。
+    </div>
+
+    <!-- 1.5 问题分析 -->
+    <div class="sub-section" id="sec-1-5"><span class="sub-num">1.5</span>问题分析（6大维度）</div>
+    <p>材料从6个维度系统梳理了当前脚本管理的结构性问题，每个维度均揭示了不同层面的风险与短板。</p>
+
+    <div class="dim-card critical">
+      <div class="dim-header"><span class="dim-title">问题一：版本管理缺失</span><span class="tag critical">严重</span></div>
+      <div class="dim-desc">脚本散落个人终端、共享目录或非受控仓库；无修改记录、版本管理、回滚机制。一旦脚本被错误修改或误删除，无法快速恢复。</div>
+    </div>
+
+    <div class="dim-card critical">
+      <div class="dim-header"><span class="dim-title">问题二：生命周期流程断裂</span><span class="tag critical">严重</span></div>
+      <div class="dim-desc">无标准化创建→测试→审批→发布→下线流程；依赖口头沟通；变更无留痕。脚本运维过程不可追溯，合规风险高。</div>
+    </div>
+
+    <div class="dim-card critical">
+      <div class="dim-header"><span class="dim-title">问题三：安全与合规隐患</span><span class="tag critical">严重</span></div>
+      <div class="dim-desc">脚本中硬编码密码、密钥；存储权限宽松；无敏感信息脱敏机制。存在严重的信息安全与监管合规风险。</div>
+    </div>
+
+    <div class="dim-card warning">
+      <div class="dim-header"><span class="dim-title">问题四：质量与可靠性薄弱</span><span class="tag warning">中等</span></div>
+      <div class="dim-desc">缺乏统一的编码规范、测试用例、执行验证体系。脚本质量完全依赖个人经验，缺乏标准化保障。</div>
+    </div>
+
+    <div class="dim-card warning">
+      <div class="dim-header"><span class="dim-title">问题五：知识资产流失</span><span class="tag warning">中等</span></div>
+      <div class="dim-desc">无统一知识库；脚本归属个人；人员离职即造成知识断层。长期来看，这种模式不可持续，知识复制成本高。</div>
+    </div>
+
+    <div class="dim-card warning">
+      <div class="dim-header"><span class="dim-title">问题六：与平台能力脱节</span><span class="tag warning">中等</span></div>
+      <div class="dim-desc">散放脚本无法接入自动化平台的调度、监控、日志、巡检能力；操作黑盒化，运维效率低。</div>
+    </div>
+
+    <!-- ═══════════ PART 02 ═══════════ -->
+    <div class="section-title" id="sec-p2">PART 02 · 治理方案</div>
+    <p>针对上述六大问题，材料提出了三种递进式的治理方案，从平台集中管理到Git集成再到混合高可用模式，逐步提升治理深度与覆盖范围。</p>
+
+    <!-- 2.1 三种方案设计 -->
+    <div class="sub-section" id="sec-2-1"><span class="sub-num">2.1</span>三种方案设计</div>
+
+    <div class="pillar-row">
+      <div class="pillar" style="border-top: 3px solid var(--warning);">
+        <div class="ic">📋</div>
+        <div class="t">方案一：平台集中管理+流程控制</div>
+        <div class="d">以自建平台为核心，提供托管与原生执行双模式，流程驱动版本更新，嵌入AI智能评审。</div>
+        <div style="margin-top:10px;font-size:12px;color:var(--fg-tertiary);">
+          <strong>核心能力：</strong>双模式管理、自动比对告警、ITSM流程驱动、AI风险评审、版本巡检
+        </div>
+      </div>
+      <div class="pillar" style="border-top: 3px solid var(--info);">
+        <div class="ic">📂</div>
+        <div class="t">方案二：Git集中管理+流程控制</div>
+        <div class="d">利用Git成熟生态进行版本管理，流程驱动变更，AI辅助风险识别。</div>
+        <div style="margin-top:10px;font-size:12px;color:var(--fg-tertiary);">
+          <strong>流程：</strong>脚本开发 → ITSM流程 → 多级审批 → 自动上传Git仓库
+        </div>
+      </div>
+      <div class="pillar" style="border-top: 3px solid var(--success);">
+        <div class="ic">🔄</div>
+        <div class="t">方案三：混合高可用模式 <span class="tag success" style="margin-left:6px;">推荐</span></div>
+        <div class="d">平台管理为主，Git备份为辅，结合流程控制与AI评审，实现高可用性。</div>
+        <div style="margin-top:10px;font-size:12px;color:var(--fg-tertiary);">
+          <strong>核心能力：</strong>方案一能力 + Git容错备份
+        </div>
+      </div>
+    </div>
+
+    <!-- 2.2 方案对比矩阵 -->
+    <div class="sub-section" id="sec-2-2"><span class="sub-num">2.2</span>方案对比矩阵</div>
+    <p>从8个关键维度对三种方案进行横向对比，综合评估各方案的覆盖能力与实施复杂度。</p>
+
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>核心特性</th>
+            <th>方案一：平台集中</th>
+            <th>方案二：Git集中</th>
+            <th style="background:#dbeafe;">方案三：混合模式</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>管理模式</strong></td>
+            <td>平台托管/原生执行</td>
+            <td>Git集中存储</td>
+            <td style="background:#f0f7ff;">平台托管 + Git备份</td>
+          </tr>
+          <tr>
+            <td><strong>版本控制</strong></td>
+            <td>平台内记录与对比</td>
+            <td>Git完整版本历史</td>
+            <td style="background:#f0f7ff;">平台记录 + Git完整历史</td>
+          </tr>
+          <tr>
+            <td><strong>权限控制</strong></td>
+            <td><span class="tag success">支持</span>（属主/属组）</td>
+            <td><span class="tag critical">不支持</span></td>
+            <td style="background:#f0f7ff;"><span class="tag success">支持</span>（属主/属组）</td>
+          </tr>
+          <tr>
+            <td><strong>自动比对告警</strong></td>
+            <td><span class="tag success">支持</span></td>
+            <td><span class="tag critical">不支持</span></td>
+            <td style="background:#f0f7ff;"><span class="tag success">支持</span></td>
+          </tr>
+          <tr>
+            <td><strong>备份机制</strong></td>
+            <td>依赖平台自身备份</td>
+            <td>Git分布式存储</td>
+            <td style="background:#f0f7ff;">平台 + Git双重保障</td>
+          </tr>
+          <tr>
+            <td><strong>高可用性</strong></td>
+            <td>中等</td>
+            <td>高</td>
+            <td style="background:#f0f7ff;"><strong>最高</strong></td>
+          </tr>
+          <tr>
+            <td><strong>脚本分发</strong></td>
+            <td><span class="tag success">支持</span></td>
+            <td><span class="tag critical">不支持</span></td>
+            <td style="background:#f0f7ff;"><span class="tag success">支持</span></td>
+          </tr>
+          <tr>
+            <td><strong>实施难度</strong></td>
+            <td>中等</td>
+            <td><span class="tag success">低</span></td>
+            <td style="background:#f0f7ff;">中等</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 2.3 推荐方案 -->
+    <div class="sub-section" id="sec-2-3"><span class="sub-num">2.3</span>推荐方案</div>
+
+    <div class="highlight-card">
+      <div class="tag-rec">AI OPS RECOMMENDATION</div>
+      <h3>方案三：混合高可用模式（推荐）</h3>
+      <p><strong>核心策略：</strong>平台集中管理 + 流程控制 + Git备份，实现脚本全生命周期的闭环治理。</p>
+      <ul>
+        <li><strong>模式兼容：</strong>支持托管分发与原生执行双模式，平滑过渡，不影响现有业务</li>
+        <li><strong>高可用保障：</strong>平台与Git双重备份，单点故障不影响版本管理能力</li>
+        <li><strong>管理全面：</strong>覆盖版本控制、权限管理、自动比对告警、AI智能评审、版本巡检</li>
+      </ul>
+    </div>
+
+    <p>方案三在吸收方案一（平台全面管理）和方案二（Git生态优势）各自长处的基础上，实现了<strong>1+1&gt;2</strong>的治理效果。虽然需要一定的二次开发投入来实现Git同步，但从长期治理效能和风险防控角度看，这是最具可持续性的选择。</p>
+
+    <div class="callout warning">
+      <strong>实施建议</strong>
+      <ol style="margin: 6px 0 0 20px;">
+        <li><strong>分阶段推进：</strong>优先将运维&研发侧141个脚本（65%无版本管理）纳入平台管理</li>
+        <li><strong>流程先行：</strong>先建立ITSM标准流程和编码规范，再推进平台能力建设</li>
+        <li><strong>AI赋能：</strong>在流程中嵌入AI智能评审，实现代码质量、安全风险的自动化检测</li>
+        <li><strong>知识沉淀：</strong>利用平台统一知识库，将脚本从个人资产转化为组织资产</li>
+      </ol>
+    </div>
+
+    <hr>
+
+    <!-- ═══════════ ANALYSIS INSIGHTS ═══════════ -->
+    <div class="section-title">分析洞察与建议</div>
+
+    <div class="kpi-2">
+      <div class="pillar" style="border-left: 3px solid var(--info);">
+        <div class="t">文档结构评价</div>
+        <div class="d">材料采用「现状→问题→方案」三段式结构，逻辑清晰、层级分明。数据支撑充分（2,021、166、270+、141等核心数据点），问题归因准确，方案设计系统完整。整体质量在内部治理方案汇报中属于上乘。</div>
+      </div>
+      <div class="pillar" style="border-left: 3px solid var(--warning);">
+        <div class="t">可优化方向</div>
+        <div class="d">①缺少量化目标（如"6个月内将无版本管理率从65%降至20%"）；②未给出明确的时间表和资源需求估算；③缺少风险评估——方案三的Git同步二次开发本身也存在技术风险，需补充备选策略。</div>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <strong>最终评级</strong>
+      材料成熟度：<strong>★★★★☆</strong>（4/5）—— 分析全面、方案系统，建议补充量化目标与实施路线图以增强可落地性。
+    </div>
+
+  </div>
+
+  <!-- ═══════════ FOOTER ═══════════ -->
+  <div class="report-footer">
+    Generated by AIOpsOS Report Agent — Document Analysis · 2026年03月 &mdash; 脚本版本治理方案 v1.8
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>济南天气分析报告 - 2026年5月10日</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 40px 0 30px;
+    position: relative;
+  }
+  .header h1 {
+    font-size: 2.2em;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f7971e, #ffd200);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 2px;
+  }
+  .header .subtitle {
+    margin-top: 8px;
+    color: #8899aa;
+    font-size: 1em;
+  }
+  .header .date-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 6px 20px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    color: #ccc;
+    font-size: 0.9em;
+  }
+
+  /* Live Card */
+  .live-card {
+    background: linear-gradient(135deg, rgba(255,165,0,0.12), rgba(255,200,0,0.05));
+    border: 1px solid rgba(255,200,0,0.2);
+    border-radius: 16px;
+    padding: 30px;
+    margin-bottom: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 20px;
+    backdrop-filter: blur(10px);
+  }
+  .live-card .weather-icon {
+    font-size: 4em;
+    text-align: center;
+    min-width: 100px;
+  }
+  .live-card .temp-main {
+    flex: 1;
+    min-width: 180px;
+  }
+  .live-card .temp-main .temp-value {
+    font-size: 3.5em;
+    font-weight: 700;
+    color: #fff;
+  }
+  .live-card .temp-main .temp-value small {
+    font-size: 0.4em;
+    color: #8899aa;
+    font-weight: 400;
+  }
+  .live-card .temp-main .weather-desc {
+    font-size: 1.1em;
+    color: #ffd700;
+    margin-top: 4px;
+  }
+  .live-card .temp-main .feels-like {
+    color: #8899aa;
+    font-size: 0.85em;
+    margin-top: 2px;
+  }
+  .live-details {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 24px;
+    flex: 1;
+    min-width: 200px;
+  }
+  .live-details .detail-item {
+    text-align: center;
+    padding: 8px 4px;
+  }
+  .live-details .detail-item .label {
+    font-size: 0.75em;
+    color: #8899aa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .live-details .detail-item .value {
+    font-size: 1.1em;
+    color: #fff;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  /* Section */
+  .section-title {
+    font-size: 1.2em;
+    color: #ffd700;
+    margin: 28px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Hourly Grid */
+  .hourly-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .hourly-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 14px 8px;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .hourly-card:hover {
+    background: rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+  }
+  .hourly-card .h-time {
+    font-size: 0.8em;
+    color: #8899aa;
+  }
+  .hourly-card .h-icon {
+    font-size: 1.5em;
+    margin: 6px 0;
+  }
+  .hourly-card .h-temp {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #fff;
+  }
+  .hourly-card .h-wind {
+    font-size: 0.7em;
+    color: #667788;
+    margin-top: 4px;
+  }
+  .hourly-card .h-humidity {
+    font-size: 0.7em;
+    color: #667788;
+  }
+  .hourly-card.sunny { border-left: 3px solid #ffd700; }
+  .hourly-card.clear { border-left: 3px solid #4a90d9; }
+
+  /* Astro Card */
+  .astro-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .astro-item {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .astro-item .a-icon { font-size: 1.8em; margin-bottom: 6px; }
+  .astro-item .a-label { color: #667788; font-size: 0.8em; }
+  .astro-item .a-value { color: #fff; font-size: 1.1em; font-weight: 600; margin-top: 4px; }
+
+  /* Summary */
+  .summary-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+    line-height: 1.8;
+  }
+  .summary-card p { color: #ccc; }
+  .summary-card .highlight { color: #ffd700; font-weight: 600; }
+  .summary-card .hot { color: #ff6b6b; font-weight: 600; }
+  .summary-card .cool { color: #74b9ff; font-weight: 600; }
+  .summary-card .warning { color: #fdcb6e; font-weight: 600; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 20px 0;
+    color: #556677;
+    font-size: 0.8em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 20px;
+  }
+
+  @media (max-width: 640px) {
+    .live-card { flex-direction: column; text-align: center; }
+    .live-details { grid-template-columns: repeat(3, 1fr); }
+    .hourly-grid { grid-template-columns: repeat(4, 1fr); }
+    .header h1 { font-size: 1.5em; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>☀️ 济南 · 天气分析报告</h1>
+    <div class="subtitle">济南 · 山东省 · 中国</div>
+    <div class="date-badge">📅 2026年5月10日 · 星期日</div>
+  </div>
+
+  <!-- Current Live -->
+  <div class="live-card">
+    <div class="weather-icon">☀️</div>
+    <div class="temp-main">
+      <div class="temp-value">29<small>°C</small></div>
+      <div class="weather-desc">☀️ 晴 (Sunny)</div>
+      <div class="feels-like">体感温度 27°C</div>
+    </div>
+    <div class="live-details">
+      <div class="detail-item">
+        <div class="label">🌡️ 高温</div>
+        <div class="value">32°C</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">❄️ 低温</div>
+        <div class="value">18°C</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">💧 湿度</div>
+        <div class="value">27%</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">💨 风速</div>
+        <div class="value">15 km/h</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">🧭 风向</div>
+        <div class="value">西南 (SW)</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">☀️ UV指数</div>
+        <div class="value">8 · 很高</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">👁️ 能见度</div>
+        <div class="value">10 km</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">📊 气压</div>
+        <div class="value">1009 hPa</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">☁️ 云量</div>
+        <div class="value">9%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hourly Forecast -->
+  <div class="section-title">⏰ 逐时预报</div>
+  <div class="hourly-grid">
+    <div class="hourly-card clear">
+      <div class="h-time">00:00</div>
+      <div class="h-icon">🌙</div>
+      <div class="h-temp">20°C</div>
+      <div class="h-wind">💨 33 km/h</div>
+      <div class="h-humidity">💧 34%</div>
+    </div>
+    <div class="hourly-card clear">
+      <div class="h-time">03:00</div>
+      <div class="h-icon">🌙</div>
+      <div class="h-temp">20°C</div>
+      <div class="h-wind">💨 33 km/h</div>
+      <div class="h-humidity">💧 37%</div>
+    </div>
+    <div class="hourly-card sunny">
+      <div class="h-time">06:00</div>
+      <div class="h-icon">🌅</div>
+      <div class="h-temp">18°C</div>
+      <div class="h-wind">💨 22 km/h</div>
+      <div class="h-humidity">💧 49%</div>
+    </div>
+    <div class="hourly-card sunny">
+      <div class="h-time">09:00</div>
+      <div class="h-icon">☀️</div>
+      <div class="h-temp">23°C</div>
+      <div class="h-wind">💨 19 km/h</div>
+      <div class="h-humidity">💧 41%</div>
+    </div>
+    <div class="hourly-card sunny">
+      <div class="h-time">12:00</div>
+      <div class="h-icon">☀️</div>
+      <div class="h-temp">29°C</div>
+      <div class="h-wind">💨 15 km/h</div>
+      <div class="h-humidity">💧 27%</div>
+    </div>
+    <div class="hourly-card sunny">
+      <div class="h-time">15:00</div>
+      <div class="h-icon">☀️</div>
+      <div class="h-temp">31°C</div>
+      <div class="h-wind">💨 9 km/h</div>
+      <div class="h-humidity">💧 18%</div>
+    </div>
+    <div class="hourly-card sunny">
+      <div class="h-time">18:00</div>
+      <div class="h-icon">🌇</div>
+      <div class="h-temp">30°C</div>
+      <div class="h-wind">💨 9 km/h</div>
+      <div class="h-humidity">💧 22%</div>
+    </div>
+    <div class="hourly-card clear">
+      <div class="h-time">21:00</div>
+      <div class="h-icon">🌙</div>
+      <div class="h-temp">25°C</div>
+      <div class="h-wind">💨 13 km/h</div>
+      <div class="h-humidity">💧 30%</div>
+    </div>
+  </div>
+
+  <!-- Astronomy -->
+  <div class="section-title">🌌 天文信息</div>
+  <div class="astro-grid">
+    <div class="astro-item">
+      <div class="a-icon">🌅</div>
+      <div class="a-label">日出</div>
+      <div class="a-value">05:10</div>
+    </div>
+    <div class="astro-item">
+      <div class="a-icon">🌇</div>
+      <div class="a-label">日落</div>
+      <div class="a-value">19:08</div>
+    </div>
+    <div class="astro-item">
+      <div class="a-icon">🌙</div>
+      <div class="a-label">月相</div>
+      <div class="a-value">残月 (Waning Crescent)</div>
+    </div>
+    <div class="astro-item">
+      <div class="a-icon">🌙</div>
+      <div class="a-label">月出</div>
+      <div class="a-value">01:17</div>
+    </div>
+    <div class="astro-item">
+      <div class="a-icon">🌙</div>
+      <div class="a-label">月落</div>
+      <div class="a-value">11:55</div>
+    </div>
+    <div class="astro-item">
+      <div class="a-icon">☀️</div>
+      <div class="a-label">日照时长</div>
+      <div class="a-value">14.0 小时</div>
+    </div>
+  </div>
+
+  <!-- Summary & Advice -->
+  <div class="section-title">📋 综合分析</div>
+  <div class="summary-card">
+    <p>
+      今日济南天气<span class="highlight">晴朗无云</span>，阳光充沛，日照时长达到 <span class="highlight">14 小时</span>。
+      早晨最低温约 <span class="cool">18°C</span>，体感舒适；午后最高可升至 <span class="hot">32°C</span>，紫外线指数高达 <span class="warning">8</span>（很强），
+      出门活动需做好防晒措施 🧴。
+    </p>
+    <br>
+    <p>
+      💨 上午西南风稍大（22~33 km/h），午后风力减弱，整体空气干燥（湿度仅18%~49%），
+      建议多补充水分 💧。
+    </p>
+    <br>
+    <p>
+      🌙 入夜后气温降至 20~25°C，天气晴朗、微风，非常适合户外散步或夜跑。明日（5月11日）
+      预计有阵雨🌦️，最高温仍达30°C，出行建议携带雨具。
+    </p>
+    <br>
+    <p style="color: #667788; font-size: 0.9em;">
+      数据来源：World Weather Online · 观测时间：2026-05-10 12:00 (当地时间)
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    📊 由 AIOpsOS Weather Report Generator · 智能生成
+  </div>
+
+</div>
+</body>
+</html>

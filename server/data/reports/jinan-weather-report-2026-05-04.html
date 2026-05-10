@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>济南市天气分析与预报报告 · 2026年5月4日</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: linear-gradient(145deg, #f0f4f8 0%, #e6edf5 100%);
+    color: #1e293b;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .container {
+    max-width: 1000px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  /* ===== Header ===== */
+  .hero {
+    background: linear-gradient(135deg, #0b3660 0%, #1a6ba8 40%, #4a9bd9 70%, #7ec8e3 100%);
+    border-radius: 20px;
+    padding: 40px 48px 36px;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 28px;
+    box-shadow: 0 8px 32px rgba(10, 54, 96, 0.25);
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 200px; height: 200px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 50%;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    bottom: -60px; left: 20%;
+    width: 280px; height: 280px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 50%;
+  }
+  .hero-icon {
+    font-size: 52px;
+    margin-bottom: 8px;
+    display: inline-block;
+  }
+  .hero h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    position: relative;
+    z-index: 1;
+  }
+  .hero-sub {
+    font-size: 15px;
+    opacity: 0.85;
+    margin-top: 6px;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .hero-sub span { display: inline-flex; align-items: center; gap: 4px; }
+
+  /* ===== Section ===== */
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 32px 0 16px;
+    padding-left: 14px;
+    border-left: 4px solid #1a6ba8;
+    color: #0b3660;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .emoji { font-size: 22px; }
+
+  /* ===== Current Conditions ===== */
+  .current-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px 32px;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .temp-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .temp-main .weather-icon { font-size: 64px; line-height: 1; }
+  .temp-main .temp-value {
+    font-size: 72px;
+    font-weight: 300;
+    line-height: 1;
+    color: #0b3660;
+    margin-top: 4px;
+  }
+  .temp-main .temp-value sup {
+    font-size: 28px;
+    font-weight: 400;
+    vertical-align: super;
+  }
+  .temp-main .temp-label {
+    font-size: 14px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+  .temp-details {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 20px;
+  }
+  .temp-details .item {
+    display: flex;
+    flex-direction: column;
+  }
+  .temp-details .item .label {
+    font-size: 12px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .temp-details .item .value {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-top: 1px;
+  }
+
+  /* ===== Hourly Table ===== */
+  .table-wrap {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    overflow-x: auto;
+    margin-bottom: 24px;
+  }
+  .table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .table-wrap thead th {
+    text-align: left;
+    padding: 10px 8px;
+    font-weight: 600;
+    color: #64748b;
+    border-bottom: 2px solid #e2e8f0;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .table-wrap tbody td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    white-space: nowrap;
+  }
+  .table-wrap tbody tr:last-child td { border-bottom: none; }
+  .table-wrap tbody tr:hover { background: #f8fafc; }
+
+  .temp-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .temp-bar {
+    height: 20px;
+    border-radius: 4px;
+    min-width: 4px;
+    flex-shrink: 0;
+    transition: width 0.3s;
+  }
+  .tag-weather { font-size: 16px; }
+
+  /* ===== Forecast Cards ===== */
+  .forecast-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 640px) { .forecast-grid { grid-template-columns: 1fr; } }
+
+  .forecast-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 24px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    position: relative;
+    overflow: hidden;
+  }
+  .forecast-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .forecast-card .card-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0b3660;
+  }
+  .forecast-card .card-header .date-badge {
+    font-size: 13px;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 2px 12px;
+    border-radius: 20px;
+  }
+  .forecast-card .weather-icon-lg { font-size: 48px; text-align: center; margin: 4px 0 8px; }
+  .forecast-card .temps {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+  .forecast-card .temps .high { font-weight: 700; color: #dc2626; }
+  .forecast-card .temps .low { color: #2563eb; }
+  .forecast-card .temps .avg { color: #64748b; }
+  .forecast-card .detail-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .forecast-card .detail-row .d-item { font-size: 13px; color: #475569; }
+  .forecast-card .detail-row .d-item .d-label { color: #94a3b8; font-size: 11px; }
+
+  .warning-badge {
+    display: inline-block;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+
+  /* ===== Astronomy & Extra ===== */
+  .extra-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .extra-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    text-align: center;
+  }
+  .extra-card .e-icon { font-size: 28px; }
+  .extra-card .e-label { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .extra-card .e-value { font-size: 18px; font-weight: 700; color: #1e293b; margin-top: 2px; }
+
+  /* ===== Summary ===== */
+  .summary-box {
+    background: linear-gradient(135deg, #fef9ef, #fef3c7);
+    border: 1px solid #fde68a;
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin-bottom: 24px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #3e2f1c;
+  }
+  .summary-box strong { color: #92400e; }
+
+  /* ===== Footer ===== */
+  .footer {
+    text-align: center;
+    padding: 20px 0 10px;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+  .footer .sep { margin: 0 10px; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 700px) {
+    .current-card { grid-template-columns: 1fr; text-align: center; }
+    .temp-details { grid-template-columns: repeat(2, 1fr); }
+    .hero { padding: 28px 20px; }
+    .hero h1 { font-size: 22px; }
+    .temp-main .temp-value { font-size: 56px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ===== HERO HEADER ===== -->
+  <div class="hero">
+    <div class="hero-icon">☀️</div>
+    <h1>济南市天气分析与预报报告</h1>
+    <div class="hero-sub">
+      <span>📍 山东省 · 济南市</span>
+      <span>📅 2026年5月4日 06:00 观测</span>
+      <span>🕐 报告生成：2026-05-04 06:30 CST</span>
+    </div>
+  </div>
+
+  <!-- ===== 当前实况 ===== -->
+  <div class="section-title"><span class="emoji">🌡️</span> 当前实况 · 2026-05-04 06:00 CST</div>
+  <div class="current-card">
+    <div class="temp-main">
+      <div class="weather-icon">☀️</div>
+      <div class="temp-value">12<sup>°C</sup></div>
+      <div class="temp-label">体感 13°C · 晴朗</div>
+    </div>
+    <div class="temp-details">
+      <div class="item"><span class="label">🌬 风速</span><span class="value">5 km/h 南风</span></div>
+      <div class="item"><span class="label">💧 湿度</span><span class="value">31%</span></div>
+      <div class="item"><span class="label">👁 能见度</span><span class="value">10 km</span></div>
+      <div class="item"><span class="label">☀️ 紫外线</span><span class="value">0（早晨）</span></div>
+      <div class="item"><span class="label">🔽 气压</span><span class="value">1016 hPa</span></div>
+      <div class="item"><span class="label">☁️ 云量</span><span class="value">0%</span></div>
+    </div>
+  </div>
+
+  <!-- ===== 今日汇总 ===== -->
+  <div class="summary-box">
+    <strong>📊 今日天气速览：</strong>最高 <strong>26°C</strong> / 最低 <strong>12°C</strong>，平均 <strong>20°C</strong>。
+    全天晴朗 ☀️，日照时长 <strong>13.9h</strong>，紫外线指数最高 <strong>8</strong>（较强）。
+    日出 <strong>05:16</strong> · 日落 <strong>19:03</strong>
+  </div>
+
+  <!-- ===== 逐时预报 ===== -->
+  <div class="section-title"><span class="emoji">⏰</span> 今日逐时预报</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>天气</th>
+          <th>温度</th>
+          <th>体感</th>
+          <th>湿度</th>
+          <th>风速</th>
+          <th>紫外线</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>00:00</td><td class="tag-weather">🌙</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:26px;background:#2563eb;"></div>13°C</div></td><td>13°C</td><td>45%</td><td>6 km/h SE</td><td>0</td></tr>
+        <tr><td>03:00</td><td class="tag-weather">🌙</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:24px;background:#2563eb;"></div>12°C</div></td><td>12°C</td><td>40%</td><td>6 km/h SSW</td><td>0</td></tr>
+        <tr><td>06:00</td><td class="tag-weather">☀️</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:24px;background:#2563eb;"></div>12°C</div></td><td>13°C</td><td>31%</td><td>5 km/h S</td><td>0</td></tr>
+        <tr><td>09:00</td><td class="tag-weather">☀️</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:54px;background:#eab308;"></div>21°C</div></td><td>21°C</td><td>12%</td><td>5 km/h S</td><td>3</td></tr>
+        <tr><td>12:00</td><td class="tag-weather">☀️</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:68px;background:#f97316;"></div>25°C</div></td><td>24°C</td><td>10%</td><td>8 km/h SW</td><td>8</td></tr>
+        <tr><td>15:00</td><td class="tag-weather">☀️</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:72px;background:#ef4444;"></div>26°C</div></td><td>25°C</td><td>15%</td><td>16 km/h SW</td><td>4</td></tr>
+        <tr><td>18:00</td><td class="tag-weather">☀️</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:68px;background:#f97316;"></div>25°C</div></td><td>24°C</td><td>20%</td><td>17 km/h SSW</td><td>0</td></tr>
+        <tr><td>21:00</td><td class="tag-weather">🌙</td><td><div class="temp-bar-wrap"><div class="temp-bar" style="width:54px;background:#eab308;"></div>21°C</div></td><td>21°C</td><td>28%</td><td>17 km/h S</td><td>0</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== 未来2天预报 ===== -->
+  <div class="section-title"><span class="emoji">📅</span> 未来 2 天预报</div>
+  <div class="forecast-grid">
+
+    <!-- 5月5日 -->
+    <div class="forecast-card">
+      <div class="card-header">
+        <h3>5月5日 · 周二</h3>
+        <span class="date-badge">明日</span>
+      </div>
+      <div class="weather-icon-lg">☀️</div>
+      <div class="temps">
+        <span class="high">↑ 31°C</span>
+        <span class="avg">| 24°C |</span>
+        <span class="low">↓ 17°C</span>
+      </div>
+      <div style="text-align:center;font-size:14px;color:#475569;">
+        全天晴朗 · 南风 19-31 km/h
+      </div>
+      <div class="detail-row">
+        <span class="d-item">☀️ <span class="d-label">日照</span> 13.9h</span>
+        <span class="d-item">🛡️ <span class="d-label">紫外线</span> 最高 8</span>
+        <span class="d-item">🌅 <span class="d-label">日出</span> 05:15</span>
+        <span class="d-item">🌇 <span class="d-label">日落</span> 19:04</span>
+        <span class="d-item">🌙 <span class="d-label">月相</span> 亏凸月</span>
+        <span class="d-item">🌙 <span class="d-label">月出</span> 22:43</span>
+        <span class="d-item">🌙 <span class="d-label">月落</span> 07:02</span>
+      </div>
+    </div>
+
+    <!-- 5月6日 -->
+    <div class="forecast-card">
+      <div class="card-header">
+        <h3>5月6日 · 周三</h3>
+        <span class="date-badge">后天</span>
+      </div>
+      <div class="weather-icon-lg">⛅</div>
+      <div class="temps">
+        <span class="high">↑ 32°C</span>
+        <span class="avg">| 25°C |</span>
+        <span class="low">↓ 19°C</span>
+      </div>
+      <div style="text-align:center;font-size:14px;color:#475569;">
+        上午晴转下午多云 <span class="warning-badge">⚠️ 傍晚雷暴风险</span>
+      </div>
+      <div class="detail-row">
+        <span class="d-item">☀️ <span class="d-label">日照</span> 13.8h</span>
+        <span class="d-item">🛡️ <span class="d-label">紫外线</span> 最高 8</span>
+        <span class="d-item">🌅 <span class="d-label">日出</span> 05:14</span>
+        <span class="d-item">🌇 <span class="d-label">日落</span> 19:05</span>
+        <span class="d-item">🌙 <span class="d-label">月相</span> 亏凸月</span>
+        <span class="d-item">🌙 <span class="d-label">月出</span> 23:31</span>
+        <span class="d-item">🌙 <span class="d-label">月落</span> 07:54</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== 附加信息 ===== -->
+  <div class="section-title"><span class="emoji">🔭</span> 附加信息</div>
+  <div class="extra-grid">
+    <div class="extra-card">
+      <div class="e-icon">🌅</div>
+      <div class="e-value">05:16 / 19:03</div>
+      <div class="e-label">今日日出 · 日落</div>
+    </div>
+    <div class="extra-card">
+      <div class="e-icon">🌙</div>
+      <div class="e-value">亏凸月 · 95%</div>
+      <div class="e-label">今日月相 · 照明度</div>
+    </div>
+    <div class="extra-card">
+      <div class="e-icon">🌡️</div>
+      <div class="e-value">12°C ~ 26°C</div>
+      <div class="e-label">今日温度范围</div>
+    </div>
+    <div class="extra-card">
+      <div class="e-icon">💨</div>
+      <div class="e-value">南风 5~17 km/h</div>
+      <div class="e-label">今日风速范围</div>
+    </div>
+    <div class="extra-card">
+      <div class="e-icon">🛡️</div>
+      <div class="e-value">最高 8（较强）</div>
+      <div class="e-label">紫外线指数</div>
+    </div>
+    <div class="extra-card">
+      <div class="e-icon">🟢</div>
+      <div class="e-value">数据未提供</div>
+      <div class="e-label">空气质量</div>
+    </div>
+  </div>
+
+  <!-- ===== 温馨提示 ===== -->
+  <div class="summary-box">
+    <strong>💡 温馨提示：</strong><br>
+    • 今日昼夜温差达 <strong>14°C</strong>，早晚较凉（12°C），建议携带外套 🧥<br>
+    • 中午紫外线指数高达 <strong>8</strong>（较强），户外活动请做好防晒措施 ☀️🧴<br>
+    • 明日（5/5）持续晴热，最高 <strong>31°C</strong>，注意补水 💧<br>
+    • 后天（5/6）傍晚有 <strong>⛈️ 雷暴风险</strong>，请关注临近预警，提前做好防范
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="footer">
+    📍 数据来源：wttr.in · OpenWeatherMap 模型预报
+    <span class="sep">|</span>
+    🕐 报告生成时间：2026-05-04 06:30 CST
+    <span class="sep">|</span>
+    🤖 Generated by AIOpsOS Weather Report Agent
+    <br>
+    <span style="font-size:12px;color:#cbd5e1;">⚠️ 预报数据仅供参考，实际天气以当地气象台发布为准</span>
+  </div>
+
+</div>
+</body>
+</html>

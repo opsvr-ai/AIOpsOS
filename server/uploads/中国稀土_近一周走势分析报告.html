@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国稀土 最近一周走势分析报告</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: #0f1923;
+    color: #e0e6ed;
+    padding: 30px;
+}
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: linear-gradient(145deg, #1a2332 0%, #1e2a3a 100%);
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 35px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid #2a3a4a;
+}
+.stock-title h1 {
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.stock-title .code { font-size: 16px; color: #8899aa; margin-top: 5px; display: block; }
+.price-section {
+    text-align: right;
+}
+.price-section .current-price {
+    font-size: 42px;
+    font-weight: 700;
+    color: #fff;
+}
+.price-section .change {
+    font-size: 18px;
+    margin-top: 5px;
+}
+.change.negative { color: #4ade80; }
+.price-section .update-time { font-size: 12px; color: #667788; margin-top: 5px; }
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 35px;
+}
+.stat-card {
+    background: #1e2d42;
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+    border: 1px solid #2a3d55;
+    transition: transform 0.2s;
+}
+.stat-card:hover { transform: translateY(-2px); }
+.stat-card .label { font-size: 13px; color: #8899aa; margin-bottom: 8px; }
+.stat-card .value { font-size: 22px; font-weight: 600; color: #fff; }
+.stat-card .value.green { color: #4ade80; }
+.stat-card .value.orange { color: #fb923c; }
+.stat-card .value.blue { color: #60a5fa; }
+
+/* Chart */
+.chart-container {
+    background: #1a2a3e;
+    border-radius: 14px;
+    padding: 25px;
+    margin-bottom: 35px;
+    border: 1px solid #2a3d55;
+}
+.chart-container h2 {
+    font-size: 18px;
+    color: #c0d0e0;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+/* Data Table */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    font-size: 14px;
+}
+.data-table thead th {
+    background: #1e2d42;
+    padding: 12px 15px;
+    text-align: center;
+    color: #8899aa;
+    font-weight: 500;
+    border-bottom: 2px solid #2a3d55;
+}
+.data-table tbody td {
+    padding: 12px 15px;
+    text-align: center;
+    border-bottom: 1px solid #1e2d42;
+    color: #d0d8e0;
+}
+.data-table tbody tr:hover { background: #1e2d42; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.up { color: #ef4444; }
+.down { color: #4ade80; }
+
+/* Insights */
+.insights {
+    margin-top: 35px;
+    padding: 25px;
+    background: linear-gradient(135deg, #1a2d42, #1e2a3a);
+    border-radius: 14px;
+    border: 1px solid #2a3d55;
+}
+.insights h2 {
+    font-size: 18px;
+    color: #f59e0b;
+    margin-bottom: 18px;
+    font-weight: 500;
+}
+.insights ul {
+    list-style: none;
+    padding: 0;
+}
+.insights li {
+    padding: 8px 0;
+    padding-left: 24px;
+    position: relative;
+    color: #c0d0e0;
+    line-height: 1.6;
+}
+.insights li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+}
+.insights li.positive::before { background: #4ade80; }
+.insights li.negative::before { background: #ef4444; }
+
+.footer {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 12px;
+    color: #556677;
+    border-top: 1px solid #1e2d42;
+    padding-top: 20px;
+}
+
+@media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .header { flex-direction: column; }
+    .price-section { text-align: left; margin-top: 15px; }
+    .container { padding: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <!-- Header -->
+    <div class="header">
+        <div class="stock-title">
+            <h1>中国稀土</h1>
+            <span class="code">000831.SZ · 深圳证券交易所</span>
+        </div>
+        <div class="price-section">
+            <div class="current-price">55.25</div>
+            <div class="change negative">↓ 0.34 (-0.61%)</div>
+            <div class="update-time">数据更新: 2026-05-08 16:14</div>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="label">本周开盘</div>
+            <div class="value">50.00</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">本周收盘</div>
+            <div class="value">55.25</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">本周最高</div>
+            <div class="value orange">55.99</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">本周最低</div>
+            <div class="value blue">49.90</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">本周涨跌幅</div>
+            <div class="value orange">+10.50%</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">本周总成交量</div>
+            <div class="value" style="font-size:18px">237万</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">振幅</div>
+            <div class="value orange">1.94%</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">流通市值</div>
+            <div class="value" style="font-size:18px">586.32亿</div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-container">
+        <h2>📈 近一周股价走势</h2>
+        <canvas id="priceChart" height="280"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h2>📊 成交量变化</h2>
+        <canvas id="volumeChart" height="200"></canvas>
+    </div>
+
+    <!-- Data Table -->
+    <div class="chart-container">
+        <h2>📋 每日行情明细</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>开盘</th>
+                    <th>收盘</th>
+                    <th>最高</th>
+                    <th>最低</th>
+                    <th>涨跌幅</th>
+                    <th>成交量</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>2026-04-29</td>
+                    <td>50.00</td>
+                    <td>54.03</td>
+                    <td>54.03</td>
+                    <td>49.90</td>
+                    <td class="up">↑ 10.02%</td>
+                    <td>60万</td>
+                </tr>
+                <tr>
+                    <td>2026-04-30</td>
+                    <td>54.35</td>
+                    <td>54.44</td>
+                    <td>55.20</td>
+                    <td>53.50</td>
+                    <td class="up">↑ 0.76%</td>
+                    <td>57万</td>
+                </tr>
+                <tr>
+                    <td>2026-05-06</td>
+                    <td>54.39</td>
+                    <td>55.61</td>
+                    <td>55.79</td>
+                    <td>53.40</td>
+                    <td class="up">↑ 2.15%</td>
+                    <td>53万</td>
+                </tr>
+                <tr>
+                    <td>2026-05-07</td>
+                    <td>55.40</td>
+                    <td>55.59</td>
+                    <td>55.99</td>
+                    <td>54.87</td>
+                    <td class="down">↓ 0.04%</td>
+                    <td>35万</td>
+                </tr>
+                <tr>
+                    <td>2026-05-08</td>
+                    <td>55.00</td>
+                    <td>55.25</td>
+                    <td>55.36</td>
+                    <td>54.28</td>
+                    <td class="down">↓ 0.61%</td>
+                    <td>32万</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Insights -->
+    <div class="insights">
+        <h2>🔍 趋势分析</h2>
+        <ul>
+            <li class="positive"><strong>整体走势：</strong>本周（4月29日-5月8日）中国稀土自50.00开盘后强势上涨，最高触及55.99，最终收于55.25，周涨幅约10.50%，表现远超大盘。</li>
+            <li class="positive"><strong>关键事件：</strong>4月29日股价单日暴涨10.02%，从49.90拉升至54.03，成交放量至59.7万手，显示主力资金大举介入。</li>
+            <li class="negative"><strong>近期回调：</strong>5月7日、8日连续两个交易日小幅回调（-0.04%、-0.61%），成交量同步萎缩，短线获利回吐压力显现。</li>
+            <li><strong>量价关系：</strong>周初放量上涨，周尾缩量回调，属于健康调整形态。5日均线（MA5）约55.18，当前价55.25略高于均线，趋势尚未破坏。</li>
+            <li><strong>支撑与阻力：</strong>下方支撑位54.00（缺口附近），上方阻力位56.80（4月21日高点）。若放量突破56.80则有望打开上行空间。</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        <p>免责声明：本报告仅供参考，不构成投资建议。投资有风险，入市需谨慎。</p>
+        <p style="margin-top:5px">数据来源：腾讯财经 · 报告生成时间：2026-05-10</p>
+    </div>
+</div>
+
+<script>
+// Price Chart
+const ctx1 = document.getElementById('priceChart').getContext('2d');
+const dates = ['2026-04-29', '2026-04-30', '2026-05-06', '2026-05-07', '2026-05-08'];
+const opens = [50.0, 54.35, 54.39, 55.4, 55.0];
+const closes = [54.03, 54.44, 55.61, 55.59, 55.25];
+const highs = [54.03, 55.2, 55.79, 55.99, 55.36];
+const lows = [49.9, 53.5, 53.4, 54.87, 54.28];
+
+new Chart(ctx1, {
+    type: 'line',
+    data: {
+        labels: dates,
+        datasets: [{
+            label: '收盘价',
+            data: closes,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointBackgroundColor: closes.map(v => v >= 54.03 ? '#ef4444' : '#4ade80'),
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            borderWidth: 3,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { labels: { color: '#8899aa', font: { size: 13 } } },
+            tooltip: {
+                backgroundColor: '#1a2d42',
+                titleColor: '#e0e6ed',
+                bodyColor: '#c0d0e0',
+                borderColor: '#2a3d55',
+                borderWidth: 1,
+                padding: 12,
+                callbacks: {
+                    label: ctx => `${ctx.dataset.label}: ¥${ctx.parsed.y.toFixed(2)}`
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#667788', font: { size: 11 } },
+                grid: { color: 'rgba(42, 61, 85, 0.3)' }
+            },
+            y: {
+                ticks: { color: '#667788', font: { size: 11 }, callback: v => '¥' + v.toFixed(2) },
+                grid: { color: 'rgba(42, 61, 85, 0.3)' }
+            }
+        }
+    }
+});
+
+// Volume Chart
+const ctx2 = document.getElementById('volumeChart').getContext('2d');
+const volumes = [596886, 571129, 533199, 346466, 321864];
+const volColors = volumes.map(v => v >= 473908.8 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(74, 222, 128, 0.7)');
+
+new Chart(ctx2, {
+    type: 'bar',
+    data: {
+        labels: dates,
+        datasets: [{
+            label: '成交量(手)',
+            data: volumes,
+            backgroundColor: volColors,
+            borderColor: volColors.map(c => c.replace('0.7', '1')),
+            borderWidth: 1,
+            borderRadius: 4,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { labels: { color: '#8899aa', font: { size: 13 } } },
+            tooltip: {
+                backgroundColor: '#1a2d42',
+                titleColor: '#e0e6ed',
+                bodyColor: '#c0d0e0',
+                borderColor: '#2a3d55',
+                borderWidth: 1,
+                padding: 12,
+                callbacks: {
+                    label: ctx => `成交量: ${(ctx.parsed.y / 10000).toFixed(0)}万手`
+                }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#667788', font: { size: 11 } },
+                grid: { color: 'rgba(42, 61, 85, 0.3)' }
+            },
+            y: {
+                ticks: { color: '#667788', font: { size: 11 }, callback: v => (v / 10000).toFixed(0) + '万' },
+                grid: { color: 'rgba(42, 61, 85, 0.3)' }
+            }
+        }
+    }
+});
+</script>
+</body>
+</html>

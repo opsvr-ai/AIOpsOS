@@ -79,10 +79,11 @@ class _GraphCounter:
 
 
 class _StubTool:
-    """Minimal BaseTool-like object — the pool only reads ``.name``."""
+    """Minimal BaseTool-like object — the pool reads ``.name`` and ``.description``."""
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, description: str = "") -> None:
         self.name = name
+        self.description = description or f"Stub tool {name}"
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"_StubTool({self.name!r})"
@@ -313,8 +314,13 @@ async def test_null_tools_subset_returns_none():
 
 
 @pytest.mark.asyncio
-async def test_executor_route_with_empty_tools_returns_none():
-    """An executor decision with no suggested_tools falls back."""
+async def test_executor_route_with_empty_tools_builds_essentials_only():
+    """An executor decision with empty suggested_tools builds essentials-only graph.
+
+    Empty list means "essentials only" — DeepAgents will inject filesystem +
+    planning tools automatically. This is different from None (which means
+    "caller has no narrowed tool list" and triggers fallback).
+    """
     pool = _make_pool()
     counter = _GraphCounter()
 
@@ -328,8 +334,9 @@ async def test_executor_route_with_empty_tools_returns_none():
     with patch("deepagents.create_deep_agent", counter):
         result = await pool.get_for(decision)
 
-    assert result is None
-    assert counter.calls == 0
+    # Empty tools list should still build a graph (essentials-only)
+    assert result is not None
+    assert counter.calls == 1
 
 
 @pytest.mark.asyncio
