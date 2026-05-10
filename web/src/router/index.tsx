@@ -32,6 +32,7 @@ const ModelProvidersPage = lazy(() => import('@/features/model-providers/ModelPr
 const SpacesPage = lazy(() => import('@/features/spaces/SpacesPage'));
 const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage'));
 const SpaceDetailPage = lazy(() => import('@/features/spaces/SpaceDetailPage'));
+const CollaborationPage = lazy(() => import('@/features/collaboration/CollaborationPage'));
 const LoginPage = lazy(() => import('@/features/LoginPage'));
 const RegisterPage = lazy(() => import('@/features/RegisterPage'));
 const InviteAcceptPage = lazy(() => import('@/features/InviteAcceptPage'));
@@ -153,6 +154,14 @@ export const appRoutes = [
             element: (
               <Lazy>
                 <ScenarioPage />
+              </Lazy>
+            ),
+          },
+          {
+            path: 'ops/collaboration',
+            element: (
+              <Lazy>
+                <CollaborationPage />
               </Lazy>
             ),
           },

@@ -45,6 +45,7 @@ const baseMenuItems = [
       { key: '/ops/chat', icon: <MessageOutlined />, label: '对话' },
       { key: '/ops/alerts', icon: <AlertOutlined />, label: '告警中心' },
       { key: '/ops/scenarios', icon: <ExperimentOutlined />, label: '场景运维' },
+      { key: '/ops/collaboration', icon: <TeamOutlined />, label: '应急协同' },
       { key: '/ops/datacenter', icon: <AppstoreOutlined />, label: '数据接入' },
       { key: '/ops/events', icon: <DatabaseOutlined />, label: '事件接入' },
       { key: '/ops/automation', icon: <ThunderboltOutlined />, label: '自动化' },
