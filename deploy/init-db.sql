@@ -7,8 +7,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- 启用 uuid-ossp 扩展 (用于 UUID 生成)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 启用 pg_trgm 扩展 (用于模糊搜索)
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- 注意: 所有表结构由 Alembic 迁移脚本管理
+-- 注意: pg_trgm 扩展由 Alembic 迁移脚本 008_tool_search_idx 创建
+-- 所有表结构由 Alembic 迁移脚本管理
 -- 服务启动时会自动执行 `alembic upgrade head`
