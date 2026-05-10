@@ -89,12 +89,19 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_DIR: ${LOG_DIR:-data/logs}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
       WIKI_PATH: ${WIKI_PATH:-data/knowledge}
       KB_MONITOR_ENABLED: ${KB_MONITOR_ENABLED:-true}
+      KB_MONITOR_POLL_INTERVAL: ${KB_MONITOR_POLL_INTERVAL:-30}
+      KB_MONITOR_MODEL: ${KB_MONITOR_MODEL:-deepseek-v4-flash}
+      UPLOAD_DIR: ${UPLOAD_DIR:-uploads}
       PROGRESS_ANALYSIS_INTERVAL: ${PROGRESS_ANALYSIS_INTERVAL:-300}
       PROGRESS_ANALYSIS_ENABLED: ${PROGRESS_ANALYSIS_ENABLED:-true}
     volumes:
@@ -145,11 +152,17 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_DIR: ${LOG_DIR:-data/logs}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
       WIKI_PATH: ${WIKI_PATH:-data/knowledge}
       KB_MONITOR_ENABLED: ${KB_MONITOR_ENABLED:-true}
+      KB_MONITOR_POLL_INTERVAL: ${KB_MONITOR_POLL_INTERVAL:-30}
+      KB_MONITOR_MODEL: ${KB_MONITOR_MODEL:-deepseek-v4-flash}
       # Explicitly NOT "allinone" — the worker has its own lifecycle.
       SERVICE_TYPE: worker
     volumes:
