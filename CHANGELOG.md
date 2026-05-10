@@ -1,5 +1,72 @@
 # Changelog
 
+## v2026.5.10 (2026-05-10) — Scenario Operations & Emergency Collaboration
+
+### New Features
+
+- **Scenario Type System**: Support for three scenario types — `command` (trigger command), `natural_language` (NL prompt to agent), and `hybrid` (both). Type-specific field validation on create/update.
+- **Scenario Templates**: Built-in templates for common operations — `fault_isolation`, `health_inspection`, `capacity_prediction`, `alert_analysis`. Auto-fill configuration with customization support.
+- **Enhanced Trigger Rules**: Alert count threshold, alert type/severity conditions, performance trend detection (rising/falling/volatile), composite conditions (AND/OR/NOT), frequency limiting with Redis, time window constraints.
+- **Scenario Resource Association**: Many-to-many relationships with Skills, Agents, KnowledgeDocuments, and NotificationChannels. Resource loading at execution time.
+- **Scenario Execution Engine**: Execution record management, type-specific execution strategies, detailed logging, structured results, configurable timeout (default 300s).
+- **Emergency Collaboration Workflow**: Auto-create collaboration session on scenario trigger, status lifecycle (created → active → resolved → closed), summary report generation on close.
+- **Group Chat Manager**: WeCom Work API integration for auto group creation, name template with variable substitution, member management, text/markdown message send/receive, message sync to collaboration session.
+- **Email Notification Service**: SMTP integration, recipient list from scenario config and user groups, template rendering with variable substitution, status update emails, retry mechanism.
+- **Message Sync Service**: Bidirectional sync between collaboration session and group chat, format conversion, source tracking, deduplication by message ID.
+- **Progress Analyzer**: LLM-powered analysis of collaboration messages, key event identification (problem confirmation, solution discussion, operation execution, result verification), progress summary generation, configurable auto-analysis interval.
+- **Recommendation Engine**: Next-step suggestions based on progress analysis, knowledge base integration, scenario-type-specific recommendations, priority and impact estimation, user feedback (adopt/ignore/modify), feedback learning.
+- **Collaboration Session Management**: List API with pagination, filtering by status/time/scenario, detail query with messages/progress/recommendations, report export, keyword search in messages.
+
+### Database Changes
+
+- Extended `scenarios` table: `scenario_type`, `nl_prompt`, `template_id`, `execution_timeout`, `enable_collaboration`, `collaboration_config`
+- New `scenario_executions` table: execution records with status, params, result, logs
+- New `collaboration_sessions` table: session lifecycle with group chat info, progress summary
+- New `collaboration_messages` table: message records with source channel, sync status
+- New `collaboration_recommendations` table: recommendations with priority, feedback status
+- New association tables: `scenario_knowledge_docs`, `scenario_channels`
+- Extended `scene_triggers` table: `description`, `last_triggered_at`, `trigger_count`
+
+### API Endpoints
+
+- `POST/GET/PUT/DELETE /api/control/scenarios` — Scenario CRUD with type validation
+- `GET /api/control/scenario-templates` — List available templates
+- `POST /api/control/scenarios/from-template` — Create scenario from template
+- `POST/DELETE /api/control/scenarios/{id}/resources` — Resource association management
+- `POST /api/control/scenarios/{id}/execute` — Manual trigger execution
+- `GET /api/control/scenario-executions` — Query execution records
+- `GET /api/control/collaboration-sessions` — List sessions with filters
+- `GET /api/control/collaboration-sessions/{id}` — Session detail with messages
+- `PUT /api/control/collaboration-sessions/{id}/status` — Update session status
+- `POST /api/control/collaboration-sessions/{id}/analyze` — Trigger progress analysis
+- `GET /api/control/collaboration-sessions/{id}/recommendations` — Get recommendations
+- `POST /api/control/collaboration-sessions/{id}/recommendations/{rid}/feedback` — Submit feedback
+- `GET /api/control/collaboration-sessions/{id}/export` — Export session report
+- `GET /api/control/collaboration-sessions/search` — Search messages by keyword
+
+### New Services
+
+- `server/src/services/template_service.py` — Scenario template management
+- `server/src/services/scenario_execution.py` — Scenario execution engine
+- `server/src/services/collaboration_service.py` — Collaboration session management
+- `server/src/services/group_chat_manager.py` — WeCom group chat integration
+- `server/src/services/email_notification.py` — Email notification service
+- `server/src/services/message_sync.py` — Message synchronization service
+- `server/src/services/progress_analyzer.py` — LLM-powered progress analysis
+- `server/src/services/recommendation_engine.py` — Intelligent recommendation generation
+
+### New Models
+
+- `server/src/models/scenario.py` — ScenarioExecution model
+- `server/src/models/collaboration.py` — CollaborationSession, CollaborationMessage, CollaborationRecommendation models
+
+### New Schemas
+
+- `server/src/schemas/scenario.py` — Scenario and execution schemas with type validation
+- `server/src/schemas/collaboration.py` — Collaboration session, message, recommendation schemas
+
+---
+
 ## v2026.5.9 (2026-05-09) — Observability & Evolution
 
 ### New Features
