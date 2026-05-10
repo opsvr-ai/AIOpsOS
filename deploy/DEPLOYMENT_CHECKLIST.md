@@ -45,9 +45,7 @@ cp .env.example .env
 `init-db.sql` 会自动安装以下扩展:
 - [x] `vector` - pgvector 向量搜索
 - [x] `uuid-ossp` - UUID 生成
-
-以下扩展由 Alembic 迁移脚本创建:
-- [x] `pg_trgm` - 模糊搜索 (迁移 008_tool_search_idx)
+- [x] `pg_trgm` - 模糊搜索
 
 ### 3.2 数据库迁移
 服务启动时会自动执行 `alembic upgrade head`，无需手动操作。
