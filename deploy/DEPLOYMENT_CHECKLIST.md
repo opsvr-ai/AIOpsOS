@@ -77,22 +77,24 @@ docker compose logs -f server
 ### 4.2 数据目录说明
 首次部署时，`init-dirs.sh` 脚本会创建以下目录并设置正确的权限:
 
+所有数据统一放在 `./data/` 目录下，方便迁移和备份:
+
 | 目录 | 用途 | 权限 (UID:GID) |
 |------|------|----------------|
-| `./db_data/` | PostgreSQL 数据库文件 | 999:999 |
-| `./redis_data/` | Redis 持久化数据 | 默认 |
-| `./kafka_data/` | Kafka 消息日志 | 1000:1000 |
-| `./server_data/` | 服务器数据 (日志、知识库) | 默认 |
-| `./server_uploads/` | 用户上传文件 | 默认 |
+| `./data/postgres/` | PostgreSQL 数据库文件 | 999:999 |
+| `./data/redis/` | Redis 持久化数据 | 默认 |
+| `./data/kafka/` | Kafka 消息日志 | 1000:1000 |
+| `./data/server/` | 服务器数据 (日志、知识库) | 默认 |
+| `./data/uploads/` | 用户上传文件 | 默认 |
 
 **注意**: 如果遇到权限问题，可以手动设置:
 ```bash
 # PostgreSQL 需要 UID 999
-sudo chown -R 999:999 db_data
-chmod 700 db_data
+sudo chown -R 999:999 data/postgres
+chmod 700 data/postgres
 
 # Kafka 需要 UID 1000
-sudo chown -R 1000:1000 kafka_data
+sudo chown -R 1000:1000 data/kafka
 ```
 
 ### 4.3 检查服务状态
@@ -150,18 +152,13 @@ docker compose exec -T db psql -U aiopsos aiopsos < backup_20260511.sql
 ```
 
 ### 6.2 数据目录备份
-由于使用本地目录映射，可以直接备份整个 deploy 目录下的数据文件夹:
+由于使用本地目录映射，所有数据统一在 `./data/` 目录下，可以直接打包迁移:
 ```bash
 # 停止服务 (确保数据一致性)
 docker compose stop
 
-# 备份所有数据目录
-tar czf aiopsos_backup_$(date +%Y%m%d).tar.gz \
-    db_data/ \
-    redis_data/ \
-    kafka_data/ \
-    server_data/ \
-    server_uploads/
+# 备份整个 data 目录
+tar czf aiopsos_data_backup_$(date +%Y%m%d).tar.gz data/
 
 # 重新启动服务
 docker compose start
@@ -173,12 +170,26 @@ docker compose start
 docker compose down
 
 # 解压备份
-tar xzf aiopsos_backup_20260511.tar.gz
+tar xzf aiopsos_data_backup_20260511.tar.gz
 
 # 重新设置权限
 ./init-dirs.sh
 
 # 启动服务
+docker compose up -d
+```
+
+### 6.4 迁移到新服务器
+```bash
+# 在旧服务器上
+docker compose stop
+tar czf aiopsos_data_backup.tar.gz data/
+scp aiopsos_data_backup.tar.gz user@new-server:/path/to/deploy/
+
+# 在新服务器上
+cd /path/to/deploy
+tar xzf aiopsos_data_backup.tar.gz
+./init-dirs.sh
 docker compose up -d
 ```
 
@@ -236,7 +247,7 @@ docker compose exec server alembic upgrade head
 
 ### 8.2 日志位置
 - 服务日志: `docker compose logs [service_name]`
-- 应用日志: `./server_data/logs/`
+- 应用日志: `./data/server/logs/`
 - 数据库日志: `docker compose logs db`
 
 ## 9. 安全建议

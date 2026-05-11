@@ -27,13 +27,16 @@ node_modules/
 # Claude
 .claude/settings.local.json
 
-# Docker / Runtime data volumes
+# Docker / Runtime data volumes (legacy paths)
 db_data/
 redis_data/
 kafka_data/
 server_uploads/
 server_data/
 knowledge_data/
+
+# Docker / Runtime data volumes (new unified path)
+deploy/data/
 
 # Server runtime data
 server/data/knowledge/

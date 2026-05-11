@@ -138,10 +138,10 @@ _BUILTIN_SAFETY_SEED: dict[str, str] = {
 }
 
 
-# Cache key for DB-backed tool list snapshot. Bumped to v2 once the
-# snapshot schema gained a 'safety' field — avoids deserialising stale
-# v1 payloads left over in Redis from before migration 202605041830.
-_TOOLS_LIST_CACHE_KEY = "tools:list:v2"
+# Cache key for DB-backed tool list snapshot. Bumped to v3 after fixing
+# the cache schema to use actual Tool model fields (config, source_path)
+# instead of non-existent fields (return_direct, source_file, parameters_schema).
+_TOOLS_LIST_CACHE_KEY = "tools:list:v3"
 
 
 class ToolManager:
@@ -269,9 +269,8 @@ class ToolManager:
                     raw["skills"].append({
                         "name": tool.name,
                         "description": tool.description or "",
-                        "return_direct": bool(tool.return_direct),
-                        "source_file": tool.source_file,
-                        "parameters_schema": tool.parameters_schema,
+                        "config": tool.config,
+                        "source_path": tool.source_path,
                         "safety": tool.safety,
                     })
 
@@ -288,7 +287,7 @@ class ToolManager:
                     raw["mcps"].append({
                         "name": tool.name,
                         "description": tool.description or "",
-                        "return_direct": bool(tool.return_direct),
+                        "config": tool.config,
                         "safety": tool.safety,
                         "mcp_server": {
                             "name": mcp.name if mcp else "",
@@ -311,8 +310,7 @@ class ToolManager:
         for s in raw.get("skills", []):
             tool = Tool(
                 name=s["name"], type="skill", description=s["description"],
-                return_direct=s.get("return_direct"), source_file=s.get("source_file"),
-                parameters_schema=s.get("parameters_schema"),
+                config=s.get("config", {}), source_path=s.get("source_path"),
                 safety=s.get("safety") or DEFAULT_SAFETY,
             )
             self._register_skill(tool)
@@ -330,7 +328,7 @@ class ToolManager:
                 )
             tool = Tool(
                 name=m["name"], type="mcp", description=m["description"],
-                return_direct=m.get("return_direct"), mcp_server=mcp_server,
+                config=m.get("config", {}), mcp_server=mcp_server,
                 safety=m.get("safety") or DEFAULT_SAFETY,
             )
             self._register_skill(tool)

@@ -1,5 +1,32 @@
 # Changelog
 
+## v2026.5.11.4 (2026-05-11) — Auto-load Skills & Bug Fixes
+
+### Features
+
+- **Auto-load Built-in Skills**: Skills from `server/data/skills` are now automatically loaded into the database on server startup. This provides out-of-the-box functionality without manual configuration.
+  - Recursively scans for `SKILL.md` files with YAML frontmatter
+  - Extracts name, description, version, and metadata
+  - Creates/updates Tool records with `type='skill'` and `is_builtin=True`
+  - Runs automatically during server entrypoint after migrations
+
+### Bug Fixes
+
+- **CachedRole Missing ID**: Fixed `/api/v1/auth/me` returning 500 error after login. The `CachedRole` dataclass was missing the `id` field required by `UserOut` Pydantic model. Added `id` field and updated serialization/deserialization.
+- **Change Password Endpoint**: Fixed `change_password` endpoint that used `CachedUser` without `hashed_password` attribute. Now fetches full user from database for password verification.
+- **Tool Manager Cache Schema**: Fixed `tool_manager.py` referencing non-existent Tool model fields (`return_direct`, `source_file`, `parameters_schema`). Updated to use actual fields (`config`, `source_path`). Bumped cache key to v3.
+
+### Files Changed
+
+- `server/scripts/seed_skills.py` — New skill seeding script
+- `server/scripts/seed.py` — Integrated skill seeding into main seed process
+- `deploy/entrypoint-server.sh` — Added seed script execution after migrations
+- `server/src/api/deps.py` — Added `id` field to `CachedRole`, updated serialization
+- `server/src/api/control/users.py` — Fixed `change_password` to fetch full user from DB
+- `server/src/services/tool_manager.py` — Fixed cache schema to use actual Tool fields
+
+---
+
 ## v2026.5.11.3 (2026-05-11) — Bug Fixes & Stability Improvements
 
 ### Bug Fixes

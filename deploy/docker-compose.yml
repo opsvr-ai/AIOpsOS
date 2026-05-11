@@ -1,5 +1,12 @@
 # AIOpsOS Docker Compose Configuration
 # See deploy/README.md for usage instructions
+#
+# 数据目录结构 (统一在 ./data 下，方便迁移):
+#   ./data/postgres/   - PostgreSQL 数据
+#   ./data/redis/      - Redis 数据
+#   ./data/kafka/      - Kafka 数据
+#   ./data/server/     - 服务器数据 (日志、知识库等)
+#   ./data/uploads/    - 上传文件
 
 services:
   # ── Infrastructure ──────────────────────────────────────────
@@ -18,8 +25,8 @@ services:
       # 确保数据目录权限正确
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      # 使用本地目录而非 Docker volume
-      - ./db_data:/var/lib/postgresql/data
+      # 使用本地目录而非 Docker volume，统一放在 data 目录下
+      - ./data/postgres:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -34,7 +41,7 @@ services:
     container_name: aiopsos-redis
     restart: unless-stopped
     volumes:
-      - ./redis_data:/data
+      - ./data/redis:/data
     ports:
       - "6379:6379"
     healthcheck:
@@ -63,7 +70,7 @@ services:
       # 指定日志目录
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
-      - ./kafka_data:/var/lib/kafka/data
+      - ./data/kafka:/var/lib/kafka/data
     ports:
       - "9092:9092"
     healthcheck:
@@ -116,8 +123,8 @@ services:
       PROGRESS_ANALYSIS_INTERVAL: ${PROGRESS_ANALYSIS_INTERVAL:-300}
       PROGRESS_ANALYSIS_ENABLED: ${PROGRESS_ANALYSIS_ENABLED:-true}
     volumes:
-      - ./server_uploads:/app/uploads
-      - ./server_data:/app/data
+      - ./data/uploads:/app/uploads
+      - ./data/server:/app/data
     ports:
       - "8000:8000"
     depends_on:
@@ -177,7 +184,7 @@ services:
       # Explicitly NOT "allinone" — the worker has its own lifecycle.
       SERVICE_TYPE: worker
     volumes:
-      - ./server_data:/app/data
+      - ./data/server:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -207,5 +214,4 @@ services:
       - server
 
 # 不再使用 Docker volumes，全部使用本地目录映射
-# volumes:
-#   db_data:
+# 所有数据统一放在 ./data 目录下，方便迁移和备份

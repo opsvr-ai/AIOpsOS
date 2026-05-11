@@ -126,6 +126,15 @@ async def seed():
                 logger.info("Created default space for admin: %s", space_id)
 
 
+async def seed_all():
+    """Run all seed functions."""
+    await seed()
+    
+    # Seed built-in skills from data/skills directory
+    from scripts.seed_skills import seed_skills
+    await seed_skills()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    asyncio.run(seed())
+    asyncio.run(seed_all())
