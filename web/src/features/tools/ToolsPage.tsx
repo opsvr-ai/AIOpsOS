@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Card,
   Button,
@@ -249,6 +249,9 @@ export default function ToolsPage() {
   // Auto-detect consistency
   const [inconsistentCount, setInconsistentCount] = useState(0);
 
+  // Stats from backend (total counts, not just current page)
+  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, builtin: 0 });
+
   // Skill Editor Drawer
   const [skillEditorOpen, setSkillEditorOpen] = useState(false);
   const [skillEditorTool, setSkillEditorTool] = useState<ToolItem | null>(null);
@@ -317,6 +320,15 @@ export default function ToolsPage() {
     }
   }, []);
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await api.get('/tools/stats');
+      setStats(res.data ?? { total: 0, active: 0, inactive: 0, builtin: 0 });
+    } catch {
+      // silent
+    }
+  }, []);
+
   const checkConsistency = useCallback(async () => {
     setCheckingConsistency(true);
     try {
@@ -338,19 +350,8 @@ export default function ToolsPage() {
   useEffect(() => {
     fetch();
     fetchCategories();
-  }, [fetch, fetchCategories]);
-
-  // ── Stats ──────────────────────────────────────────────────────────────
-
-  const stats = useMemo(() => {
-    const active = tools.filter((t) => t.is_active).length;
-    return {
-      total: tools.length,
-      active,
-      inactive: tools.length - active,
-      builtin: tools.filter((t) => t.is_builtin).length,
-    };
-  }, [tools]);
+    fetchStats();
+  }, [fetch, fetchCategories, fetchStats]);
 
   // ── Filtered data ──────────────────────────────────────────────────────
 
@@ -409,6 +410,7 @@ export default function ToolsPage() {
       setEditTool(null);
       form.resetFields();
       fetch();
+      fetchStats();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       msg.error(detail || '操作失败');
@@ -442,6 +444,7 @@ export default function ToolsPage() {
     try {
       await api.patch(`/tools/${tool.id}`, { is_active: !tool.is_active });
       fetch();
+      fetchStats();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       msg.error(detail || '操作失败');
@@ -458,6 +461,7 @@ export default function ToolsPage() {
         return n;
       });
       fetch();
+      fetchStats();
     } catch {
       msg.error('删除失败');
     }
@@ -479,6 +483,7 @@ export default function ToolsPage() {
       }
       clearSelection();
       fetch();
+      fetchStats();
     } catch {
       msg.error('批量操作失败');
     }
@@ -492,6 +497,7 @@ export default function ToolsPage() {
       msg.success(`已删除 ${selectedIds.size} 个工具`);
       clearSelection();
       fetch();
+      fetchStats();
     } catch {
       msg.error('批量删除失败');
     }
@@ -519,7 +525,10 @@ export default function ToolsPage() {
       if (ok > 0 && err === 0) msg.success(`成功处理 ${ok} 个 Skill`);
       else if (ok > 0) msg.warning(`成功 ${ok} 个，失败 ${err} 个`);
       else msg.error(`全部失败: ${err} 个`);
-      if (ok > 0) fetch();
+      if (ok > 0) {
+        fetch();
+        fetchStats();
+      }
     } catch {
       msg.error('上传失败');
     } finally {
@@ -592,6 +601,7 @@ export default function ToolsPage() {
       setAiDesc('');
       setAiContent('');
       fetch();
+      fetchStats();
     } catch {
       msg.error('保存失败');
     } finally {
@@ -705,6 +715,7 @@ export default function ToolsPage() {
       await api.post(`/tools/${toolId}/sync-from-filesystem`);
       msg.success('已从文件系统同步');
       fetch();
+      fetchStats();
       checkConsistency();
     } catch {
       msg.error('同步失败');
@@ -776,6 +787,7 @@ export default function ToolsPage() {
       }
       setSyncModalOpen(false);
       fetch();
+      fetchStats();
       checkConsistency();
     } catch {
       msg.error('同步执行失败');
@@ -828,6 +840,7 @@ export default function ToolsPage() {
       msg.success('已回滚');
       setVersionOpen(false);
       fetch();
+      fetchStats();
       checkConsistency();
     } catch {
       msg.error('回滚失败');
@@ -1348,6 +1361,7 @@ export default function ToolsPage() {
                 await api.post('/tools/reload');
                 msg.success('已重新加载');
                 fetch();
+                fetchStats();
               } catch {
                 msg.error('重新加载失败');
               }
@@ -2571,10 +2585,12 @@ export default function ToolsPage() {
             setSkillEditorOpen(false);
             setSkillEditorTool(null);
             fetch();
+            fetchStats();
             checkConsistency();
           }}
           onSaved={() => {
             fetch();
+            fetchStats();
             checkConsistency();
           }}
         />

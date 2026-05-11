@@ -81,6 +81,46 @@ def _merge_skill_config(body: ToolCreate) -> dict:
     return cfg
 
 
+@router.get("/tools/stats")
+async def get_tools_stats(
+    db: DbSession,
+    _=Depends(get_current_user),
+    space_id: str | None = Depends(get_optional_space_id),
+):
+    """Get tool statistics (total, active, inactive, builtin counts)."""
+    from sqlalchemy import func, not_, or_
+
+    base_query = select(Tool)
+    if space_id:
+        base_query = base_query.where(
+            or_(Tool.space_id == space_id, Tool.space_id.is_(None))
+        )
+
+    # Total count
+    total = (await db.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )).scalar() or 0
+
+    # Active count
+    active_query = base_query.where(Tool.is_active)
+    active = (await db.execute(
+        select(func.count()).select_from(active_query.subquery())
+    )).scalar() or 0
+
+    # Builtin count
+    builtin_query = base_query.where(Tool.is_builtin)
+    builtin = (await db.execute(
+        select(func.count()).select_from(builtin_query.subquery())
+    )).scalar() or 0
+
+    return {
+        "total": total,
+        "active": active,
+        "inactive": total - active,
+        "builtin": builtin,
+    }
+
+
 @router.get("/tools", response_model=ToolListOut)
 async def list_tools(
     db: DbSession,
