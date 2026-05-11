@@ -487,6 +487,16 @@ Return ONLY a JSON array: [{{"label": "...", "prompt": "..."}}, ...]. No other t
     ]
 
 
+def _is_valid_uuid(val: str) -> bool:
+    """Check if a string is a valid UUID format."""
+    from uuid import UUID as _UUID
+    try:
+        _UUID(val)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 @router.get("/sessions/{session_id}", response_model=SessionDetailOut)
 async def get_session(
     session_id: str,
@@ -495,6 +505,10 @@ async def get_session(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Validate session_id is a valid UUID format
+    if not _is_valid_uuid(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if session is None:
@@ -538,6 +552,10 @@ async def get_session(
 async def delete_session(
     session_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
+    # Validate session_id is a valid UUID format
+    if not _is_valid_uuid(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if session is None:
