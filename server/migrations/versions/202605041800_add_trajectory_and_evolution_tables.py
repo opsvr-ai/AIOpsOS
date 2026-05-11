@@ -1,7 +1,7 @@
 """add trajectory and evolution tables
 
 Revision ID: 202605041800
-Revises: 0d5bb1cbc6a7
+Revises: 202605041750
 Create Date: 2026-05-04 18:00:00.000000
 
 Creates the data-model foundation for the Agent Runtime Optimization &
@@ -29,7 +29,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 # revision identifiers, used by Alembic.
 revision: str = "202605041800"
-down_revision: str | None = "0d5bb1cbc6a7"
+down_revision: str | None = "202605041750"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
