@@ -1,4 +1,5 @@
-version: '3.9'
+# AIOpsOS Docker Compose Configuration
+# See deploy/README.md for usage instructions
 
 services:
   # ── Infrastructure ──────────────────────────────────────────
