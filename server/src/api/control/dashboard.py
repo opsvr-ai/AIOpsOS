@@ -58,11 +58,11 @@ async def get_dashboard_summary(
             text(f"SELECT COUNT(*) FROM agents WHERE {_space_filter(space_id)}"),
             params,
         )
+        # Count active agents as "online" (agent_profiles doesn't have online status)
         agent_online = await db.scalar(
             text(
-                f"""SELECT COUNT(*) FROM agent_profiles ap
-                 JOIN agents a ON a.id = ap.connected_agent_id
-                 WHERE ap.online = true AND {_space_filter(space_id, 'a.space_id')}"""
+                f"""SELECT COUNT(*) FROM agents
+                 WHERE is_active = true AND {_space_filter(space_id)}"""
             ),
             params,
         )
