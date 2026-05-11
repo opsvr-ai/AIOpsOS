@@ -329,9 +329,15 @@ async def update_profile(body: ProfileUpdate, user: CurrentUser, db: DbSession):
 
 @router.put("/password")
 async def change_password(body: PasswordChange, user: CurrentUser, db: DbSession):
-    if not verify_password(body.old_password, user.hashed_password):
+    # Fetch full user from database (cached user doesn't have hashed_password)
+    result = await db.execute(select(User).where(User.id == user.id))
+    db_user = result.scalar_one_or_none()
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if not verify_password(body.old_password, db_user.hashed_password):
         raise HTTPException(status_code=400, detail="当前密码错误")
-    user.hashed_password = hash_password(body.new_password)
+    db_user.hashed_password = hash_password(body.new_password)
     await db.commit()
     return {"detail": "ok"}
 
