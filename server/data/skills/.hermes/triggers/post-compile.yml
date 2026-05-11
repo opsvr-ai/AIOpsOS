@@ -1,0 +1,10 @@
+# Trigger: runs after wiki compilation pipeline completes
+trigger: post-compile
+description: After compile_pipeline finishes, record metrics and check for anomalies
+conditions:
+  - event: compile_complete
+actions:
+  - record_compile_metrics
+  - check_index_freshness
+  - if_stale:
+      notify: "wiki index is stale after compilation"

@@ -1,0 +1,11 @@
+# Trigger: runs after lint check completes
+trigger: post-lint
+description: After lint run, evaluate health score trend and auto-fix safe issues
+conditions:
+  - event: lint_complete
+actions:
+  - record_health_score
+  - if_health_dropped:
+      notify: "wiki health score dropped by more than 10 points"
+  - auto_fix_safe_issues:
+      checks: ["index_completeness", "tag_audit"]

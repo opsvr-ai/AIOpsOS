@@ -1,0 +1,10 @@
+# Trigger: weekly self-review of knowledge base health
+trigger: weekly-review
+description: Every Sunday, review wiki health trends and suggest improvements
+schedule: "0 9 * * 0"
+actions:
+  - collect_weekly_stats
+  - compare_health_trend
+  - generate_improvement_suggestions
+  - if_critical_issues:
+      escalate_to: "admin"

@@ -42,7 +42,6 @@ deploy/data/
 server/data/knowledge/
 server/data/logs/
 server/data/cron_output/
-server/data/skills/
 server/.env
 
 # Reflection pipeline staging area (R-3.14) — materialised skill candidates
