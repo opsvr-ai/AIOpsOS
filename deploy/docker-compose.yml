@@ -90,6 +90,8 @@ services:
     container_name: aiopsos-server
     restart: unless-stopped
     environment:
+      # 时区设置为北京时间
+      TZ: Asia/Shanghai
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://aiopsos:aiopsos123@db:5432/aiopsos}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql://aiopsos:aiopsos123@db:5432/aiopsos}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
@@ -160,6 +162,8 @@ services:
     restart: unless-stopped
     command: ["celery", "-A", "src.workers.app", "worker", "-Q", "memory,wiki,evolution", "-c", "4", "-l", "info"]
     environment:
+      # 时区设置为北京时间
+      TZ: Asia/Shanghai
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://aiopsos:aiopsos123@db:5432/aiopsos}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql://aiopsos:aiopsos123@db:5432/aiopsos}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
