@@ -14,10 +14,8 @@ import {
   Input,
   Drawer,
   Descriptions,
-  Timeline,
   List,
   Tabs,
-  Progress,
   Tooltip,
   Badge,
   Statistic,
@@ -26,7 +24,6 @@ import {
 } from 'antd';
 import {
   TeamOutlined,
-  SearchOutlined,
   ReloadOutlined,
   EyeOutlined,
   ExportOutlined,
@@ -514,7 +511,7 @@ export default function CollaborationPage() {
                                 <Typography.Text strong>
                                   {item.sender_name || '系统'}
                                 </Typography.Text>
-                                <Tag size="small">{item.source_channel}</Tag>
+                                <Tag>{item.source_channel}</Tag>
                                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                                   {dayjs(item.created_at).format('HH:mm:ss')}
                                 </Typography.Text>

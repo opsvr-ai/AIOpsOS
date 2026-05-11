@@ -19,7 +19,6 @@ import {
   Drawer,
   Descriptions,
   Timeline,
-  Progress,
   Row,
   Col,
   Statistic,
@@ -46,7 +45,6 @@ import {
   MessageOutlined,
   RobotOutlined,
   ToolOutlined,
-  BookOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import api from '@/services/api';
