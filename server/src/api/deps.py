@@ -29,6 +29,7 @@ class CachedPerm:
 
 @dataclass
 class CachedRole:
+    id: uuid.UUID
     name: str
     permissions: list[CachedPerm]
 
@@ -58,6 +59,7 @@ def _serialize_user(user: User) -> dict:
         "status": user.status,
         "roles": [
             {
+                "id": str(r.id),
                 "name": r.name,
                 "permissions": [
                     {"resource": p.resource, "action": p.action}
@@ -81,6 +83,7 @@ def _deserialize_user(data: dict) -> CachedUser:
         status=data.get("status", "active"),
         roles=[
             CachedRole(
+                id=uuid.UUID(r["id"]) if r.get("id") else uuid.uuid4(),
                 name=r["name"],
                 permissions=[
                     CachedPerm(resource=p["resource"], action=p["action"])
