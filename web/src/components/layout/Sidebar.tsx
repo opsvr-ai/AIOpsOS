@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu, theme, Button } from 'antd';
 import { StarOutlined } from '@ant-design/icons';
@@ -34,6 +34,7 @@ import {
 } from '@ant-design/icons';
 import { useThemeStore } from '@/stores/themeStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useBrandingStore } from '@/stores/brandingStore';
 
 const baseMenuItems = [
   {
@@ -97,6 +98,12 @@ export default function Sidebar() {
   const isAdmin = useAuthStore((s) => s.user?.roles?.includes('admin'));
   const [collapsed, setCollapsed] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  
+  // Branding
+  const { branding, fetchBranding } = useBrandingStore();
+  useEffect(() => {
+    fetchBranding();
+  }, [fetchBranding]);
 
   const menuItems = isAdmin ? [...baseMenuItems, ...adminMenuItems] : baseMenuItems;
 
@@ -144,28 +151,40 @@ export default function Sidebar() {
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
       >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: token.colorPrimary,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          A
-        </div>
+        {branding.logo_url ? (
+          <img
+            src={branding.logo_url}
+            alt="logo"
+            style={{
+              height: 28,
+              maxWidth: collapsed ? 28 : 120,
+              objectFit: 'contain',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: branding.primary_color || token.colorPrimary,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {(branding.company_name || 'A')[0]}
+          </div>
+        )}
         {!collapsed && (
           <span
             style={{ fontWeight: 700, fontSize: 16, color: token.colorText, letterSpacing: 0.5 }}
           >
-            AIOpsOS
+            {branding.company_name || 'AIOpsOS'}
           </span>
         )}
       </div>

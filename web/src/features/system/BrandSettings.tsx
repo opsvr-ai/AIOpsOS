@@ -14,6 +14,7 @@ import {
 } from 'antd';
 import { EyeOutlined, UploadOutlined } from '@ant-design/icons';
 import api from '@/services/api';
+import { useBrandingStore } from '@/stores/brandingStore';
 
 interface BrandingData {
   logo_url: string;
@@ -28,6 +29,7 @@ export default function BrandSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<BrandingData>();
+  const updateBranding = useBrandingStore((s) => s.updateBranding);
 
   const fetchBranding = () => {
     setLoading(true);
@@ -50,7 +52,10 @@ export default function BrandSettings() {
         typeof values.primary_color === 'string'
           ? values.primary_color
           : (values.primary_color as any)?.toHexString?.() || '#1677ff';
-      await api.put('/system/branding', { ...values, primary_color: color });
+      const brandingData = { ...values, primary_color: color };
+      await api.put('/system/branding', brandingData);
+      // Update the global store so sidebar reflects changes immediately
+      updateBranding(brandingData);
       message.success('品牌设置已保存');
     } catch {
       // validation failed

@@ -75,6 +75,7 @@ from src.agent.runtime.dynamic_prompt_middleware import (
     DynamicSystemPromptMiddleware,
     _SENTINEL_PROMPT,
 )
+from src.agent.runtime.message_order_middleware import MessageOrderMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ def build_dynamic_subagent(
         TodoListMiddleware(),
         FilesystemMiddleware(backend=backend),
         create_summarization_middleware(model, backend),
+        MessageOrderMiddleware(),  # Fix message order after summarization
         PatchToolCallsMiddleware(),
     ]
     if skills:

@@ -29,6 +29,8 @@ from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph
 
+from src.agent.runtime.message_order_middleware import MessageOrderMiddleware
+
 from src.agent.context import (
     get_current_space,
     get_current_user,
@@ -1311,6 +1313,7 @@ async def _build_hardcoded_agent() -> CompiledStateGraph:
             skill_patch_tool,
         ],
         system_prompt=AI_OPS_SYSTEM_PROMPT,
+        middleware=[MessageOrderMiddleware()],
         subagents=subagents,
         backend=backend,
         skills=_get_skill_sources(),
@@ -1444,6 +1447,7 @@ async def build_deep_agent_from_db() -> CompiledStateGraph:
             model=model,
             tools=main_tools,
             system_prompt=system_prompt,
+            middleware=[MessageOrderMiddleware()],
             subagents=subagents if subagents else None,
             backend=backend,
             skills=_get_skill_sources(),
