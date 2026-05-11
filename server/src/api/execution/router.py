@@ -771,6 +771,7 @@ async def chat_stream(
 ):
     import traceback as _setup_tb
     from datetime import UTC, datetime
+    from uuid import UUID as _UUID
 
     _stream_started_at = time.time()
 
@@ -787,11 +788,20 @@ async def chat_stream(
                 logger.warning("chat_stream: space_id %s not found, falling back to None", space_id)
                 space_id = None
 
-        if body.session_id:
-            result = await db.execute(select(Session).where(Session.id == body.session_id))
+        # Validate session_id is a valid UUID format
+        session_id = body.session_id
+        if session_id:
+            try:
+                _UUID(session_id)  # Validate UUID format
+            except (ValueError, TypeError):
+                logger.warning("chat_stream: invalid session_id format %s, generating new session", session_id)
+                session_id = None
+
+        if session_id:
+            result = await db.execute(select(Session).where(Session.id == session_id))
             session = result.scalar_one_or_none()
             if session is None:
-                session = Session(id=body.session_id, user_id=user.id,
+                session = Session(id=session_id, user_id=user.id,
                                   title=_make_title(body.message),
                                   space_id=space_id,
                                   sleep_status="awake", auto_consolidate=True,

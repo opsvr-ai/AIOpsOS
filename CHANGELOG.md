@@ -1,5 +1,25 @@
 # Changelog
 
+## v2026.5.11.3 (2026-05-11) — Bug Fixes & Stability Improvements
+
+### Bug Fixes
+
+- **Chat Session ID Validation**: Fixed UUID generation fallback in frontend that produced invalid session IDs (e.g., `1778464902736-ercjcjtlqa`). Now generates valid UUID v4 format in all environments.
+- **Backend Session ID Validation**: Added server-side validation for session_id format. Invalid UUIDs are now gracefully handled by creating a new session instead of returning 500 error.
+- **pnpm-lock.yaml**: Added to repository (was in .gitignore), synced with package.json to fix Docker build failures with `--frozen-lockfile`.
+- **TypeScript Fixes**: Removed unused imports in CollaborationPage.tsx and ScenarioPage.tsx, fixed Tag size prop compatibility.
+- **Database Migration Chain**: Fixed feedbacks table migration ordering to ensure proper dependency chain.
+
+### Files Changed
+
+- `web/src/features/chat/hooks/useChatStream.ts` — Fixed UUID generation fallback
+- `server/src/api/execution/router.py` — Added session_id UUID validation
+- `web/pnpm-lock.yaml` — Added to repository
+- `web/src/features/collaboration/CollaborationPage.tsx` — Removed unused imports
+- `web/src/features/scenarios/ScenarioPage.tsx` — Removed unused imports
+
+---
+
 ## v2026.5.11.2 (2026-05-11) — Deployment Configuration & Frontend Enhancements
 
 ### Deployment Configuration

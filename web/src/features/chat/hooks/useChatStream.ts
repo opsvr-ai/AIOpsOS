@@ -4,7 +4,16 @@ import { getSharedProcessor } from '../a2ui/sharedProcessor';
 import { useAuthStore } from '@/stores/authStore';
 
 function uuid() {
-  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // crypto.randomUUID is available in all modern browsers and secure contexts
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback: generate a valid UUID v4 format for older environments
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function parseFormFromContent(content: string): FormDefinition | null {
