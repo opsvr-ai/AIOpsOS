@@ -1,5 +1,5 @@
 ---
-name: system_info
+name: system-info
 description: 'Query system information: version, uptime, health status'
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: alert_query
+name: alert-query
 description: Query and filter active alerts by severity, status, or source
 ---
 

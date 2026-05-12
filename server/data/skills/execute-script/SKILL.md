@@ -1,5 +1,5 @@
 ---
-name: execute_script
+name: execute-script
 description: Execute a predefined operation script by name
 ---
 
