@@ -102,10 +102,12 @@ export default function ModelProvidersPage() {
 
   const openEdit = (p: ModelProvider) => {
     setEditingId(p.id);
+    // Show actual api_key if available (admin can see it), otherwise leave empty
+    const apiKeyValue = p.api_key && p.api_key !== '***' ? p.api_key : '';
     form.setFieldsValue({
       name: p.name,
       provider_type: p.provider_type,
-      api_key: '', // Clear masked key, user must re-enter if they want to change it
+      api_key: apiKeyValue,
       base_url: p.base_url || '',
       model_name: p.model_name,
       model_type: p.model_type,

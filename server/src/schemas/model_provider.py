@@ -49,11 +49,6 @@ class ModelProviderOut(BaseModel):
     updated_at: datetime
 
 
-    @field_validator('api_key', mode='before')
-    @classmethod
-    def mask_api_key(cls, v: str) -> str:
-        return '***'
-
 class ModelProviderTestResult(BaseModel):
     ok: bool
     message: str
