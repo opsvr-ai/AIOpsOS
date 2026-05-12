@@ -124,7 +124,7 @@ docker compose up -d
 访问：
 - 前端: `http://localhost`
 - API 文档: `http://localhost:8000/docs`
-- 默认账号: `admin` / `admin123`
+- 默认账号: `admin` / `Golang#3th`
 
 ### 开发模式
 

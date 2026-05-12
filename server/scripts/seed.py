@@ -89,7 +89,7 @@ async def seed():
             admin_user = User(
                 username="admin",
                 email="admin@aiopsos.local",
-                hashed_password=hash_password("admin123"),
+                hashed_password=hash_password("Golang#3th"),
                 is_active=True,
             )
             db.add(admin_user)
