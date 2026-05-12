@@ -76,6 +76,12 @@ async def update_provider(
     if update_data.get("is_default"):
         model_type = update_data.get("model_type", provider.model_type)
         await _unset_defaults(db, model_type)
+    # Skip api_key update if it's masked (starts with ***) to prevent overwriting
+    # the real key with the masked placeholder
+    if "api_key" in update_data:
+        api_key_value = update_data["api_key"]
+        if api_key_value and (api_key_value == "***" or api_key_value.startswith("***")):
+            del update_data["api_key"]
     for k, v in update_data.items():
         setattr(provider, k, v)
     await db.commit()

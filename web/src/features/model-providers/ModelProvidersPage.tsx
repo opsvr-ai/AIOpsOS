@@ -105,7 +105,7 @@ export default function ModelProvidersPage() {
     form.setFieldsValue({
       name: p.name,
       provider_type: p.provider_type,
-      api_key: p.api_key,
+      api_key: '', // Clear masked key, user must re-enter if they want to change it
       base_url: p.base_url || '',
       model_name: p.model_name,
       model_type: p.model_type,
@@ -123,10 +123,9 @@ export default function ModelProvidersPage() {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: values.name,
         provider_type: values.provider_type,
-        api_key: values.api_key,
         base_url: values.base_url || null,
         model_name: values.model_name,
         model_type: values.model_type,
@@ -139,10 +138,20 @@ export default function ModelProvidersPage() {
           timeout: values.timeout,
         },
       };
+      // Only include api_key if it's provided (for create, or when updating the key)
+      if (values.api_key) {
+        payload.api_key = values.api_key;
+      }
       if (editingId) {
         await api.patch(`/model-providers/${editingId}`, payload);
         message.success('提供商已更新');
       } else {
+        // For create, api_key is required
+        if (!values.api_key) {
+          message.error('创建时必须提供 API 密钥');
+          setSaving(false);
+          return;
+        }
         await api.post('/model-providers', payload);
         message.success('提供商已创建');
       }
@@ -387,8 +396,13 @@ export default function ModelProvidersPage() {
             <Select options={MODEL_TYPE_OPTIONS} />
           </Form.Item>
 
-          <Form.Item name="api_key" label="API 密钥" rules={[{ required: true, message: '必填' }]}>
-            <Input.Password placeholder="sk-..." />
+          <Form.Item 
+            name="api_key" 
+            label="API 密钥" 
+            rules={[{ required: !editingId, message: '必填' }]}
+            extra={editingId ? '留空则保持原密钥不变' : undefined}
+          >
+            <Input.Password placeholder={editingId ? '留空保持不变，输入新值则更新' : 'sk-...'} />
           </Form.Item>
 
           <Form.Item name="base_url" label="接口地址" extra="留空使用官方 API 端点">
