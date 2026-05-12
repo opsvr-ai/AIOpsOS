@@ -42,7 +42,7 @@ Send a notification through a configured message channel.
 - `title` (required): Message title/subject
 - `message` (required): Message content body (supports markdown for some channels)
 - `severity` (optional): Message severity level - one of: `info`, `warning`, `critical`, `error`. Default: `info`
-- `recipients` (optional): List of recipient addresses (email addresses, user IDs, etc.). If not provided, uses channel's default recipients.
+- `recipients` (optional): Comma-separated list of recipient addresses (email addresses, user IDs, etc.). If not provided, uses channel's default recipients configured in settings.
 
 **Returns:**
 - Success: Confirmation message with channel name and recipient info

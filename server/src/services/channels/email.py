@@ -64,10 +64,23 @@ class EmailChannel(NotificationChannelBase):
                 use_tls = True
             # Port 25: keep both False for plain SMTP
 
+        # Recipients: use payload recipients, or fall back to default_recipients from config
         to_emails = payload.recipients or []
+        if not to_emails:
+            default_recipients = config.get("default_recipients", "")
+            if default_recipients:
+                # Support comma-separated list
+                to_emails = [e.strip() for e in default_recipients.split(",") if e.strip()]
 
         if not smtp_host or not from_email or not to_emails:
-            raise ValueError("缺少 SMTP 主机、发件人或收件人配置")
+            missing = []
+            if not smtp_host:
+                missing.append("SMTP 主机")
+            if not from_email:
+                missing.append("发件人邮箱")
+            if not to_emails:
+                missing.append("收件人 (请在调用时指定 recipients 参数，或在渠道配置中设置默认收件人)")
+            raise ValueError(f"缺少配置: {', '.join(missing)}")
 
         msg, sender_addr, all_recipients = _build_message(config, payload)
 

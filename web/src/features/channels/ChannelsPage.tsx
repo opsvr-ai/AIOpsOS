@@ -145,6 +145,13 @@ const CHANNEL_CONFIG_FIELDS: Record<string, FieldDef[]> = {
     },
     { key: 'from_name', label: '发件人名称', placeholder: 'AIOpsOS 告警', section: '发件人' },
     {
+      key: 'default_recipients',
+      label: '默认收件人',
+      placeholder: 'user1@example.com, user2@example.com',
+      section: '收件人',
+      tooltip: '多个收件人用逗号分隔，智能体发送邮件时如未指定收件人则使用此配置',
+    },
+    {
       key: 'test_recipient',
       label: '测试收件人',
       placeholder: '留空则发送到发件人邮箱',

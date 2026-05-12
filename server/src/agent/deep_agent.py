@@ -483,6 +483,7 @@ def _build_send_channel_message_tool(channels: list | None = None) -> Structured
         title: str,
         message: str,
         severity: str = "info",
+        recipients: str | None = None,
     ) -> str:
         import json as _json
 
@@ -523,20 +524,34 @@ def _build_send_channel_message_tool(channels: list | None = None) -> Structured
                 "error": f"Channel '{channel_name}' not found. Available: {available}",
             }, ensure_ascii=False)
 
-        from src.services.channel_manager import channel_manager
-        ok = await channel_manager.send(
-            channel_type=matched.channel_type,
-            config=matched.config,
-            title=title,
-            message=message,
-            severity=severity,
-        )
+        # Parse recipients: support comma-separated string
+        recipient_list = None
+        if recipients:
+            recipient_list = [r.strip() for r in recipients.split(",") if r.strip()]
 
-        return _json.dumps({
-            "ok": ok,
-            "channel": matched.name,
-            "channel_type": matched.channel_type,
-        }, ensure_ascii=False)
+        from src.services.channel_manager import channel_manager
+        try:
+            ok = await channel_manager.send(
+                channel_type=matched.channel_type,
+                config=matched.config,
+                title=title,
+                message=message,
+                severity=severity,
+                recipients=recipient_list,
+            )
+
+            return _json.dumps({
+                "ok": ok,
+                "channel": matched.name,
+                "channel_type": matched.channel_type,
+                "recipients": recipient_list,
+            }, ensure_ascii=False)
+        except Exception as e:
+            return _json.dumps({
+                "ok": False,
+                "error": str(e),
+                "channel": matched.name,
+            }, ensure_ascii=False)
 
     channel_list = ", ".join(
         [f"{ch.name}({ch.channel_type})" for ch in (channels or [])]
@@ -549,7 +564,8 @@ def _build_send_channel_message_tool(channels: list | None = None) -> Structured
             "Use when the user asks to send a message, notify someone, deliver an alert, or push a report. "
             f"Available: {channel_list}. "
             "Parameters: channel_name (channel name or type to use), title (message title), "
-            "message (content body), severity (info/warning/critical/error, default: info)."
+            "message (content body), severity (info/warning/critical/error, default: info), "
+            "recipients (optional, comma-separated list of recipient addresses like emails or user IDs)."
         ),
         coroutine=_send_channel_message,
     )
