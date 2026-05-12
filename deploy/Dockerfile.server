@@ -48,6 +48,9 @@ RUN poetry config virtualenvs.create false \
     && poetry config installer.max-workers 1 \
     && poetry install --only main --no-interaction --no-ansi --no-root
 
+# Install markitdown with all optional dependencies for document parsing (docx, pdf, etc.)
+RUN pip install 'markitdown[all]'
+
 #RUN poetry config virtualenvs.create false \
 #    # 配置 Poetry 国内清华源（解决超时）
 #    && poetry config repositories.pypi https://pypi.tuna.tsinghua.edu.cn/simple \
