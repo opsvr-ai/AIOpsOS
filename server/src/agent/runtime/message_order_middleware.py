@@ -12,16 +12,23 @@ is moved to the front if it's not already there.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
-from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelRequest, ModelResponse
+from langchain.agents.middleware.types import (
+    AgentMiddleware,
+    ModelRequest,
+    ModelResponse,
+)
 from langchain_core.messages import SystemMessage
 
 logger = logging.getLogger(__name__)
 
+ContextT = TypeVar("ContextT")
+ResponseT = TypeVar("ResponseT")
 
-class MessageOrderMiddleware(AgentMiddleware):
+
+class MessageOrderMiddleware(AgentMiddleware[Any, ContextT, ResponseT]):
     """Ensures system message is always at the beginning of the message list.
     
     This middleware should be placed AFTER summarization middleware to fix
@@ -30,29 +37,25 @@ class MessageOrderMiddleware(AgentMiddleware):
 
     def wrap_model_call(
         self,
-        handler: Any,
-    ) -> Any:
+        request: ModelRequest[ContextT],
+        handler: Callable[[ModelRequest[ContextT]], ModelResponse[ResponseT]],
+    ) -> ModelResponse[ResponseT]:
         """Wrap sync model calls to fix message order."""
-
-        def wrapper(request: ModelRequest, inner_handler: Any) -> ModelResponse:
-            fixed_request = self._fix_message_order(request)
-            return inner_handler(fixed_request)
-
-        return wrapper
+        fixed_request = self._fix_message_order(request)
+        return handler(fixed_request)
 
     async def awrap_model_call(
         self,
-        handler: Any,
-    ) -> Any:
+        request: ModelRequest[ContextT],
+        handler: Callable[
+            [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
+        ],
+    ) -> ModelResponse[ResponseT]:
         """Wrap async model calls to fix message order."""
+        fixed_request = self._fix_message_order(request)
+        return await handler(fixed_request)
 
-        async def wrapper(request: ModelRequest, inner_handler: Any) -> ModelResponse:
-            fixed_request = self._fix_message_order(request)
-            return await inner_handler(fixed_request)
-
-        return wrapper
-
-    def _fix_message_order(self, request: ModelRequest) -> ModelRequest:
+    def _fix_message_order(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
         """Ensure system message is at the beginning of messages list.
         
         If the request has a system_message attribute, it will be handled
