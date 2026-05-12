@@ -103,16 +103,29 @@ const CHANNEL_CONFIG_FIELDS: Record<string, FieldDef[]> = {
     {
       key: 'smtp_port',
       label: '端口',
-      placeholder: '587',
+      placeholder: '25',
       type: 'number',
       required: true,
       section: 'SMTP 服务器',
     },
     {
+      key: 'use_ssl',
+      label: 'SSL 连接',
+      type: 'switch',
+      section: 'SMTP 服务器',
+      tooltip: '端口 465 通常使用 SSL',
+    },
+    {
+      key: 'use_tls',
+      label: 'STARTTLS',
+      type: 'switch',
+      section: 'SMTP 服务器',
+      tooltip: '端口 587 通常使用 STARTTLS，内网端口 25 通常不勾选',
+    },
+    {
       key: 'smtp_username',
       label: '用户名',
       placeholder: 'user@example.com',
-      required: true,
       section: 'SMTP 服务器',
     },
     {
@@ -120,7 +133,6 @@ const CHANNEL_CONFIG_FIELDS: Record<string, FieldDef[]> = {
       label: '密码',
       placeholder: 'SMTP 授权码',
       type: 'password',
-      required: true,
       section: 'SMTP 服务器',
     },
     {
@@ -131,6 +143,13 @@ const CHANNEL_CONFIG_FIELDS: Record<string, FieldDef[]> = {
       section: '发件人',
     },
     { key: 'from_name', label: '发件人名称', placeholder: 'AIOpsOS 告警', section: '发件人' },
+    {
+      key: 'test_recipient',
+      label: '测试收件人',
+      placeholder: '留空则发送到发件人邮箱',
+      section: '测试',
+      tooltip: '点击测试发送时的收件人地址',
+    },
   ],
   custom_api: [
     {

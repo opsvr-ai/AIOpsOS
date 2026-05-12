@@ -44,10 +44,25 @@ class EmailChannel(NotificationChannelBase):
     async def send(self, config: dict, payload: NotificationPayload) -> bool:
         """Send email. Raises on error so callers can get the detail."""
         smtp_host = config.get("smtp_host", "")
-        smtp_port = int(config.get("smtp_port", 587))
+        smtp_port = int(config.get("smtp_port", 25))
         smtp_username = config.get("smtp_username", "")
         smtp_password = config.get("smtp_password", "")
         from_email = config.get("from_email", "")
+        
+        # SSL/TLS configuration:
+        # - use_ssl: true = SSL connection (port 465 typical)
+        # - use_tls: true = STARTTLS upgrade (port 587 typical)
+        # - both false = plain SMTP (port 25 typical, for internal networks)
+        use_ssl = config.get("use_ssl", False)
+        use_tls = config.get("use_tls", False)
+        
+        # Auto-detect based on port if not explicitly configured
+        if not use_ssl and not use_tls:
+            if smtp_port == 465:
+                use_ssl = True
+            elif smtp_port == 587:
+                use_tls = True
+            # Port 25: keep both False for plain SMTP
 
         to_emails = payload.recipients or []
 
@@ -56,27 +71,42 @@ class EmailChannel(NotificationChannelBase):
 
         msg, sender_addr, all_recipients = _build_message(config, payload)
 
-        # Port 465 → SSL; everything else → STARTTLS
-        if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
-        else:
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-            server.starttls()
-
+        server = None
         try:
+            if use_ssl:
+                # SSL connection from the start (typically port 465)
+                logger.debug(f"Connecting to {smtp_host}:{smtp_port} with SSL")
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+            else:
+                # Plain SMTP connection
+                logger.debug(f"Connecting to {smtp_host}:{smtp_port} (plain)")
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+                if use_tls:
+                    # Upgrade to TLS (STARTTLS)
+                    logger.debug("Upgrading connection with STARTTLS")
+                    server.starttls()
+
             if smtp_username and smtp_password:
+                logger.debug(f"Authenticating as {smtp_username}")
                 server.login(smtp_username, smtp_password)
+            
+            logger.debug(f"Sending email from {sender_addr} to {all_recipients}")
             server.sendmail(sender_addr, all_recipients, msg.as_string())
+            logger.info(f"Email sent successfully to {all_recipients}")
             return True
         finally:
-            server.quit()
+            if server:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
 
     async def validate_config(self, config: dict) -> tuple[bool, str]:
-        required = ["smtp_host", "smtp_username", "smtp_password", "from_email"]
+        required = ["smtp_host", "from_email"]
         for key in required:
             if not config.get(key):
                 return False, f"缺少必填字段: {key}"
-        port = config.get("smtp_port", 587)
+        port = config.get("smtp_port", 25)
         try:
             port = int(port)
         except (ValueError, TypeError):
@@ -90,23 +120,36 @@ class EmailChannel(NotificationChannelBase):
         if not valid:
             return False, err
         from_email = config.get("from_email", "")
+        
+        # Use test_recipient if configured, otherwise send to from_email
+        test_recipient = config.get("test_recipient", from_email)
+        
         test_payload = NotificationPayload(
             title="AIOpsOS 测试邮件",
             message="这是一封来自 AIOpsOS 的测试通知。如果你收到此邮件，说明邮件渠道配置正确。",
             severity="info",
             metadata={"type": "test"},
-            recipients=[from_email],
+            recipients=[test_recipient],
         )
         try:
             await self.send(config, test_payload)
-            return True, f"测试邮件已发送至 {from_email}"
+            return True, f"测试邮件已发送至 {test_recipient}"
 
-        except smtplib.SMTPAuthenticationError:
-            return False, "SMTP 认证失败，请检查用户名和密码"
+        except smtplib.SMTPAuthenticationError as exc:
+            logger.warning(f"SMTP auth failed: {exc}")
+            return False, f"SMTP 认证失败，请检查用户名和密码。错误详情: {exc}"
         except smtplib.SMTPServerDisconnected as exc:
             return False, f"SMTP 服务器断开连接: {exc}"
         except smtplib.SMTPConnectError as exc:
             return False, f"无法连接 SMTP 服务器: {exc}"
+        except smtplib.SMTPRecipientsRefused as exc:
+            return False, f"收件人被拒绝: {exc}"
+        except smtplib.SMTPSenderRefused as exc:
+            return False, f"发件人被拒绝: {exc}"
+        except smtplib.SMTPDataError as exc:
+            return False, f"邮件数据错误: {exc}"
+        except smtplib.SMTPException as exc:
+            return False, f"SMTP 错误: {exc}"
         except OSError as exc:
             return False, f"网络错误: {exc}"
         except Exception as exc:
