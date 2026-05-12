@@ -57,10 +57,11 @@ interface FieldDef {
   key: string;
   label: string;
   placeholder?: string;
-  type?: 'input' | 'password' | 'select' | 'textarea' | 'number' | 'json';
+  type?: 'input' | 'password' | 'select' | 'textarea' | 'number' | 'json' | 'switch';
   options?: { value: string; label: string }[];
   required?: boolean;
   section?: string;
+  tooltip?: string;
 }
 
 const TEMPLATE_VAR_HINT = '可用变量: {title} {message} {severity} {alert_id} {timestamp} {source}';
@@ -869,6 +870,19 @@ export default function ChannelsPage() {
               placeholder={field.placeholder}
               style={{ fontFamily: 'monospace', fontSize: 12 }}
             />
+          </Form.Item>
+        );
+      }
+      if (field.type === 'switch') {
+        return (
+          <Form.Item
+            key={field.key}
+            name={field.key}
+            label={field.label}
+            valuePropName="checked"
+            tooltip={field.tooltip}
+          >
+            <Switch />
           </Form.Item>
         );
       }
